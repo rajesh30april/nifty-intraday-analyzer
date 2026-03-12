@@ -9,8 +9,9 @@ import json as json_lib
 
 import numpy as np
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 
 
 class NumpyEncoder(json_lib.JSONEncoder):
@@ -38,6 +39,21 @@ from pattern_detector import detect_all_patterns
 
 app = FastAPI(title="Nifty 50 Intraday Probability Analyzer")
 templates = Jinja2Templates(directory="templates")
+
+
+class NoCacheHTMLMiddleware(BaseHTTPMiddleware):
+    """Prevent browser from caching HTML pages (so JS changes apply immediately)."""
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if "text/html" in response.headers.get("content-type", ""):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+
+app.add_middleware(NoCacheHTMLMiddleware)
 
 
 # ── Pages ──────────────────────────────────────────────────────────
