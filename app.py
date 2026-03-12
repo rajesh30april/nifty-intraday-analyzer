@@ -6,6 +6,7 @@ Supports both Yahoo Finance (delayed) and Zerodha Kite Connect (live) data.
 import pandas as pd
 import traceback
 import json as json_lib
+import time as _time
 
 import numpy as np
 from fastapi import FastAPI, Request
@@ -56,6 +57,11 @@ class NoCacheHTMLMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(NoCacheHTMLMiddleware)
+
+
+# ── Simple response cache (avoid hammering Yahoo Finance) ─────────
+_mtf_cache: dict = {"data": None, "timestamp": 0}
+MTF_CACHE_TTL = 30  # seconds
 
 
 # ── Pages ──────────────────────────────────────────────────────────
@@ -269,6 +275,16 @@ async def mtf_analyze(chart_tf: str = "5m"):
     Args:
         chart_tf: Timeframe for chart display — '5m' or '15m'.
     """
+    # Return cached data if fresh (avoids hammering Yahoo Finance)
+    now = _time.time()
+    cache_key = f"mtf_{chart_tf}"
+    if (
+        _mtf_cache.get("key") == cache_key
+        and _mtf_cache["data"] is not None
+        and (now - _mtf_cache["timestamp"]) < MTF_CACHE_TTL
+    ):
+        return _mtf_cache["data"]
+
     try:
         mtf = run_mtf_analysis()
 
@@ -386,6 +402,13 @@ async def mtf_analyze(chart_tf: str = "5m"):
             "patterns": patterns_data,
             "support_resistance": sr_data,
         })
+
+        # Cache the response
+        _mtf_cache["key"] = cache_key
+        _mtf_cache["data"] = response
+        _mtf_cache["timestamp"] = _time.time()
+
+        return response
     except Exception as e:
         traceback.print_exc()
         return {"success": False, "error": str(e)}

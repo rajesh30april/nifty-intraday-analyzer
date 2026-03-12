@@ -46,7 +46,7 @@
                     🟢 LIVE • Auto-refreshing
                 </span>
                 <span class="text-gray-400">|</span>
-                <span>Next update in <strong id="countdown-text">30s</strong></span>
+                <span>Next update in <strong id="countdown-text">60s</strong></span>
             </div>
             <div class="flex items-center gap-2">
                 <button id="pause-btn" onclick="togglePause()"
@@ -292,17 +292,21 @@
         }
 
         let refreshInterval = null;
-        let refreshCountdown = 30;
+        let refreshCountdown = 60;
         let isPaused = false;
+        let isLoadingAnalysis = false;
 
         async function loadAnalysis(isAutoRefresh = false) {
+            // Debounce: skip if another request is in flight
+            if (isLoadingAnalysis && isAutoRefresh) return;
+            isLoadingAnalysis = true;
+
             // Only show full loading spinner on first load
             if (!isAutoRefresh) {
                 document.getElementById('loading').classList.remove('hidden');
                 document.getElementById('dashboard').classList.add('hidden');
                 document.getElementById('error-state').classList.add('hidden');
             } else {
-                // Show subtle refresh indicator
                 const b = document.getElementById('live-badge');
                 if (b) b.textContent = '⚡ Refreshing...';
             }
@@ -311,7 +315,6 @@
                 const data = await resp.json();
                 if (!data.success) { showError(data.error || 'Unknown error'); return; }
                 renderDashboard(data);
-                // Update last refresh time
                 const now = new Date();
                 const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 const liveBadge = document.getElementById('live-badge');
@@ -320,8 +323,10 @@
                 if (!isAutoRefresh) showError(e.message);
                 const errBadge = document.getElementById('live-badge');
                 if (errBadge) errBadge.textContent = '🔴 Update failed';
+            } finally {
+                isLoadingAnalysis = false;
             }
-            refreshCountdown = 30;
+            refreshCountdown = 60;
         }
 
         function startAutoRefresh() {
