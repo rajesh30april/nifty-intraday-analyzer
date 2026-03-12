@@ -124,12 +124,34 @@ function renderPriceChart(priceData, patterns, sr) {
                     const nearest = candleData.reduce((prev, curr) =>
                         Math.abs(curr.time - fakeUtcSec) < Math.abs(prev.time - fakeUtcSec) ? curr : prev
                     );
+                    // Determine marker style based on pivot role:
+                    // Double Top/Bottom: P1=trough/peak, P2=neckline, P3=trough/peak
+                    // Neckline (middle pivot) gets a circle marker, extremes get arrows
+                    const isNeckline = (p.pivot_times.length === 3 && i === 1);
+                    const isBearish = p.bias === 'bearish';
+
+                    let position, color, shape, label;
+                    if (isNeckline) {
+                        // Neckline: opposite side, purple circle
+                        position = isBearish ? 'belowBar' : 'aboveBar';
+                        color = '#7c3aed';
+                        shape = 'circle';
+                        label = 'Neckline';
+                    } else {
+                        position = isBearish ? 'aboveBar' : 'belowBar';
+                        color = isBearish ? '#ea1100' : '#2a8703';
+                        shape = isBearish ? 'arrowDown' : 'arrowUp';
+                        // Label as T1/T2 for double bottom, P1/P2 for double top
+                        const pivotNum = i === 0 ? 1 : 2;
+                        label = `${p.name} ${isBearish ? 'P' : 'T'}${pivotNum}`;
+                    }
+
                     markers.push({
                         time: nearest.time,
-                        position: p.bias === 'bearish' ? 'aboveBar' : 'belowBar',
-                        color: p.bias === 'bearish' ? '#ea1100' : '#2a8703',
-                        shape: p.bias === 'bearish' ? 'arrowDown' : 'arrowUp',
-                        text: `${p.name} P${i+1}`,
+                        position: position,
+                        color: color,
+                        shape: shape,
+                        text: label,
                     });
                 } catch (e) { /* skip invalid times */ }
             });

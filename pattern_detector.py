@@ -106,11 +106,14 @@ def detect_support_resistance(
     }
 
 
-def detect_double_top(high: pd.Series, low: pd.Series, close: pd.Series, tolerance_pct: float = 0.5) -> PatternMatch | None:
+def detect_double_top(high: pd.Series, low: pd.Series, close: pd.Series, tolerance_pct: float = 0.3) -> PatternMatch | None:
     """Detect Double Top pattern (bearish reversal).
 
-    Tolerance is 0.5% (not 0.3%) because HIGH prices have more
-    variance than CLOSE — candle wicks naturally add spread.
+    A valid double top requires:
+    - Two peaks at approximately the same price level (within tolerance)
+    - P2 must NOT be higher than P1 (that's a higher high, bullish)
+    - A meaningful trough (neckline) between the two peaks
+    - Minimum 8 candles between P1 and P2 (avoids micro-noise)
     """
     peaks, troughs = _find_peaks_troughs(high, low, order=4)
 
@@ -121,14 +124,16 @@ def detect_double_top(high: pd.Series, low: pd.Series, close: pd.Series, toleran
     p1_idx, p2_idx = peaks[-2], peaks[-1]
     p1_val, p2_val = high.iloc[p1_idx], high.iloc[p2_idx]
 
+    # Minimum separation: at least 8 candles between peaks
+    if (p2_idx - p1_idx) < 8:
+        return None
+
     # Peaks should be roughly equal (within tolerance)
-    # CRITICAL: P2 must NOT be higher than P1 — that would be a higher high (bullish),
-    # not a double top (bearish). P2 can be equal or slightly lower.
+    # CRITICAL: P2 must NOT be higher than P1 — that's a higher high (bullish)
     diff_pct = abs(p1_val - p2_val) / p1_val * 100
     if diff_pct > tolerance_pct:
         return None
     if p2_val > p1_val:
-        # P2 making a higher high = bullish structure, NOT a double top
         return None
 
     # Must have a trough between the peaks — use LOW for neckline
@@ -137,6 +142,13 @@ def detect_double_top(high: pd.Series, low: pd.Series, close: pd.Series, toleran
         return None
 
     neckline = low.iloc[middle_troughs[0]]
+
+    # Neckline must be a meaningful pullback (at least 0.3% below peaks)
+    # Otherwise it's just a flat top, not a real "M" shape
+    neckline_depth_pct = (p1_val - neckline) / p1_val * 100
+    if neckline_depth_pct < 0.3:
+        return None
+
     current = close.iloc[-1]
 
     # Pattern is confirmed if price breaks below neckline
@@ -157,11 +169,14 @@ def detect_double_top(high: pd.Series, low: pd.Series, close: pd.Series, toleran
     )
 
 
-def detect_double_bottom(high: pd.Series, low: pd.Series, close: pd.Series, tolerance_pct: float = 0.5) -> PatternMatch | None:
+def detect_double_bottom(high: pd.Series, low: pd.Series, close: pd.Series, tolerance_pct: float = 0.3) -> PatternMatch | None:
     """Detect Double Bottom pattern (bullish reversal).
 
-    Tolerance is 0.5% (not 0.3%) because LOW prices have more
-    variance than CLOSE — candle wicks naturally add spread.
+    A valid double bottom requires:
+    - Two troughs at approximately the same price level (within tolerance)
+    - T2 must NOT be lower than T1 (that's a lower low, bearish)
+    - A meaningful peak (neckline) between the two troughs
+    - Minimum 8 candles between T1 and T2 (avoids micro-noise)
     """
     peaks, troughs = _find_peaks_troughs(high, low, order=4)
 
@@ -171,6 +186,11 @@ def detect_double_bottom(high: pd.Series, low: pd.Series, close: pd.Series, tole
     # Use LOW prices for troughs (actual lowest point of the candle)
     t1_idx, t2_idx = troughs[-2], troughs[-1]
     t1_val, t2_val = low.iloc[t1_idx], low.iloc[t2_idx]
+
+    # Minimum separation: at least 8 candles between troughs
+    # (avoids detecting noise as pattern)
+    if (t2_idx - t1_idx) < 8:
+        return None
 
     diff_pct = abs(t1_val - t2_val) / t1_val * 100
     if diff_pct > tolerance_pct:
@@ -185,6 +205,13 @@ def detect_double_bottom(high: pd.Series, low: pd.Series, close: pd.Series, tole
         return None
 
     neckline = high.iloc[middle_peaks[0]]
+
+    # Neckline must be a meaningful bounce (at least 0.3% above troughs)
+    # Otherwise it's just a flat bottom, not a real "W" shape
+    neckline_height_pct = (neckline - t1_val) / t1_val * 100
+    if neckline_height_pct < 0.3:
+        return None
+
     current = close.iloc[-1]
 
     confirmed = current > neckline
