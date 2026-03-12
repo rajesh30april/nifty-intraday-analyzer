@@ -14,6 +14,7 @@ from data_fetcher import fetch_intraday_data, get_todays_data
 from probability import calculate_probability
 from kite_integration import kite_manager
 from mtf_analysis import run_mtf_analysis
+from pattern_detector import detect_all_patterns
 
 app = FastAPI(title="Nifty 50 Intraday Probability Analyzer")
 templates = Jinja2Templates(directory="templates")
@@ -173,6 +174,40 @@ async def analyze(interval: str = "5m"):
             "orb_data": result.orb_data,
             "signals": signals_data,
             "price_data": price_data,
+            # Chart patterns
+            "patterns": patterns_data,
+            "support_resistance": sr_data,
+        }
+    except Exception as e:
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+# ── Pattern Detection ───────────────────────────────────────────
+
+@app.get("/api/patterns")
+async def patterns(interval: str = "5m"):
+    """Detect chart patterns in the current data."""
+    try:
+        df = fetch_intraday_data(interval=interval, period="5d")
+        result = detect_all_patterns(df)
+
+        patterns_data = [
+            {
+                "name": p.name,
+                "type": p.pattern_type,
+                "bias": p.bias,
+                "confidence": p.confidence,
+                "description": p.description,
+                "key_levels": p.key_levels,
+            }
+            for p in result["patterns"]
+        ]
+
+        return {
+            "success": True,
+            "patterns": patterns_data,
+            "support_resistance": result["support_resistance"],
         }
     except Exception as e:
         traceback.print_exc()
@@ -187,12 +222,15 @@ async def mtf_analyze():
     try:
         mtf = run_mtf_analysis()
 
-        # Build price_data from the 5m primary result
+        # Build price_data and detect patterns from 5m data
         price_data = []
+        patterns_data = []
+        sr_data = {}
+        df_5m = None
         if mtf.primary_result:
             try:
-                df = fetch_intraday_data(interval="5m", period="5d")
-                today_df = get_todays_data(df)
+                df_5m = fetch_intraday_data(interval="5m", period="5d")
+                today_df = get_todays_data(df_5m)
                 if not today_df.empty:
                     for idx, row in today_df.iterrows():
                         price_data.append({
@@ -200,6 +238,22 @@ async def mtf_analyze():
                             "close": round(row["close"], 2),
                             "volume": int(row["volume"]),
                         })
+            except Exception:
+                pass
+
+        # Detect chart patterns on 5m data
+        if df_5m is not None and not df_5m.empty:
+            try:
+                pat_result = detect_all_patterns(df_5m)
+                patterns_data = [
+                    {
+                        "name": p.name, "type": p.pattern_type,
+                        "bias": p.bias, "confidence": p.confidence,
+                        "description": p.description, "key_levels": p.key_levels,
+                    }
+                    for p in pat_result["patterns"]
+                ]
+                sr_data = pat_result["support_resistance"]
             except Exception:
                 pass
 

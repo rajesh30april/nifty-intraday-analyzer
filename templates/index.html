@@ -128,6 +128,31 @@
                 </div>
             </div>
 
+            <!-- Chart Patterns & Support/Resistance -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 slide-in">
+                <!-- Chart Patterns -->
+                <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                    <div class="px-5 py-4 bg-purple-700 text-white">
+                        <h3 class="text-lg font-bold">🔍 Chart Patterns Detected</h3>
+                        <p class="text-purple-200 text-sm">Auto-detected from price action</p>
+                    </div>
+                    <div id="patterns-container" class="p-4 space-y-3">
+                        <p class="text-gray-400 text-center py-4">Scanning for patterns...</p>
+                    </div>
+                </div>
+
+                <!-- Support & Resistance -->
+                <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                    <div class="px-5 py-4 bg-indigo-700 text-white">
+                        <h3 class="text-lg font-bold">📍 Support & Resistance Levels</h3>
+                        <p class="text-indigo-200 text-sm">Key price levels from peak/trough clustering</p>
+                    </div>
+                    <div id="sr-container" class="p-4">
+                        <p class="text-gray-400 text-center py-4">Calculating levels...</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Signals Table (5m) -->
             <div class="bg-white rounded-xl shadow-md overflow-hidden slide-in">
                 <div class="px-5 py-4 bg-gray-800 text-white">
@@ -283,6 +308,8 @@
             renderSignals(data.signals);
             renderPriceChart(data.price_data);
             renderVolumeChart(data.price_data);
+            renderPatterns(data.patterns || []);
+            renderSupportResistance(data.support_resistance || {}, data.current_price);
             renderInsights(data);
         }
 
@@ -401,6 +428,95 @@
             }
 
             el.innerHTML = insights.map(i => `<p>• ${i}</p>`).join('');
+        }
+
+        function renderPatterns(patterns) {
+            const container = document.getElementById('patterns-container');
+            if (!patterns.length) {
+                container.innerHTML = '<p class="text-gray-400 text-center py-4">No clear patterns detected right now. Market may be ranging.</p>';
+                return;
+            }
+            container.innerHTML = '';
+            patterns.forEach(p => {
+                const biasColor = { bullish: 'border-green-500 bg-green-50', bearish: 'border-red-500 bg-red-50', neutral: 'border-gray-300 bg-gray-50' }[p.bias];
+                const biasText = { bullish: 'text-green-700', bearish: 'text-red-700', neutral: 'text-gray-700' }[p.bias];
+                const biasEmoji = { bullish: '🐂', bearish: '🐻', neutral: '⚖️' }[p.bias];
+                const typeLabel = { reversal: '🔄 Reversal', continuation: '➡️ Continuation', structure: '📀 Structure' }[p.type] || p.type;
+                const confPct = Math.round(p.confidence * 100);
+                const confColor = confPct >= 80 ? 'text-green-600' : confPct >= 60 ? 'text-yellow-600' : 'text-gray-500';
+
+                let levelsHtml = '';
+                if (p.key_levels && Object.keys(p.key_levels).length) {
+                    levelsHtml = '<div class="flex flex-wrap gap-2 mt-2">' +
+                        Object.entries(p.key_levels).map(([k, v]) =>
+                            `<span class="text-xs bg-white px-2 py-1 rounded border">${k.replace('_',' ')}: <strong>${v}</strong></span>`
+                        ).join('') + '</div>';
+                }
+
+                container.innerHTML += `
+                    <div class="border-l-4 ${biasColor} rounded-lg p-3">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <span class="font-bold ${biasText}">${biasEmoji} ${p.name}</span>
+                                <span class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full ml-2">${typeLabel}</span>
+                            </div>
+                            <span class="text-sm font-bold ${confColor}">${confPct}% confidence</span>
+                        </div>
+                        <p class="text-sm text-gray-600 mt-1">${p.description}</p>
+                        ${levelsHtml}
+                    </div>`;
+            });
+        }
+
+        function renderSupportResistance(sr, currentPrice) {
+            const container = document.getElementById('sr-container');
+            if (!sr.support_levels && !sr.resistance_levels) {
+                container.innerHTML = '<p class="text-gray-400 text-center py-4">Insufficient data for S/R levels.</p>';
+                return;
+            }
+
+            let html = '<div class="space-y-3">';
+
+            // Resistance levels (top to bottom)
+            const resistances = (sr.resistance_levels || []).slice().reverse();
+            resistances.forEach(level => {
+                const isNearest = level === sr.nearest_resistance;
+                html += `
+                    <div class="flex items-center gap-3">
+                        <span class="w-3 h-3 rounded-full ${isNearest ? 'bg-red-500' : 'bg-red-300'}"></span>
+                        <div class="flex-1 h-0.5 ${isNearest ? 'bg-red-400' : 'bg-red-200'}"></div>
+                        <span class="text-sm font-mono ${isNearest ? 'font-bold text-red-600' : 'text-red-400'}">
+                            R: ${level} ${isNearest ? '← nearest' : ''}
+                        </span>
+                    </div>`;
+            });
+
+            // Current price
+            if (currentPrice) {
+                html += `
+                    <div class="flex items-center gap-3 py-1">
+                        <span class="w-3 h-3 rounded-full bg-[#0053e2] ring-2 ring-blue-200"></span>
+                        <div class="flex-1 h-1 bg-[#0053e2]"></div>
+                        <span class="text-sm font-mono font-bold text-[#0053e2]">▶ ${currentPrice} (now)</span>
+                    </div>`;
+            }
+
+            // Support levels (top to bottom)
+            const supports = (sr.support_levels || []).slice().reverse();
+            supports.forEach(level => {
+                const isNearest = level === sr.nearest_support;
+                html += `
+                    <div class="flex items-center gap-3">
+                        <span class="w-3 h-3 rounded-full ${isNearest ? 'bg-green-500' : 'bg-green-300'}"></span>
+                        <div class="flex-1 h-0.5 ${isNearest ? 'bg-green-400' : 'bg-green-200'}"></div>
+                        <span class="text-sm font-mono ${isNearest ? 'font-bold text-green-600' : 'text-green-400'}">
+                            S: ${level} ${isNearest ? '← nearest' : ''}
+                        </span>
+                    </div>`;
+            });
+
+            html += '</div>';
+            container.innerHTML = html;
         }
 
         document.addEventListener('DOMContentLoaded', async () => { await checkStatus(); loadAnalysis(); });
