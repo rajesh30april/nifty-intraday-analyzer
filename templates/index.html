@@ -260,8 +260,8 @@
                 document.getElementById('error-state').classList.add('hidden');
             } else {
                 // Show subtle refresh indicator
-                const badge = document.getElementById('live-badge');
-                if (badge) badge.textContent = '⚡ Refreshing...';
+                const b = document.getElementById('live-badge');
+                if (b) b.textContent = '⚡ Refreshing...';
             }
             try {
                 const resp = await fetch('/api/mtf-analyze');
@@ -271,12 +271,12 @@
                 // Update last refresh time
                 const now = new Date();
                 const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                const badge = document.getElementById('live-badge');
-                if (badge) badge.textContent = `🟢 LIVE • Updated ${timeStr}`;
+                const liveBadge = document.getElementById('live-badge');
+                if (liveBadge) liveBadge.textContent = `🟢 LIVE • Updated ${timeStr}`;
             } catch (e) {
                 if (!isAutoRefresh) showError(e.message);
-                const badge = document.getElementById('live-badge');
-                if (badge) badge.textContent = '🔴 Update failed';
+                const errBadge = document.getElementById('live-badge');
+                if (errBadge) errBadge.textContent = '🔴 Update failed';
             }
             refreshCountdown = 30;
         }

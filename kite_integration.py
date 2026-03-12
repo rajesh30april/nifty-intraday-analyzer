@@ -145,12 +145,10 @@ class KiteManager:
             return
 
         self.ticker = KiteTicker(API_KEY, self.access_token)
-        # Bypass Walmart proxy for WebSocket too
-        if hasattr(self.ticker, 'socket_url'):
-            os.environ.pop('HTTP_PROXY', None)
-            os.environ.pop('HTTPS_PROXY', None)
-            os.environ.pop('http_proxy', None)
-            os.environ.pop('https_proxy', None)
+        # Note: KiteTicker uses websocket-client which respects
+        # http_proxy/https_proxy env vars. We set no_proxy for
+        # Zerodha domains so the WebSocket connects directly.
+        os.environ["no_proxy"] = os.environ.get("no_proxy", "") + ",kite.zerodha.com,api.kite.trade,ws.kite.trade"
 
         def on_connect(ws, response):
             ws.subscribe([NIFTY_INSTRUMENT_TOKEN])
