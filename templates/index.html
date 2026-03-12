@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nifty 50 Intraday Probability Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    <style>
+        @keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 10px rgba(0,83,226,0.3); } 50% { box-shadow: 0 0 25px rgba(0,83,226,0.6); } }
+        .glow-blue { animation: pulse-glow 2s ease-in-out infinite; }
+        @keyframes slide-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .slide-in { animation: slide-in 0.5s ease-out; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+    <!-- Header -->
+    <header class="bg-[#0053e2] text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold">📈 Nifty 50 Intraday Probability Analyzer</h1>
+                <p class="text-blue-200 text-sm">Powered by Code Puppy 🐶</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <select id="interval-select" class="bg-blue-700 text-white px-3 py-2 rounded-lg border border-blue-400 text-sm"
+                        aria-label="Select candle interval">
+                    <option value="5m" selected>5 Min Candles</option>
+                    <option value="15m">15 Min Candles</option>
+                    <option value="1m">1 Min Candles</option>
+                </select>
+                <button id="refresh-btn" onclick="loadAnalysis()"
+                        class="bg-[#ffc220] text-gray-900 px-4 py-2 rounded-lg font-bold hover:bg-yellow-400 transition"
+                        aria-label="Refresh analysis">
+                    🔄 Refresh
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-6 py-6">
+
+        <!-- Loading State -->
+        <div id="loading" class="text-center py-20">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[#0053e2] border-t-transparent"></div>
+            <p class="mt-4 text-gray-600 text-lg">Fetching Nifty 50 data & crunching numbers...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="hidden text-center py-20">
+            <p class="text-red-600 text-xl font-bold">⚠️ Something went wrong</p>
+            <p id="error-msg" class="text-gray-600 mt-2"></p>
+            <button onclick="loadAnalysis()" class="mt-4 bg-[#0053e2] text-white px-6 py-2 rounded-lg">Try Again</button>
+        </div>
+
+        <!-- Dashboard Content -->
+        <div id="dashboard" class="hidden space-y-6">
+
+            <!-- Top Cards Row -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 slide-in">
+                <!-- Current Price -->
+                <div class="bg-white rounded-xl shadow-md p-5 border-l-4 border-[#0053e2]">
+                    <p class="text-sm text-gray-500 uppercase tracking-wide">Current Price</p>
+                    <p id="current-price" class="text-3xl font-bold text-gray-800">--</p>
+                    <p id="day-change" class="text-sm font-semibold">--</p>
+                </div>
+
+                <!-- Probability Gauge -->
+                <div class="bg-white rounded-xl shadow-md p-5 border-l-4 border-[#ffc220] col-span-2">
+                    <p class="text-sm text-gray-500 uppercase tracking-wide mb-2">Movement Probability</p>
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1">
+                            <div class="flex justify-between text-sm font-bold mb-1">
+                                <span class="text-green-600">🐂 Bullish: <span id="bull-pct">--</span>%</span>
+                                <span class="text-red-600">🐻 Bearish: <span id="bear-pct">--</span>%</span>
+                            </div>
+                            <div class="w-full bg-red-200 rounded-full h-5 overflow-hidden">
+                                <div id="prob-bar" class="bg-green-500 h-5 rounded-full transition-all duration-1000 ease-out" style="width: 50%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bias & Confidence -->
+                <div class="bg-white rounded-xl shadow-md p-5 glow-blue">
+                    <p class="text-sm text-gray-500 uppercase tracking-wide">Overall Bias</p>
+                    <p id="overall-bias" class="text-2xl font-black">--</p>
+                    <p class="text-sm text-gray-500">Confidence: <span id="confidence" class="font-bold">--</span></p>
+                </div>
+            </div>
+
+            <!-- ORB Card -->
+            <div id="orb-card" class="bg-white rounded-xl shadow-md p-5 slide-in">
+                <h3 class="text-lg font-bold text-gray-800 mb-2">🎯 Opening Range Breakout (15 min)</h3>
+                <div class="flex gap-6 text-sm">
+                    <span>ORB High: <strong id="orb-high" class="text-green-600">--</strong></span>
+                    <span>ORB Low: <strong id="orb-low" class="text-red-600">--</strong></span>
+                    <span>Status: <strong id="orb-status">--</strong></span>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 slide-in">
+                <!-- Price Chart -->
+                <div class="bg-white rounded-xl shadow-md p-5">
+                    <h3 class="text-lg font-bold text-gray-800 mb-3">📊 Today's Price Action</h3>
+                    <div style="height: 300px;">
+                        <canvas id="priceChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Volume Chart -->
+                <div class="bg-white rounded-xl shadow-md p-5">
+                    <h3 class="text-lg font-bold text-gray-800 mb-3">📊 Volume Profile</h3>
+                    <div style="height: 300px;">
+                        <canvas id="volumeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Signals Table -->
+            <div class="bg-white rounded-xl shadow-md overflow-hidden slide-in">
+                <div class="px-5 py-4 bg-gray-800 text-white">
+                    <h3 class="text-lg font-bold">🛡️ Signal Breakdown</h3>
+                    <p class="text-gray-300 text-sm">Each signal is weighted &mdash; VWAP and Supertrend carry the most weight for intraday</p>
+                </div>
+                <table class="w-full text-left" aria-label="Technical signal breakdown">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-4 py-3 text-sm font-semibold text-gray-600">Indicator</th>
+                            <th class="px-4 py-3 text-sm font-semibold text-gray-600">Value</th>
+                            <th class="px-4 py-3 text-sm font-semibold text-gray-600">Bias</th>
+                            <th class="px-4 py-3 text-sm font-semibold text-gray-600">Strength</th>
+                            <th class="px-4 py-3 text-sm font-semibold text-gray-600">Insight</th>
+                        </tr>
+                    </thead>
+                    <tbody id="signals-body">
+                        <tr><td colspan="5" class="text-center py-8 text-gray-400">Loading signals...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Insights -->
+            <div class="bg-gradient-to-r from-[#0053e2] to-blue-700 text-white rounded-xl shadow-md p-6 slide-in">
+                <h3 class="text-lg font-bold mb-3">🧠 Puppy's Intraday Insights</h3>
+                <div id="insights" class="space-y-2 text-blue-100">
+                    <p>Loading insights...</p>
+                </div>
+            </div>
+
+            <!-- Disclaimer -->
+            <div class="text-center text-xs text-gray-400 py-4">
+                <p>⚠️ This tool is for educational & analysis purposes only. Not financial advice. Always do your own research.</p>
+                <p>Data from Yahoo Finance. Indicators are calculated in real-time. Market is unpredictable — manage your risk!</p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let priceChart = null;
+        let volumeChart = null;
+
+        async function loadAnalysis() {
+            const interval = document.getElementById('interval-select').value;
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('dashboard').classList.add('hidden');
+            document.getElementById('error-state').classList.add('hidden');
+
+            try {
+                const resp = await fetch(`/api/analyze?interval=${interval}`);
+                const data = await resp.json();
+
+                if (!data.success) {
+                    showError(data.error || 'Unknown error');
+                    return;
+                }
+
+                renderDashboard(data);
+            } catch (e) {
+                showError(e.message);
+            }
+        }
+
+        function showError(msg) {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('error-state').classList.remove('hidden');
+            document.getElementById('error-msg').textContent = msg;
+        }
+
+        function renderDashboard(data) {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+
+            // Price & Change
+            document.getElementById('current-price').textContent = data.current_price.toLocaleString('en-IN');
+            const changeEl = document.getElementById('day-change');
+            const sign = data.day_change >= 0 ? '+' : '';
+            changeEl.textContent = `${sign}${data.day_change} (${sign}${data.day_change_pct}%)`;
+            changeEl.className = data.day_change >= 0
+                ? 'text-sm font-semibold text-green-600'
+                : 'text-sm font-semibold text-red-600';
+
+            // Probability
+            document.getElementById('bull-pct').textContent = data.bullish_probability;
+            document.getElementById('bear-pct').textContent = data.bearish_probability;
+            document.getElementById('prob-bar').style.width = `${data.bullish_probability}%`;
+
+            // Bias
+            const biasEl = document.getElementById('overall-bias');
+            const biasColors = { bullish: 'text-green-600', bearish: 'text-red-600', neutral: 'text-gray-600' };
+            const biasEmoji = { bullish: '🐂 BULLISH', bearish: '🐻 BEARISH', neutral: '⚖️ NEUTRAL' };
+            biasEl.textContent = biasEmoji[data.overall_bias] || data.overall_bias;
+            biasEl.className = `text-2xl font-black ${biasColors[data.overall_bias] || ''}`;
+
+            // Confidence
+            const confEl = document.getElementById('confidence');
+            confEl.textContent = data.confidence.toUpperCase();
+            const confColors = { high: 'text-green-600', medium: 'text-yellow-600', low: 'text-red-500' };
+            confEl.className = `font-bold ${confColors[data.confidence] || ''}`;
+
+            // ORB
+            if (data.orb_data) {
+                document.getElementById('orb-high').textContent = data.orb_data.orb_high || '--';
+                document.getElementById('orb-low').textContent = data.orb_data.orb_low || '--';
+                const orbStatus = document.getElementById('orb-status');
+                orbStatus.textContent = data.orb_data.breakout === 'bullish' ? '🚀 Bullish Breakout!'
+                    : data.orb_data.breakout === 'bearish' ? '📉 Bearish Breakdown!'
+                    : '🔄 Inside Range';
+                orbStatus.className = data.orb_data.breakout === 'bullish' ? 'text-green-600 font-bold'
+                    : data.orb_data.breakout === 'bearish' ? 'text-red-600 font-bold'
+                    : 'text-gray-600 font-bold';
+            }
+
+            // Signals Table
+            renderSignals(data.signals);
+
+            // Charts
+            renderPriceChart(data.price_data);
+            renderVolumeChart(data.price_data);
+
+            // Insights
+            renderInsights(data);
+        }
+
+        function renderSignals(signals) {
+            const tbody = document.getElementById('signals-body');
+            tbody.innerHTML = '';
+
+            signals.forEach(s => {
+                const biasColor = { bullish: 'text-green-600', bearish: 'text-red-600', neutral: 'text-gray-500' }[s.bias];
+                const biasBg = { bullish: 'bg-green-50', bearish: 'bg-red-50', neutral: 'bg-gray-50' }[s.bias];
+                const barColor = { bullish: 'bg-green-500', bearish: 'bg-red-500', neutral: 'bg-gray-400' }[s.bias];
+                const badgeBg = { bullish: 'bg-green-100', bearish: 'bg-red-100', neutral: 'bg-gray-200' }[s.bias];
+                const pct = Math.round(s.strength * 100);
+
+                tbody.innerHTML += `
+                    <tr class="${biasBg} border-b border-gray-200">
+                        <td class="px-4 py-3 font-semibold text-gray-800">${s.name}</td>
+                        <td class="px-4 py-3 ${biasColor} font-bold">${s.value}</td>
+                        <td class="px-4 py-3">
+                            <span class="inline-block px-2 py-1 rounded-full text-xs font-bold ${biasColor} ${badgeBg}">
+                                ${s.bias.toUpperCase()}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div class="${barColor} h-2 rounded-full" style="width: ${pct}%"></div>
+                            </div>
+                            <span class="text-xs text-gray-500">${pct}%</span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600">${s.description}</td>
+                    </tr>`;
+            });
+        }
+
+        function renderPriceChart(priceData) {
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            if (priceChart) priceChart.destroy();
+
+            const labels = priceData.map(d => d.time);
+            const prices = priceData.map(d => d.close);
+
+            priceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Nifty 50',
+                        data: prices,
+                        borderColor: '#0053e2',
+                        backgroundColor: 'rgba(0, 83, 226, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 0,
+                        borderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { display: true, ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+                        y: { display: true, ticks: { font: { size: 10 } } }
+                    }
+                }
+            });
+        }
+
+        function renderVolumeChart(priceData) {
+            const ctx = document.getElementById('volumeChart').getContext('2d');
+            if (volumeChart) volumeChart.destroy();
+
+            const labels = priceData.map(d => d.time);
+            const volumes = priceData.map(d => d.volume);
+
+            volumeChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Volume',
+                        data: volumes,
+                        backgroundColor: 'rgba(255, 194, 32, 0.7)',
+                        borderColor: '#ffc220',
+                        borderWidth: 1,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { display: true, ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+                        y: { display: true, ticks: { font: { size: 10 } } }
+                    }
+                }
+            });
+        }
+
+        function renderInsights(data) {
+            const el = document.getElementById('insights');
+            const insights = [];
+
+            if (data.bullish_probability > 65) {
+                insights.push('🟢 <strong>Strong bullish setup!</strong> Multiple indicators align to the upside. Consider long positions with tight stop loss below VWAP.');
+            } else if (data.bearish_probability > 65) {
+                insights.push('🔴 <strong>Strong bearish pressure!</strong> Multiple indicators point downward. Consider short positions or staying out.');
+            } else {
+                insights.push('🟡 <strong>Mixed signals.</strong> No clear edge — this is a wait-and-watch zone. Avoid forcing trades.');
+            }
+
+            const stSignal = data.signals.find(s => s.name === 'Supertrend');
+            const adxSignal = data.signals.find(s => s.name === 'ADX');
+            if (stSignal && adxSignal) {
+                if (adxSignal.strength > 0.7) {
+                    insights.push(`💪 <strong>Trending market</strong> — Supertrend is ${stSignal.value} with strong ADX. Ride the trend, don't fade it.`);
+                } else if (adxSignal.strength < 0.3) {
+                    insights.push('⚠️ <strong>Low ADX</strong> — Market is choppy. Range-bound strategies may work better than trend-following.');
+                }
+            }
+
+            const vwapSignal = data.signals.find(s => s.name === 'VWAP');
+            if (vwapSignal) {
+                if (vwapSignal.bias === 'bullish') {
+                    insights.push('🟢 Price is <strong>above VWAP</strong> — institutions are net buyers today. Dips toward VWAP are potential buy zones.');
+                } else if (vwapSignal.bias === 'bearish') {
+                    insights.push('🔴 Price is <strong>below VWAP</strong> — sellers dominating. Rallies toward VWAP are potential sell zones.');
+                }
+            }
+
+            const orbSignal = data.signals.find(s => s.name === 'ORB (15m)');
+            if (orbSignal && orbSignal.bias !== 'neutral') {
+                insights.push(`🎯 <strong>ORB ${orbSignal.bias === 'bullish' ? 'breakout' : 'breakdown'} confirmed!</strong> This is one of the most reliable intraday setups. ${orbSignal.description}`);
+            }
+
+            if (data.confidence === 'low') {
+                insights.push('🐶 <strong>Puppy says:</strong> Low confidence — signals are conflicting. Reduce position size or sit this one out. Capital preservation > FOMO.');
+            }
+
+            el.innerHTML = insights.map(i => `<p>• ${i}</p>`).join('');
+        }
+
+        // Auto-load on page open
+        document.addEventListener('DOMContentLoaded', loadAnalysis);
+
+        // Refresh when interval changes
+        document.getElementById('interval-select').addEventListener('change', loadAnalysis);
+    </script>
+</body>
+</html>
