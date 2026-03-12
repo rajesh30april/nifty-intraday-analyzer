@@ -141,6 +141,55 @@
                 </div>
             </div>
 
+            <!-- Trade Signal & Reversal Probability -->
+            <div id="trade-signal-panel" class="rounded-xl shadow-md p-5 slide-in bg-white border-2 border-gray-100">
+                <div class="flex justify-between items-start mb-3">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-800">🚦 Trade Signal</h3>
+                        <p id="ts-trend" class="text-sm text-gray-500">Loading...</p>
+                    </div>
+                    <div class="text-right">
+                        <span id="ts-action" class="text-2xl font-black px-4 py-1 rounded-lg">--</span>
+                    </div>
+                </div>
+                <!-- Entry / SL / Target -->
+                <div class="grid grid-cols-4 gap-3 mb-4">
+                    <div class="bg-gray-50 rounded-lg p-3 text-center">
+                        <div class="text-xs text-gray-500">Entry</div>
+                        <div id="ts-entry" class="text-lg font-bold text-gray-800">--</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3 text-center">
+                        <div class="text-xs text-gray-500">Stop Loss</div>
+                        <div id="ts-sl" class="text-lg font-bold text-red-600">--</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3 text-center">
+                        <div class="text-xs text-gray-500">Target</div>
+                        <div id="ts-target" class="text-lg font-bold text-green-600">--</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3 text-center">
+                        <div class="text-xs text-gray-500">Risk:Reward</div>
+                        <div id="ts-rr" class="text-lg font-bold text-blue-600">--</div>
+                    </div>
+                </div>
+                <!-- Reversal Probability Meter -->
+                <div class="mb-3">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-sm font-semibold text-gray-700">⚠️ Reversal Probability</span>
+                        <span id="ts-rev-pct" class="text-xl font-black">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
+                        <div id="ts-rev-bar" class="h-full rounded-full transition-all duration-700"
+                             style="width: 0%; background: linear-gradient(90deg, #2a8703, #ffc220, #ea1100);"></div>
+                    </div>
+                    <p id="ts-reasoning" class="text-xs text-gray-500 mt-1"></p>
+                </div>
+                <!-- Reversal Signals Breakdown -->
+                <details class="text-sm">
+                    <summary class="cursor-pointer text-blue-600 hover:text-blue-800 font-medium">View reversal signals breakdown</summary>
+                    <div id="ts-rev-signals" class="mt-2 space-y-1"></div>
+                </details>
+            </div>
+
             <!-- Candlestick Chart with Patterns & S/R -->
             <div class="bg-white rounded-xl shadow-md p-5 slide-in">
                 <div class="flex justify-between items-center mb-3">
@@ -423,6 +472,9 @@
             renderPatterns(data.patterns || []);
             renderSupportResistance(data.support_resistance || {}, data.current_price);
             renderInsights(data);
+
+            // Trade Signal Panel
+            if (data.trade_signal) renderTradeSignal(data.trade_signal);
         }
 
         function renderTimeframes(timeframes) {

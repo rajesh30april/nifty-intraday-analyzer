@@ -336,3 +336,93 @@ function renderSupportResistance(sr, currentPrice) {
     html += '</div>';
     container.innerHTML = html;
 }
+
+
+// ── Trade Signal Panel Renderer ──────────────────────────────────────
+
+function renderTradeSignal(ts) {
+    if (!ts || ts.error) return;
+
+    const panel = document.getElementById('trade-signal-panel');
+
+    // Panel border color based on action
+    const borderColors = {
+        'BUY': 'border-green-500 bg-green-50',
+        'SELL': 'border-red-500 bg-red-50',
+        'EXIT_LONG': 'border-red-600 bg-red-100',
+        'EXIT_SHORT': 'border-green-600 bg-green-100',
+        'HOLD': 'border-yellow-500 bg-yellow-50',
+    };
+    const actionColors = {
+        'BUY': 'bg-green-600 text-white',
+        'SELL': 'bg-red-600 text-white',
+        'EXIT_LONG': 'bg-red-700 text-white animate-pulse',
+        'EXIT_SHORT': 'bg-green-700 text-white animate-pulse',
+        'HOLD': 'bg-yellow-500 text-gray-900',
+    };
+    const actionLabels = {
+        'BUY': '⬆ BUY',
+        'SELL': '⬇ SELL',
+        'EXIT_LONG': '🚨 EXIT LONG',
+        'EXIT_SHORT': '🚨 EXIT SHORT',
+        'HOLD': '⏸ HOLD',
+    };
+
+    panel.className = `rounded-xl shadow-md p-5 slide-in border-2 ${borderColors[ts.action] || 'border-gray-100 bg-white'}`;
+
+    // Action badge
+    const actionEl = document.getElementById('ts-action');
+    actionEl.textContent = actionLabels[ts.action] || ts.action;
+    actionEl.className = `text-2xl font-black px-4 py-1 rounded-lg ${actionColors[ts.action] || ''}`;
+
+    // Trend
+    const trendIcons = { 'uptrend': '⬆️', 'downtrend': '⬇️', 'sideways': '➡️' };
+    document.getElementById('ts-trend').textContent =
+        `${trendIcons[ts.current_trend] || ''} ${ts.current_trend} (${ts.trend_strength})`;
+
+    // Entry / SL / Target / RR
+    document.getElementById('ts-entry').textContent = ts.entry_price ? `₹${ts.entry_price}` : '--';
+    document.getElementById('ts-sl').textContent = ts.stop_loss ? `₹${ts.stop_loss}` : '--';
+    document.getElementById('ts-target').textContent = ts.target ? `₹${ts.target}` : '--';
+    document.getElementById('ts-rr').textContent = ts.risk_reward ? `1:${ts.risk_reward}` : '--';
+
+    // Reversal probability meter
+    const revPct = ts.reversal_probability || 0;
+    document.getElementById('ts-rev-pct').textContent = `${revPct}%`;
+    document.getElementById('ts-rev-pct').className =
+        `text-xl font-black ${revPct >= 80 ? 'text-red-600 animate-pulse' : revPct >= 60 ? 'text-yellow-600' : 'text-green-600'}`;
+
+    const revBar = document.getElementById('ts-rev-bar');
+    revBar.style.width = `${revPct}%`;
+    // Color gradient based on severity
+    if (revPct >= 80) {
+        revBar.style.background = '#ea1100';
+    } else if (revPct >= 60) {
+        revBar.style.background = '#ffc220';
+    } else if (revPct >= 30) {
+        revBar.style.background = 'linear-gradient(90deg, #2a8703, #ffc220)';
+    } else {
+        revBar.style.background = '#2a8703';
+    }
+
+    // Reasoning
+    document.getElementById('ts-reasoning').textContent = ts.reasoning || '';
+
+    // Reversal signals breakdown
+    const sigContainer = document.getElementById('ts-rev-signals');
+    if (ts.reversal_signals && ts.reversal_signals.length) {
+        sigContainer.innerHTML = ts.reversal_signals.map(s => {
+            const pct = s.score;
+            const barW = Math.max(2, pct);
+            const color = pct >= 70 ? 'bg-red-500' : pct >= 40 ? 'bg-yellow-500' : 'bg-green-500';
+            return `<div class="flex items-center gap-2">
+                <span class="w-32 text-xs text-gray-600 truncate" title="${s.name}">${s.name}</span>
+                <div class="flex-1 bg-gray-200 rounded-full h-2">
+                    <div class="${color} h-2 rounded-full" style="width:${barW}%"></div>
+                </div>
+                <span class="w-10 text-xs text-right font-bold">${pct}%</span>
+                <span class="text-xs text-gray-500 truncate" style="max-width:280px" title="${s.detail}">${s.detail}</span>
+            </div>`;
+        }).join('');
+    }
+}

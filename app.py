@@ -37,6 +37,7 @@ from data_fetcher import fetch_intraday_data, get_todays_data
 from probability import calculate_probability
 from kite_integration import kite_manager
 from mtf_analysis import run_mtf_analysis
+from trade_signals import analyze_trade
 from pattern_detector import detect_all_patterns
 
 app = FastAPI(title="Nifty 50 Intraday Probability Analyzer")
@@ -367,6 +368,39 @@ async def mtf_analyze(chart_tf: str = "5m"):
                 for s in mtf.primary_result.signals
             ]
 
+        # Run trade signal analysis on 5m data
+        trade_signal_data = {}
+        if df_5m is not None and not df_5m.empty:
+            try:
+                ts = analyze_trade(
+                    df_5m,
+                    support_levels=sr_data.get("support_levels", []),
+                    resistance_levels=sr_data.get("resistance_levels", []),
+                )
+                trade_signal_data = {
+                    "action": ts.action,
+                    "entry_price": ts.entry_price,
+                    "stop_loss": ts.stop_loss,
+                    "target": ts.target,
+                    "risk_reward": ts.risk_reward,
+                    "current_trend": ts.current_trend,
+                    "trend_strength": ts.trend_strength,
+                    "reversal_probability": ts.reversal_probability,
+                    "exit_warning": ts.exit_warning,
+                    "reasoning": ts.reasoning,
+                    "reversal_signals": [
+                        {
+                            "name": s.name,
+                            "score": round(s.score * 100),
+                            "weight": s.weight,
+                            "detail": s.detail,
+                        }
+                        for s in ts.reversal_signals
+                    ],
+                }
+            except Exception:
+                trade_signal_data = {"error": "Trade signal analysis failed"}
+
         return safe_json_response({
             "success": True,
             "data_source": "multi_timeframe",
@@ -401,6 +435,7 @@ async def mtf_analyze(chart_tf: str = "5m"):
             "chart_timeframe": chart_tf,
             "patterns": patterns_data,
             "support_resistance": sr_data,
+            "trade_signal": trade_signal_data,
         })
 
         # Cache the response
