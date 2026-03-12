@@ -45,6 +45,7 @@ class MTFResult:
     confluence: str  # 'strong', 'moderate', 'weak', 'conflicting'
     timeframes: list[TimeframeResult] = field(default_factory=list)
     primary_result: ProbabilityResult | None = None  # 5m full analysis for signals/charts
+    primary_df: object = None  # Raw 5m DataFrame for pattern detection
     recommendation: str = ""
 
 
@@ -113,6 +114,7 @@ def run_mtf_analysis() -> MTFResult:
     """Run multi-timeframe analysis across 1m, 5m, 15m."""
     timeframes: list[TimeframeResult] = []
     primary_result: ProbabilityResult | None = None
+    primary_df = None  # Store the 5m DataFrame for pattern detection
 
     labels = {"1m": "1 Minute", "5m": "5 Minute", "15m": "15 Minute"}
 
@@ -138,6 +140,7 @@ def run_mtf_analysis() -> MTFResult:
             # Keep the 5m result as primary (for signals table & charts)
             if interval == "5m":
                 primary_result = result
+                primary_df = df
 
         except Exception as e:
             timeframes.append(TimeframeResult(
@@ -194,6 +197,7 @@ def run_mtf_analysis() -> MTFResult:
         confluence=confluence,
         timeframes=timeframes,
         primary_result=primary_result,
+        primary_df=primary_df,
     )
     mtf.recommendation = _generate_recommendation(mtf)
 

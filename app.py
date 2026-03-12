@@ -5,10 +5,30 @@ Supports both Yahoo Finance (delayed) and Zerodha Kite Connect (live) data.
 
 import pandas as pd
 import traceback
+import json as json_lib
 
+import numpy as np
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+
+
+class NumpyEncoder(json_lib.JSONEncoder):
+    """JSON encoder that handles numpy types."""
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+
+def safe_json_response(data: dict) -> JSONResponse:
+    """Create a JSONResponse with numpy-safe serialization."""
+    content = json_lib.loads(json_lib.dumps(data, cls=NumpyEncoder))
+    return JSONResponse(content=content)
 
 from data_fetcher import fetch_intraday_data, get_todays_data
 from probability import calculate_probability
@@ -174,9 +194,6 @@ async def analyze(interval: str = "5m"):
             "orb_data": result.orb_data,
             "signals": signals_data,
             "price_data": price_data,
-            # Chart patterns
-            "patterns": patterns_data,
-            "support_resistance": sr_data,
         }
     except Exception as e:
         traceback.print_exc()
@@ -222,29 +239,28 @@ async def mtf_analyze():
     try:
         mtf = run_mtf_analysis()
 
-        # Build price_data and detect patterns from 5m data
+        # Reuse the 5m DataFrame from MTF (no extra API call!)
         price_data = []
         patterns_data = []
         sr_data = {}
-        df_5m = None
-        if mtf.primary_result:
-            try:
-                df_5m = fetch_intraday_data(interval="5m", period="5d")
-                today_df = get_todays_data(df_5m)
-                if not today_df.empty:
-                    for idx, row in today_df.iterrows():
-                        price_data.append({
-                            "time": idx.strftime("%H:%M"),
-                            "close": round(row["close"], 2),
-                            "volume": int(row["volume"]),
-                        })
-            except Exception:
-                pass
+        df_5m = mtf.primary_df
 
-        # Detect chart patterns on 5m data
+
+        # Build price chart data from today's 5m candles
         if df_5m is not None and not df_5m.empty:
+            today_df = get_todays_data(df_5m)
+            if not today_df.empty:
+                for idx, row in today_df.iterrows():
+                    price_data.append({
+                        "time": idx.strftime("%H:%M"),
+                        "close": round(row["close"], 2),
+                        "volume": int(row["volume"]),
+                    })
+
+            # Detect chart patterns on full 5m data
             try:
                 pat_result = detect_all_patterns(df_5m)
+                print(f"DEBUG: patterns found: {len(pat_result['patterns'])}, S/R: {pat_result['support_resistance']}")
                 patterns_data = [
                     {
                         "name": p.name, "type": p.pattern_type,
@@ -269,7 +285,7 @@ async def mtf_analyze():
                 for s in mtf.primary_result.signals
             ]
 
-        return {
+        return safe_json_response({
             "success": True,
             "data_source": "multi_timeframe",
             # Combined MTF probability
@@ -300,7 +316,9 @@ async def mtf_analyze():
             "orb_data": mtf.primary_result.orb_data if mtf.primary_result else {},
             "signals": signals_data,
             "price_data": price_data,
-        }
+            "patterns": patterns_data,
+            "support_resistance": sr_data,
+        })
     except Exception as e:
         traceback.print_exc()
         return {"success": False, "error": str(e)}

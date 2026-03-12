@@ -365,6 +365,21 @@ def detect_flag(close: pd.Series, volume: pd.Series) -> PatternMatch | None:
     return None
 
 
+def _to_native(val):
+    """Convert numpy types to native Python types for JSON serialization."""
+    if isinstance(val, (np.integer,)):
+        return int(val)
+    if isinstance(val, (np.floating,)):
+        return float(val)
+    if isinstance(val, np.ndarray):
+        return val.tolist()
+    if isinstance(val, dict):
+        return {k: _to_native(v) for k, v in val.items()}
+    if isinstance(val, (list, tuple)):
+        return [_to_native(v) for v in val]
+    return val
+
+
 def detect_all_patterns(df: pd.DataFrame) -> dict:
     """Run all pattern detectors and return results.
 
@@ -397,12 +412,14 @@ def detect_all_patterns(df: pd.DataFrame) -> dict:
         try:
             result = detector()
             if result:
+                # Convert numpy types in key_levels
+                result.key_levels = _to_native(result.key_levels)
                 patterns.append(result)
         except Exception:
             continue
 
     # Support/Resistance
-    sr = detect_support_resistance(high, low, close)
+    sr = _to_native(detect_support_resistance(high, low, close))
 
     # Sort by confidence
     patterns.sort(key=lambda p: p.confidence, reverse=True)
