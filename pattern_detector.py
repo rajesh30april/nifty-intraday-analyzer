@@ -106,9 +106,13 @@ def detect_support_resistance(
     }
 
 
-def detect_double_top(high: pd.Series, low: pd.Series, close: pd.Series, tolerance_pct: float = 0.3) -> PatternMatch | None:
-    """Detect Double Top pattern (bearish reversal)."""
-    peaks, troughs = _find_peaks_troughs(high, low, order=5)
+def detect_double_top(high: pd.Series, low: pd.Series, close: pd.Series, tolerance_pct: float = 0.5) -> PatternMatch | None:
+    """Detect Double Top pattern (bearish reversal).
+
+    Tolerance is 0.5% (not 0.3%) because HIGH prices have more
+    variance than CLOSE — candle wicks naturally add spread.
+    """
+    peaks, troughs = _find_peaks_troughs(high, low, order=4)
 
     if len(peaks) < 2 or len(troughs) < 1:
         return None
@@ -148,9 +152,13 @@ def detect_double_top(high: pd.Series, low: pd.Series, close: pd.Series, toleran
     )
 
 
-def detect_double_bottom(high: pd.Series, low: pd.Series, close: pd.Series, tolerance_pct: float = 0.3) -> PatternMatch | None:
-    """Detect Double Bottom pattern (bullish reversal)."""
-    peaks, troughs = _find_peaks_troughs(high, low, order=5)
+def detect_double_bottom(high: pd.Series, low: pd.Series, close: pd.Series, tolerance_pct: float = 0.5) -> PatternMatch | None:
+    """Detect Double Bottom pattern (bullish reversal).
+
+    Tolerance is 0.5% (not 0.3%) because LOW prices have more
+    variance than CLOSE — candle wicks naturally add spread.
+    """
+    peaks, troughs = _find_peaks_troughs(high, low, order=4)
 
     if len(troughs) < 2 or len(peaks) < 1:
         return None
