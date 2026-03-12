@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.pyo
 .env
+.kite_session.json
 *.db
 *.sqlite
 *.csv

@@ -12,6 +12,8 @@
         .glow-blue { animation: pulse-glow 2s ease-in-out infinite; }
         @keyframes slide-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .slide-in { animation: slide-in 0.5s ease-out; }
+        @keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .live-dot { animation: live-pulse 1.5s ease-in-out infinite; }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -24,6 +26,9 @@
                 <p class="text-blue-200 text-sm">Powered by Code Puppy 🐶</p>
             </div>
             <div class="flex items-center gap-4">
+                <!-- Data Source Badge -->
+                <div id="data-source-badge"></div>
+
                 <select id="interval-select" class="bg-blue-700 text-white px-3 py-2 rounded-lg border border-blue-400 text-sm"
                         aria-label="Select candle interval">
                     <option value="5m" selected>5 Min Candles</option>
@@ -40,6 +45,17 @@
     </header>
 
     <main class="max-w-7xl mx-auto px-6 py-6">
+
+        <!-- Zerodha Login Banner (shown when not authenticated) -->
+        <div id="login-banner" class="hidden mb-6 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl shadow-md p-5 flex items-center justify-between slide-in">
+            <div>
+                <h3 class="text-lg font-bold">🚀 Go Live with Zerodha!</h3>
+                <p class="text-orange-100 text-sm">Currently using Yahoo Finance (15 min delay). Login with Zerodha for real-time tick data.</p>
+            </div>
+            <a href="/login" class="bg-white text-orange-600 px-6 py-2 rounded-lg font-bold hover:bg-orange-50 transition">
+                🔑 Login with Zerodha
+            </a>
+        </div>
 
         <!-- Loading State -->
         <div id="loading" class="text-center py-20">
@@ -64,6 +80,7 @@
                     <p class="text-sm text-gray-500 uppercase tracking-wide">Current Price</p>
                     <p id="current-price" class="text-3xl font-bold text-gray-800">--</p>
                     <p id="day-change" class="text-sm font-semibold">--</p>
+                    <p id="live-price-time" class="text-xs text-gray-400 mt-1"></p>
                 </div>
 
                 <!-- Probability Gauge -->
@@ -102,20 +119,13 @@
 
             <!-- Charts Row -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 slide-in">
-                <!-- Price Chart -->
                 <div class="bg-white rounded-xl shadow-md p-5">
                     <h3 class="text-lg font-bold text-gray-800 mb-3">📊 Today's Price Action</h3>
-                    <div style="height: 300px;">
-                        <canvas id="priceChart"></canvas>
-                    </div>
+                    <div style="height: 300px;"><canvas id="priceChart"></canvas></div>
                 </div>
-
-                <!-- Volume Chart -->
                 <div class="bg-white rounded-xl shadow-md p-5">
                     <h3 class="text-lg font-bold text-gray-800 mb-3">📊 Volume Profile</h3>
-                    <div style="height: 300px;">
-                        <canvas id="volumeChart"></canvas>
-                    </div>
+                    <div style="height: 300px;"><canvas id="volumeChart"></canvas></div>
                 </div>
             </div>
 
@@ -144,15 +154,13 @@
             <!-- Insights -->
             <div class="bg-gradient-to-r from-[#0053e2] to-blue-700 text-white rounded-xl shadow-md p-6 slide-in">
                 <h3 class="text-lg font-bold mb-3">🧠 Puppy's Intraday Insights</h3>
-                <div id="insights" class="space-y-2 text-blue-100">
-                    <p>Loading insights...</p>
-                </div>
+                <div id="insights" class="space-y-2 text-blue-100"><p>Loading insights...</p></div>
             </div>
 
             <!-- Disclaimer -->
             <div class="text-center text-xs text-gray-400 py-4">
                 <p>⚠️ This tool is for educational & analysis purposes only. Not financial advice. Always do your own research.</p>
-                <p>Data from Yahoo Finance. Indicators are calculated in real-time. Market is unpredictable — manage your risk!</p>
+                <p>Data from <span id="source-label">Yahoo Finance</span>. Indicators are calculated in real-time. Market is unpredictable — manage your risk!</p>
             </div>
         </div>
     </main>
@@ -160,6 +168,74 @@
     <script>
         let priceChart = null;
         let volumeChart = null;
+        let isLive = false;
+        let liveTickInterval = null;
+        let autoRefreshInterval = null;
+
+        // Check auth status on load
+        async function checkStatus() {
+            try {
+                const resp = await fetch('/api/status');
+                const data = await resp.json();
+                isLive = data.authenticated;
+
+                const badge = document.getElementById('data-source-badge');
+                const banner = document.getElementById('login-banner');
+
+                if (isLive) {
+                    badge.innerHTML = `
+                        <span class="flex items-center gap-2 bg-green-500 text-white px-3 py-1.5 rounded-full text-sm font-bold">
+                            <span class="w-2 h-2 bg-white rounded-full live-dot"></span>
+                            LIVE — Zerodha
+                        </span>`;
+                    banner.classList.add('hidden');
+                    document.getElementById('source-label').textContent = 'Zerodha Kite Connect (LIVE)';
+
+                    // Start live tick polling (every 1 second)
+                    startLiveTickPolling();
+                    // Auto-refresh analysis every 2 minutes
+                    startAutoRefresh(120);
+                } else {
+                    badge.innerHTML = `
+                        <span class="flex items-center gap-2 bg-yellow-500 text-gray-900 px-3 py-1.5 rounded-full text-sm font-bold">
+                            ⏱ DELAYED — Yahoo
+                        </span>`;
+                    banner.classList.remove('hidden');
+                    document.getElementById('source-label').textContent = 'Yahoo Finance (15 min delay)';
+                }
+            } catch (e) {
+                console.error('Status check failed:', e);
+            }
+        }
+
+        function startLiveTickPolling() {
+            if (liveTickInterval) clearInterval(liveTickInterval);
+            liveTickInterval = setInterval(async () => {
+                try {
+                    const resp = await fetch('/api/live-tick');
+                    const data = await resp.json();
+                    if (data.success) {
+                        // Update price display with live tick
+                        document.getElementById('current-price').textContent =
+                            data.last_price.toLocaleString('en-IN');
+
+                        const now = new Date();
+                        document.getElementById('live-price-time').textContent =
+                            `Live • ${now.toLocaleTimeString()}`;
+
+                        // Flash effect on price update
+                        const priceEl = document.getElementById('current-price');
+                        priceEl.classList.add('text-[#0053e2]');
+                        setTimeout(() => priceEl.classList.remove('text-[#0053e2]'), 300);
+                    }
+                } catch (e) { /* silent fail for tick polling */ }
+            }, 1000);
+        }
+
+        function startAutoRefresh(seconds) {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            autoRefreshInterval = setInterval(() => loadAnalysis(), seconds * 1000);
+        }
 
         async function loadAnalysis() {
             const interval = document.getElementById('interval-select').value;
@@ -170,16 +246,9 @@
             try {
                 const resp = await fetch(`/api/analyze?interval=${interval}`);
                 const data = await resp.json();
-
-                if (!data.success) {
-                    showError(data.error || 'Unknown error');
-                    return;
-                }
-
+                if (!data.success) { showError(data.error || 'Unknown error'); return; }
                 renderDashboard(data);
-            } catch (e) {
-                showError(e.message);
-            }
+            } catch (e) { showError(e.message); }
         }
 
         function showError(msg) {
@@ -225,43 +294,32 @@
                 document.getElementById('orb-low').textContent = data.orb_data.orb_low || '--';
                 const orbStatus = document.getElementById('orb-status');
                 orbStatus.textContent = data.orb_data.breakout === 'bullish' ? '🚀 Bullish Breakout!'
-                    : data.orb_data.breakout === 'bearish' ? '📉 Bearish Breakdown!'
-                    : '🔄 Inside Range';
+                    : data.orb_data.breakout === 'bearish' ? '📉 Bearish Breakdown!' : '🔄 Inside Range';
                 orbStatus.className = data.orb_data.breakout === 'bullish' ? 'text-green-600 font-bold'
-                    : data.orb_data.breakout === 'bearish' ? 'text-red-600 font-bold'
-                    : 'text-gray-600 font-bold';
+                    : data.orb_data.breakout === 'bearish' ? 'text-red-600 font-bold' : 'text-gray-600 font-bold';
             }
 
-            // Signals Table
             renderSignals(data.signals);
-
-            // Charts
             renderPriceChart(data.price_data);
             renderVolumeChart(data.price_data);
-
-            // Insights
             renderInsights(data);
         }
 
         function renderSignals(signals) {
             const tbody = document.getElementById('signals-body');
             tbody.innerHTML = '';
-
             signals.forEach(s => {
                 const biasColor = { bullish: 'text-green-600', bearish: 'text-red-600', neutral: 'text-gray-500' }[s.bias];
                 const biasBg = { bullish: 'bg-green-50', bearish: 'bg-red-50', neutral: 'bg-gray-50' }[s.bias];
                 const barColor = { bullish: 'bg-green-500', bearish: 'bg-red-500', neutral: 'bg-gray-400' }[s.bias];
                 const badgeBg = { bullish: 'bg-green-100', bearish: 'bg-red-100', neutral: 'bg-gray-200' }[s.bias];
                 const pct = Math.round(s.strength * 100);
-
                 tbody.innerHTML += `
                     <tr class="${biasBg} border-b border-gray-200">
                         <td class="px-4 py-3 font-semibold text-gray-800">${s.name}</td>
                         <td class="px-4 py-3 ${biasColor} font-bold">${s.value}</td>
                         <td class="px-4 py-3">
-                            <span class="inline-block px-2 py-1 rounded-full text-xs font-bold ${biasColor} ${badgeBg}">
-                                ${s.bias.toUpperCase()}
-                            </span>
+                            <span class="inline-block px-2 py-1 rounded-full text-xs font-bold ${biasColor} ${badgeBg}">${s.bias.toUpperCase()}</span>
                         </td>
                         <td class="px-4 py-3">
                             <div class="w-full bg-gray-200 rounded-full h-2">
@@ -277,32 +335,22 @@
         function renderPriceChart(priceData) {
             const ctx = document.getElementById('priceChart').getContext('2d');
             if (priceChart) priceChart.destroy();
-
-            const labels = priceData.map(d => d.time);
-            const prices = priceData.map(d => d.close);
-
             priceChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels,
+                    labels: priceData.map(d => d.time),
                     datasets: [{
-                        label: 'Nifty 50',
-                        data: prices,
-                        borderColor: '#0053e2',
-                        backgroundColor: 'rgba(0, 83, 226, 0.1)',
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 0,
-                        borderWidth: 2,
+                        label: 'Nifty 50', data: priceData.map(d => d.close),
+                        borderColor: '#0053e2', backgroundColor: 'rgba(0, 83, 226, 0.1)',
+                        fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2,
                     }]
                 },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
+                    responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        x: { display: true, ticks: { maxTicksLimit: 10, font: { size: 10 } } },
-                        y: { display: true, ticks: { font: { size: 10 } } }
+                        x: { ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+                        y: { ticks: { font: { size: 10 } } }
                     }
                 }
             });
@@ -311,29 +359,21 @@
         function renderVolumeChart(priceData) {
             const ctx = document.getElementById('volumeChart').getContext('2d');
             if (volumeChart) volumeChart.destroy();
-
-            const labels = priceData.map(d => d.time);
-            const volumes = priceData.map(d => d.volume);
-
             volumeChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels,
+                    labels: priceData.map(d => d.time),
                     datasets: [{
-                        label: 'Volume',
-                        data: volumes,
-                        backgroundColor: 'rgba(255, 194, 32, 0.7)',
-                        borderColor: '#ffc220',
-                        borderWidth: 1,
+                        label: 'Volume', data: priceData.map(d => d.volume),
+                        backgroundColor: 'rgba(255, 194, 32, 0.7)', borderColor: '#ffc220', borderWidth: 1,
                     }]
                 },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
+                    responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        x: { display: true, ticks: { maxTicksLimit: 10, font: { size: 10 } } },
-                        y: { display: true, ticks: { font: { size: 10 } } }
+                        x: { ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+                        y: { ticks: { font: { size: 10 } } }
                     }
                 }
             });
@@ -342,6 +382,13 @@
         function renderInsights(data) {
             const el = document.getElementById('insights');
             const insights = [];
+
+            // Data source insight
+            if (data.data_source === 'zerodha_live') {
+                insights.push('🟢 <strong>LIVE DATA</strong> — Connected to Zerodha Kite. Prices are real-time. Analysis auto-refreshes every 2 minutes.');
+            } else {
+                insights.push('🟡 <strong>DELAYED DATA</strong> — Using Yahoo Finance (~15 min delay). Login with Zerodha for live data.');
+            }
 
             if (data.bullish_probability > 65) {
                 insights.push('🟢 <strong>Strong bullish setup!</strong> Multiple indicators align to the upside. Consider long positions with tight stop loss below VWAP.');
@@ -362,10 +409,10 @@
             }
 
             const vwapSignal = data.signals.find(s => s.name === 'VWAP');
-            if (vwapSignal) {
+            if (vwapSignal && vwapSignal.bias !== 'neutral') {
                 if (vwapSignal.bias === 'bullish') {
                     insights.push('🟢 Price is <strong>above VWAP</strong> — institutions are net buyers today. Dips toward VWAP are potential buy zones.');
-                } else if (vwapSignal.bias === 'bearish') {
+                } else {
                     insights.push('🔴 Price is <strong>below VWAP</strong> — sellers dominating. Rallies toward VWAP are potential sell zones.');
                 }
             }
@@ -382,10 +429,11 @@
             el.innerHTML = insights.map(i => `<p>• ${i}</p>`).join('');
         }
 
-        // Auto-load on page open
-        document.addEventListener('DOMContentLoaded', loadAnalysis);
-
-        // Refresh when interval changes
+        // ── Init ──
+        document.addEventListener('DOMContentLoaded', async () => {
+            await checkStatus();
+            loadAnalysis();
+        });
         document.getElementById('interval-select').addEventListener('change', loadAnalysis);
     </script>
 </body>
