@@ -427,11 +427,15 @@ function renderTradeSignal(ts) {
 // ── Auto-Trader Controls & Renderer ─────────────────────────────
 
 async function startAutoTrader() {
-    if (!confirm('⚠️ Start auto-trader? It will place orders automatically.')) return;
+    if (!confirm('⚠️ Start auto-trader? It will evaluate strategy on every refresh.')) return;
     try {
         const resp = await fetch('/api/auto-trader/start', { method: 'POST' });
         const data = await resp.json();
-        if (data.success) pollAutoTraderStatus();
+        if (data.success) {
+            // Trigger first evaluation immediately
+            await fetch('/api/auto-trader/evaluate', { method: 'POST' });
+            pollAutoTraderStatus();
+        }
     } catch (e) { console.error('Start failed:', e); }
 }
 
@@ -454,9 +458,15 @@ async function killAutoTrader() {
 
 async function pollAutoTraderStatus() {
     try {
-        const resp = await fetch('/api/auto-trader/status');
-        const data = await resp.json();
-        if (data.success) renderAutoTrader(data);
+        // If running, trigger evaluation with fresh data first
+        const statusResp = await fetch('/api/auto-trader/status');
+        const statusData = await statusResp.json();
+        if (statusData.success && statusData.is_running) {
+            const evalResp = await fetch('/api/auto-trader/evaluate', { method: 'POST' });
+            const evalData = await evalResp.json();
+            if (evalData.success) { renderAutoTrader(evalData); return; }
+        }
+        if (statusData.success) renderAutoTrader(statusData);
     } catch (e) { /* silent */ }
 }
 
@@ -500,8 +510,19 @@ function renderAutoTrader(data) {
             `Last eval: ${t.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
     }
 
-    // Signal reason
-    document.getElementById('at-signal').textContent = data.last_signal || '';
+    // Signal reason + conditions
+    const sigEl = document.getElementById('at-signal');
+    let sigHTML = data.last_signal || '';
+    if (data.conditions && data.conditions.length) {
+        sigHTML += '<div class="mt-2 space-y-1">';
+        data.conditions.forEach(c => {
+            const icon = c.met ? '\u2705' : '\u274c';
+            const color = c.met ? 'text-green-400' : 'text-red-400';
+            sigHTML += `<div class="${color} text-xs">${icon} <strong>${c.name}</strong>: ${c.detail}</div>`;
+        });
+        sigHTML += '</div>';
+    }
+    sigEl.innerHTML = sigHTML;
 
     // Active trade
     const tradeDetail = document.getElementById('at-trade-detail');

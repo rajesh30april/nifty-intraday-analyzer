@@ -80,6 +80,7 @@ class TraderState:
     lowest_price_since_entry: float = float("inf")
     last_evaluation: str = ""
     last_signal_reason: str = ""
+    last_conditions: list[dict] = field(default_factory=list)  # strategy conditions
     kill_switch: bool = False  # Emergency stop
 
 
@@ -252,14 +253,19 @@ def evaluate_and_act(df, current_price: float):
         _manage_active_trade(current_price)
         return
 
-    # 3. No active trade — evaluate for new entry
-    safe, safety_msg = _check_safety()
-    if not safe:
-        state.last_signal_reason = safety_msg
-        return
-
+    # 3. No active trade — always evaluate strategy for display
     signal = evaluate_vwap_breakout(df)
     state.last_signal_reason = signal.reason
+    state.last_conditions = [
+        {"name": c.name, "met": c.met, "detail": c.detail}
+        for c in signal.conditions
+    ]
+
+    # 4. Check safety before actually placing orders
+    safe, safety_msg = _check_safety()
+    if not safe:
+        state.last_signal_reason = f"{signal.reason} | ⚠️ {safety_msg}"
+        return
 
     if not signal.should_enter or signal.direction is None:
         return
@@ -407,6 +413,7 @@ def get_trader_status() -> dict:
         "trades_today": len(state.trades_today),
         "last_evaluation": state.last_evaluation,
         "last_signal": state.last_signal_reason,
+        "conditions": state.last_conditions,
         "exit_time": EXIT_TIME.strftime("%H:%M"),
         "sl_points": SL_POINTS,
         "trailing_sl_points": TRAILING_SL_POINTS,

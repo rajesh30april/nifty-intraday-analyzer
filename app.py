@@ -288,6 +288,16 @@ async def mtf_analyze(chart_tf: str = "5m"):
         and _mtf_cache["data"] is not None
         and (now - _mtf_cache["timestamp"]) < MTF_CACHE_TTL
     ):
+        # Still run auto-trader evaluation on cached data
+        if trader_state.is_running and _mtf_cache.get("df_5m") is not None:
+            df = _mtf_cache["df_5m"]
+            try:
+                print(f"\ud83e\udd16 [CACHE HIT] Running auto-trader eval (rows={len(df)})")
+                evaluate_and_act(df, float(df["close"].iloc[-1]))
+            except Exception as e:
+                print(f"\u26a0\ufe0f Auto-trader cache eval error: {e}")
+        elif trader_state.is_running:
+            print(f"\u26a0\ufe0f [CACHE HIT] df_5m not in cache, skipping auto-trader")
         return _mtf_cache["data"]
 
     try:
@@ -444,6 +454,15 @@ async def mtf_analyze(chart_tf: str = "5m"):
         _mtf_cache["key"] = cache_key
         _mtf_cache["data"] = response
         _mtf_cache["timestamp"] = _time.time()
+        _mtf_cache["df_5m"] = df_5m  # for auto-trader on cache hits
+
+        # ── Auto-Trader: evaluate on each refresh ─────────────────
+        if trader_state.is_running and df_5m is not None and not df_5m.empty:
+            current_price = float(df_5m["close"].iloc[-1])
+            try:
+                evaluate_and_act(df_5m, current_price)
+            except Exception as eval_err:
+                print(f"⚠️ Auto-trader eval error: {eval_err}")
 
         return response
     except Exception as e:
@@ -491,3 +510,19 @@ async def auto_trader_kill():
     """Emergency kill switch."""
     result = activate_kill_switch()
     return {"success": True, **result}
+
+
+@app.post("/api/auto-trader/evaluate")
+async def auto_trader_evaluate():
+    """Manually trigger strategy evaluation with fresh data."""
+    if not trader_state.is_running:
+        return {"success": False, "error": "Auto-trader not running"}
+    try:
+        df = fetch_intraday_data(interval="5m", period="5d")
+        if df is None or df.empty:
+            return {"success": False, "error": "No data available"}
+        current_price = float(df["close"].iloc[-1])
+        evaluate_and_act(df, current_price)
+        return {"success": True, **get_trader_status()}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
