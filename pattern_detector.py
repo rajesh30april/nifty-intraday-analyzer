@@ -122,8 +122,13 @@ def detect_double_top(high: pd.Series, low: pd.Series, close: pd.Series, toleran
     p1_val, p2_val = high.iloc[p1_idx], high.iloc[p2_idx]
 
     # Peaks should be roughly equal (within tolerance)
+    # CRITICAL: P2 must NOT be higher than P1 — that would be a higher high (bullish),
+    # not a double top (bearish). P2 can be equal or slightly lower.
     diff_pct = abs(p1_val - p2_val) / p1_val * 100
     if diff_pct > tolerance_pct:
+        return None
+    if p2_val > p1_val:
+        # P2 making a higher high = bullish structure, NOT a double top
         return None
 
     # Must have a trough between the peaks — use LOW for neckline
@@ -169,6 +174,9 @@ def detect_double_bottom(high: pd.Series, low: pd.Series, close: pd.Series, tole
 
     diff_pct = abs(t1_val - t2_val) / t1_val * 100
     if diff_pct > tolerance_pct:
+        return None
+    if t2_val < t1_val:
+        # T2 making a lower low = bearish structure, NOT a double bottom
         return None
 
     # Use HIGH price for neckline (peak between troughs)
