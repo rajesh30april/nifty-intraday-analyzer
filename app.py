@@ -301,19 +301,17 @@ async def mtf_analyze(chart_tf: str = "5m"):
         # Pick chart DataFrame based on selected timeframe
         chart_df = df_15m if chart_tf == "15m" and df_15m is not None else df_5m
 
-        # Build price chart data from today's candles
+        # Build price chart data from ALL available candles (multi-day history)
         if chart_df is not None and not chart_df.empty:
-            today_df = get_todays_data(chart_df)
-            if not today_df.empty:
-                for idx, row in today_df.iterrows():
-                    price_data.append({
-                        "time": idx.strftime("%H:%M"),
-                        "open": round(float(row["open"]), 2),
-                        "high": round(float(row["high"]), 2),
-                        "low": round(float(row["low"]), 2),
-                        "close": round(float(row["close"]), 2),
-                        "volume": int(row["volume"]),
-                    })
+            for idx, row in chart_df.iterrows():
+                price_data.append({
+                    "time": idx.strftime("%Y-%m-%d %H:%M"),
+                    "open": round(float(row["open"]), 2),
+                    "high": round(float(row["high"]), 2),
+                    "low": round(float(row["low"]), 2),
+                    "close": round(float(row["close"]), 2),
+                    "volume": int(row["volume"]),
+                })
 
             # Detect chart patterns on BOTH 5m and 15m data
             def _extract_patterns(df, tf_label):

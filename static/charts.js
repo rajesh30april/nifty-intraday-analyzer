@@ -13,20 +13,16 @@ function renderPriceChart(priceData, patterns, sr) {
         timeScale: { borderColor: '#d1d5db', timeVisible: true, secondsVisible: false },
     });
 
-    // Build candlestick data — use today's date with time
+    // Build candlestick data from full date-time strings ("2026-03-12 09:15")
     // IMPORTANT: Lightweight Charts displays timestamps in UTC.
     // We create UTC timestamps that numerically match IST times
     // so "09:15 IST" displays as "09:15" on the chart (not shifted).
-    const today = new Date().toISOString().slice(0, 10);
     const candleData = priceData.map(d => {
-        // Create a UTC date with the IST hours/minutes so chart shows correct IST time
-        const [h, m] = d.time.split(':').map(Number);
-        const dt = new Date(Date.UTC(
-            parseInt(today.slice(0, 4)),
-            parseInt(today.slice(5, 7)) - 1,
-            parseInt(today.slice(8, 10)),
-            h, m, 0
-        ));
+        // Parse "YYYY-MM-DD HH:MM" format
+        const parts = d.time.split(' ');
+        const [year, month, day] = parts[0].split('-').map(Number);
+        const [h, m] = parts[1].split(':').map(Number);
+        const dt = new Date(Date.UTC(year, month - 1, day, h, m, 0));
         return {
             time: Math.floor(dt.getTime() / 1000),
             open: d.open || d.close,
