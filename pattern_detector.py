@@ -27,12 +27,17 @@ class PatternMatch:
 
 
 def _find_peaks_troughs(
-    close: pd.Series, order: int = 5,
+    high: pd.Series, low: pd.Series, order: int = 5,
 ) -> tuple[list[int], list[int]]:
     """Find local peaks (highs) and troughs (lows) in price data.
 
+    Uses HIGH prices for peaks and LOW prices for troughs, because:
+    - A peak is the highest point sellers couldn't push past
+    - A trough is the lowest point buyers defended
+
     Args:
-        close: Price series.
+        high: High price series (for peak detection).
+        low: Low price series (for trough detection).
         order: Number of candles on each side to confirm a peak/trough.
 
     Returns:
@@ -40,17 +45,18 @@ def _find_peaks_troughs(
     """
     peaks = []
     troughs = []
-    values = close.values
+    high_vals = high.values
+    low_vals = low.values
 
-    for i in range(order, len(values) - order):
-        # Check if this point is higher than all neighbors
-        if all(values[i] >= values[i - j] for j in range(1, order + 1)) and \
-           all(values[i] >= values[i + j] for j in range(1, order + 1)):
+    for i in range(order, len(high_vals) - order):
+        # Peak: this candle's HIGH is higher than all neighbors' HIGHs
+        if all(high_vals[i] >= high_vals[i - j] for j in range(1, order + 1)) and \
+           all(high_vals[i] >= high_vals[i + j] for j in range(1, order + 1)):
             peaks.append(i)
 
-        # Check if this point is lower than all neighbors
-        if all(values[i] <= values[i - j] for j in range(1, order + 1)) and \
-           all(values[i] <= values[i + j] for j in range(1, order + 1)):
+        # Trough: this candle's LOW is lower than all neighbors' LOWs
+        if all(low_vals[i] <= low_vals[i - j] for j in range(1, order + 1)) and \
+           all(low_vals[i] <= low_vals[i + j] for j in range(1, order + 1)):
             troughs.append(i)
 
     return peaks, troughs
@@ -61,10 +67,10 @@ def detect_support_resistance(
     num_levels: int = 4,
 ) -> dict:
     """Detect key support and resistance levels using price clustering."""
-    peaks, troughs = _find_peaks_troughs(close, order=3)
+    peaks, troughs = _find_peaks_troughs(high, low, order=3)
 
-    peak_prices = [close.iloc[i] for i in peaks] if peaks else []
-    trough_prices = [close.iloc[i] for i in troughs] if troughs else []
+    peak_prices = [high.iloc[i] for i in peaks] if peaks else []
+    trough_prices = [low.iloc[i] for i in troughs] if troughs else []
 
     # Cluster nearby levels (within 0.2% of each other)
     def cluster_levels(prices: list[float], threshold_pct: float = 0.2) -> list[float]:
@@ -100,28 +106,28 @@ def detect_support_resistance(
     }
 
 
-def detect_double_top(close: pd.Series, tolerance_pct: float = 0.3) -> PatternMatch | None:
+def detect_double_top(high: pd.Series, low: pd.Series, close: pd.Series, tolerance_pct: float = 0.3) -> PatternMatch | None:
     """Detect Double Top pattern (bearish reversal)."""
-    peaks, troughs = _find_peaks_troughs(close, order=5)
+    peaks, troughs = _find_peaks_troughs(high, low, order=5)
 
     if len(peaks) < 2 or len(troughs) < 1:
         return None
 
-    # Check last two peaks
+    # Check last two peaks — use HIGH prices for peaks
     p1_idx, p2_idx = peaks[-2], peaks[-1]
-    p1_val, p2_val = close.iloc[p1_idx], close.iloc[p2_idx]
+    p1_val, p2_val = high.iloc[p1_idx], high.iloc[p2_idx]
 
     # Peaks should be roughly equal (within tolerance)
     diff_pct = abs(p1_val - p2_val) / p1_val * 100
     if diff_pct > tolerance_pct:
         return None
 
-    # Must have a trough between the peaks
+    # Must have a trough between the peaks — use LOW for neckline
     middle_troughs = [t for t in troughs if p1_idx < t < p2_idx]
     if not middle_troughs:
         return None
 
-    neckline = close.iloc[middle_troughs[0]]
+    neckline = low.iloc[middle_troughs[0]]
     current = close.iloc[-1]
 
     # Pattern is confirmed if price breaks below neckline
@@ -142,25 +148,27 @@ def detect_double_top(close: pd.Series, tolerance_pct: float = 0.3) -> PatternMa
     )
 
 
-def detect_double_bottom(close: pd.Series, tolerance_pct: float = 0.3) -> PatternMatch | None:
+def detect_double_bottom(high: pd.Series, low: pd.Series, close: pd.Series, tolerance_pct: float = 0.3) -> PatternMatch | None:
     """Detect Double Bottom pattern (bullish reversal)."""
-    peaks, troughs = _find_peaks_troughs(close, order=5)
+    peaks, troughs = _find_peaks_troughs(high, low, order=5)
 
     if len(troughs) < 2 or len(peaks) < 1:
         return None
 
+    # Use LOW prices for troughs (actual lowest point of the candle)
     t1_idx, t2_idx = troughs[-2], troughs[-1]
-    t1_val, t2_val = close.iloc[t1_idx], close.iloc[t2_idx]
+    t1_val, t2_val = low.iloc[t1_idx], low.iloc[t2_idx]
 
     diff_pct = abs(t1_val - t2_val) / t1_val * 100
     if diff_pct > tolerance_pct:
         return None
 
+    # Use HIGH price for neckline (peak between troughs)
     middle_peaks = [p for p in peaks if t1_idx < p < t2_idx]
     if not middle_peaks:
         return None
 
-    neckline = close.iloc[middle_peaks[0]]
+    neckline = high.iloc[middle_peaks[0]]
     current = close.iloc[-1]
 
     confirmed = current > neckline
@@ -180,24 +188,24 @@ def detect_double_bottom(close: pd.Series, tolerance_pct: float = 0.3) -> Patter
     )
 
 
-def detect_head_and_shoulders(close: pd.Series, tolerance_pct: float = 0.5) -> PatternMatch | None:
+def detect_head_and_shoulders(high: pd.Series, low: pd.Series, close: pd.Series, tolerance_pct: float = 0.5) -> PatternMatch | None:
     """Detect Head & Shoulders (bearish) or Inverse H&S (bullish)."""
-    peaks, troughs = _find_peaks_troughs(close, order=4)
+    peaks, troughs = _find_peaks_troughs(high, low, order=4)
 
-    # Regular H&S: 3 peaks, middle is highest
+    # Regular H&S: 3 peaks, middle is highest — use HIGH prices
     if len(peaks) >= 3:
         p1, p2, p3 = peaks[-3], peaks[-2], peaks[-1]
-        v1, v2, v3 = close.iloc[p1], close.iloc[p2], close.iloc[p3]
+        v1, v2, v3 = high.iloc[p1], high.iloc[p2], high.iloc[p3]
 
         # Head (p2) should be higher than both shoulders
         if v2 > v1 and v2 > v3:
             # Shoulders should be roughly equal
             shoulder_diff = abs(v1 - v3) / v1 * 100
             if shoulder_diff < tolerance_pct * 2:
-                # Find neckline from troughs between peaks
+                # Find neckline from troughs between peaks — use LOW prices
                 neck_troughs = [t for t in troughs if p1 < t < p3]
                 if neck_troughs:
-                    neckline = min(close.iloc[t] for t in neck_troughs)
+                    neckline = min(low.iloc[t] for t in neck_troughs)
                     current = close.iloc[-1]
                     confirmed = current < neckline
 
@@ -215,17 +223,18 @@ def detect_head_and_shoulders(close: pd.Series, tolerance_pct: float = 0.5) -> P
                                     "left_shoulder": round(v1, 2), "right_shoulder": round(v3, 2)},
                     )
 
-    # Inverse H&S: 3 troughs, middle is lowest
+    # Inverse H&S: 3 troughs, middle is lowest — use LOW prices
     if len(troughs) >= 3:
         t1, t2, t3 = troughs[-3], troughs[-2], troughs[-1]
-        v1, v2, v3 = close.iloc[t1], close.iloc[t2], close.iloc[t3]
+        v1, v2, v3 = low.iloc[t1], low.iloc[t2], low.iloc[t3]
 
         if v2 < v1 and v2 < v3:
             shoulder_diff = abs(v1 - v3) / v1 * 100
             if shoulder_diff < tolerance_pct * 2:
+                # Neckline from peaks — use HIGH prices
                 neck_peaks = [p for p in peaks if t1 < p < t3]
                 if neck_peaks:
-                    neckline = max(close.iloc[p] for p in neck_peaks)
+                    neckline = max(high.iloc[p] for p in neck_peaks)
                     current = close.iloc[-1]
                     confirmed = current > neckline
 
@@ -246,9 +255,9 @@ def detect_head_and_shoulders(close: pd.Series, tolerance_pct: float = 0.5) -> P
     return None
 
 
-def detect_trend_structure(close: pd.Series) -> PatternMatch | None:
+def detect_trend_structure(high: pd.Series, low: pd.Series, close: pd.Series) -> PatternMatch | None:
     """Detect Higher Highs/Higher Lows or Lower Highs/Lower Lows."""
-    peaks, troughs = _find_peaks_troughs(close, order=4)
+    peaks, troughs = _find_peaks_troughs(high, low, order=4)
 
     if len(peaks) < 2 or len(troughs) < 2:
         return None
@@ -256,8 +265,9 @@ def detect_trend_structure(close: pd.Series) -> PatternMatch | None:
     recent_peaks = peaks[-3:] if len(peaks) >= 3 else peaks[-2:]
     recent_troughs = troughs[-3:] if len(troughs) >= 3 else troughs[-2:]
 
-    peak_vals = [close.iloc[i] for i in recent_peaks]
-    trough_vals = [close.iloc[i] for i in recent_troughs]
+    # Use HIGH for peaks, LOW for troughs
+    peak_vals = [high.iloc[i] for i in recent_peaks]
+    trough_vals = [low.iloc[i] for i in recent_troughs]
 
     # Check for HH/HL (uptrend)
     hh = all(peak_vals[i] > peak_vals[i - 1] for i in range(1, len(peak_vals)))
@@ -415,10 +425,10 @@ def detect_all_patterns(df: pd.DataFrame, timeframe: str = "5m") -> dict:
 
     # Run all detectors
     detectors = [
-        lambda: detect_trend_structure(close),
-        lambda: detect_double_top(close),
-        lambda: detect_double_bottom(close),
-        lambda: detect_head_and_shoulders(close),
+        lambda: detect_trend_structure(high, low, close),
+        lambda: detect_double_top(high, low, close),
+        lambda: detect_double_bottom(high, low, close),
+        lambda: detect_head_and_shoulders(high, low, close),
         lambda: detect_flag(close, volume),
     ]
 
