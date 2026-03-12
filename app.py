@@ -207,7 +207,7 @@ async def patterns(interval: str = "5m"):
     """Detect chart patterns in the current data."""
     try:
         df = fetch_intraday_data(interval=interval, period="5d")
-        result = detect_all_patterns(df)
+        result = detect_all_patterns(df, timeframe=interval)
 
         patterns_data = [
             {
@@ -217,6 +217,10 @@ async def patterns(interval: str = "5m"):
                 "confidence": p.confidence,
                 "description": p.description,
                 "key_levels": p.key_levels,
+                "timeframe": p.timeframe,
+                "start_time": p.start_time,
+                "end_time": p.end_time,
+                "pivot_times": p.pivot_times,
             }
             for p in result["patterns"]
         ]
@@ -259,13 +263,16 @@ async def mtf_analyze():
 
             # Detect chart patterns on full 5m data
             try:
-                pat_result = detect_all_patterns(df_5m)
-                print(f"DEBUG: patterns found: {len(pat_result['patterns'])}, S/R: {pat_result['support_resistance']}")
+                pat_result = detect_all_patterns(df_5m, timeframe="5m")
                 patterns_data = [
                     {
                         "name": p.name, "type": p.pattern_type,
                         "bias": p.bias, "confidence": p.confidence,
                         "description": p.description, "key_levels": p.key_levels,
+                        "timeframe": p.timeframe,
+                        "start_time": p.start_time,
+                        "end_time": p.end_time,
+                        "pivot_times": p.pivot_times,
                     }
                     for p in pat_result["patterns"]
                 ]

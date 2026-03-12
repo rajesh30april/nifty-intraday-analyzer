@@ -453,6 +453,29 @@
                         ).join('') + '</div>';
                 }
 
+                // Format timestamps for display
+                const fmtTime = (ts) => {
+                    if (!ts) return '';
+                    try {
+                        const d = new Date(ts);
+                        return d.toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+                    } catch { return ts; }
+                };
+
+                let timeInfo = '';
+                if (p.timeframe || p.start_time) {
+                    const tfLabel = p.timeframe ? `<span class="bg-[#0053e2] text-white px-2 py-0.5 rounded-full text-xs font-bold">${p.timeframe}</span>` : '';
+                    const startEnd = p.start_time ? `<span class="text-xs text-gray-500">${fmtTime(p.start_time)} → ${fmtTime(p.end_time)}</span>` : '';
+                    timeInfo = `<div class="flex items-center gap-2 mt-1">${tfLabel} ${startEnd}</div>`;
+                }
+
+                let pivotInfo = '';
+                if (p.pivot_times && p.pivot_times.length) {
+                    pivotInfo = '<div class="flex flex-wrap gap-1 mt-1">' +
+                        p.pivot_times.map((t, i) => `<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Pivot ${i+1}: ${fmtTime(t)}</span>`
+                        ).join('') + '</div>';
+                }
+
                 container.innerHTML += `
                     <div class="border-l-4 ${biasColor} rounded-lg p-3">
                         <div class="flex justify-between items-start">
@@ -462,8 +485,10 @@
                             </div>
                             <span class="text-sm font-bold ${confColor}">${confPct}% confidence</span>
                         </div>
+                        ${timeInfo}
                         <p class="text-sm text-gray-600 mt-1">${p.description}</p>
                         ${levelsHtml}
+                        ${pivotInfo}
                     </div>`;
             });
         }

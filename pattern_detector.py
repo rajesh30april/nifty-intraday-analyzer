@@ -20,6 +20,10 @@ class PatternMatch:
     start_idx: int  # index in the dataframe where pattern starts
     end_idx: int  # index where pattern ends/current
     key_levels: dict  # support, resistance, neckline, etc.
+    timeframe: str = ""  # e.g. '5m', '15m'
+    start_time: str = ""  # ISO timestamp of pattern start
+    end_time: str = ""  # ISO timestamp of pattern end/current
+    pivot_times: list = None  # timestamps of key pivot points (peaks/troughs)
 
 
 def _find_peaks_troughs(
@@ -133,7 +137,8 @@ def detect_double_top(close: pd.Series, tolerance_pct: float = 0.3) -> PatternMa
                     f"{'CONFIRMED — broke neckline!' if confirmed else 'Forming — watch neckline break.'}",
         start_idx=p1_idx,
         end_idx=len(close) - 1,
-        key_levels={"peak": round(p1_val, 2), "neckline": round(neckline, 2)},
+        key_levels={"peak": round(p1_val, 2), "peak2": round(p2_val, 2), "neckline": round(neckline, 2)},
+        pivot_times=[p1_idx, middle_troughs[0], p2_idx],  # will be converted to timestamps
     )
 
 
@@ -170,7 +175,8 @@ def detect_double_bottom(close: pd.Series, tolerance_pct: float = 0.3) -> Patter
                     f"{'CONFIRMED — broke neckline!' if confirmed else 'Forming — watch neckline break.'}",
         start_idx=t1_idx,
         end_idx=len(close) - 1,
-        key_levels={"trough": round(t1_val, 2), "neckline": round(neckline, 2)},
+        key_levels={"trough1": round(t1_val, 2), "trough2": round(t2_val, 2), "neckline": round(neckline, 2)},
+        pivot_times=[t1_idx, middle_peaks[0], t2_idx],  # will be converted to timestamps
     )
 
 
@@ -380,11 +386,12 @@ def _to_native(val):
     return val
 
 
-def detect_all_patterns(df: pd.DataFrame) -> dict:
+def detect_all_patterns(df: pd.DataFrame, timeframe: str = "5m") -> dict:
     """Run all pattern detectors and return results.
 
     Args:
-        df: OHLCV DataFrame.
+        df: OHLCV DataFrame with DatetimeIndex.
+        timeframe: Label for the timeframe (e.g. '5m', '15m').
 
     Returns:
         Dict with 'patterns' list and 'support_resistance' data.
@@ -398,6 +405,13 @@ def detect_all_patterns(df: pd.DataFrame) -> dict:
     volume = df.get("volume", pd.Series(dtype=float))
 
     patterns: list[PatternMatch] = []
+
+    # Helper to extract timestamp string from DataFrame index
+    def _ts(idx: int) -> str:
+        try:
+            return str(df.index[idx])
+        except (IndexError, KeyError):
+            return ""
 
     # Run all detectors
     detectors = [
@@ -414,6 +428,12 @@ def detect_all_patterns(df: pd.DataFrame) -> dict:
             if result:
                 # Convert numpy types in key_levels
                 result.key_levels = _to_native(result.key_levels)
+                # Populate timestamps and timeframe
+                result.timeframe = timeframe
+                result.start_time = _ts(result.start_idx)
+                result.end_time = _ts(result.end_idx)
+                # Build pivot_times from key pattern indices
+                result.pivot_times = [_ts(i) for i in (result.pivot_times or []) if isinstance(i, int)]
                 patterns.append(result)
         except Exception:
             continue
