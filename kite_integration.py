@@ -19,6 +19,16 @@ load_dotenv()
 API_KEY = os.getenv("KITE_API_KEY", "")
 API_SECRET = os.getenv("KITE_API_SECRET", "")
 
+# Walmart corporate proxy
+PROXY = "http://sysproxy.wal-mart.com:8080"
+PROXIES = {"http": PROXY, "https": PROXY}
+
+# Set env vars so WebSocket/ticker also picks up proxy
+os.environ.setdefault("HTTP_PROXY", PROXY)
+os.environ.setdefault("HTTPS_PROXY", PROXY)
+os.environ.setdefault("http_proxy", PROXY)
+os.environ.setdefault("https_proxy", PROXY)
+
 # Nifty 50 instrument token (NSE index)
 NIFTY_INSTRUMENT_TOKEN = 256265
 
@@ -31,6 +41,8 @@ class KiteManager:
 
     def __init__(self):
         self.kite = KiteConnect(api_key=API_KEY)
+        # Configure proxy on the underlying requests session
+        self.kite.reqsession.proxies.update(PROXIES)
         self.access_token: str | None = None
         self.ticker: KiteTicker | None = None
         self.is_streaming = False
