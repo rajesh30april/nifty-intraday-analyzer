@@ -46,6 +46,7 @@ class MTFResult:
     timeframes: list[TimeframeResult] = field(default_factory=list)
     primary_result: ProbabilityResult | None = None  # 5m full analysis for signals/charts
     primary_df: object = None  # Raw 5m DataFrame for pattern detection
+    df_15m: object = None  # Raw 15m DataFrame for pattern detection
     recommendation: str = ""
 
 
@@ -115,6 +116,7 @@ def run_mtf_analysis() -> MTFResult:
     timeframes: list[TimeframeResult] = []
     primary_result: ProbabilityResult | None = None
     primary_df = None  # Store the 5m DataFrame for pattern detection
+    _df_15m = None  # Store the 15m DataFrame for pattern detection
 
     labels = {"1m": "1 Minute", "5m": "5 Minute", "15m": "15 Minute"}
 
@@ -141,6 +143,10 @@ def run_mtf_analysis() -> MTFResult:
             if interval == "5m":
                 primary_result = result
                 primary_df = df
+
+            # Store 15m DataFrame for pattern detection
+            if interval == "15m":
+                _df_15m = df
 
         except Exception as e:
             timeframes.append(TimeframeResult(
@@ -198,6 +204,7 @@ def run_mtf_analysis() -> MTFResult:
         timeframes=timeframes,
         primary_result=primary_result,
         primary_df=primary_df,
+        df_15m=_df_15m,
     )
     mtf.recommendation = _generate_recommendation(mtf)
 

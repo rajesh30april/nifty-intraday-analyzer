@@ -263,8 +263,12 @@ async def patterns(interval: str = "5m"):
 # ── Multi-Timeframe Analysis ─────────────────────────────────
 
 @app.get("/api/mtf-analyze")
-async def mtf_analyze():
-    """Run multi-timeframe analysis (1m + 5m + 15m combined)."""
+async def mtf_analyze(chart_tf: str = "5m"):
+    """Run multi-timeframe analysis (1m + 5m + 15m combined).
+
+    Args:
+        chart_tf: Timeframe for chart display — '5m' or '15m'.
+    """
     try:
         mtf = run_mtf_analysis()
 
@@ -274,10 +278,15 @@ async def mtf_analyze():
         sr_data = {}
         df_5m = mtf.primary_df
 
+        # Reuse 15m DataFrame from MTF (already fetched, no extra API call!)
+        df_15m = mtf.df_15m
 
-        # Build price chart data from today's 5m candles
-        if df_5m is not None and not df_5m.empty:
-            today_df = get_todays_data(df_5m)
+        # Pick chart DataFrame based on selected timeframe
+        chart_df = df_15m if chart_tf == "15m" and df_15m is not None else df_5m
+
+        # Build price chart data from today's candles
+        if chart_df is not None and not chart_df.empty:
+            today_df = get_todays_data(chart_df)
             if not today_df.empty:
                 for idx, row in today_df.iterrows():
                     price_data.append({
@@ -289,24 +298,46 @@ async def mtf_analyze():
                         "volume": int(row["volume"]),
                     })
 
-            # Detect chart patterns on full 5m data
-            try:
-                pat_result = detect_all_patterns(df_5m, timeframe="5m")
-                patterns_data = [
-                    {
-                        "name": p.name, "type": p.pattern_type,
-                        "bias": p.bias, "confidence": p.confidence,
-                        "description": p.description, "key_levels": p.key_levels,
-                        "timeframe": p.timeframe,
-                        "start_time": p.start_time,
-                        "end_time": p.end_time,
-                        "pivot_times": p.pivot_times,
-                    }
-                    for p in pat_result["patterns"]
-                ]
-                sr_data = pat_result["support_resistance"]
-            except Exception:
-                pass
+            # Detect chart patterns on BOTH 5m and 15m data
+            def _extract_patterns(df, tf_label):
+                """Run pattern detection on a single timeframe."""
+                try:
+                    pat_result = detect_all_patterns(df, timeframe=tf_label)
+                    return [
+                        {
+                            "name": p.name, "type": p.pattern_type,
+                            "bias": p.bias, "confidence": p.confidence,
+                            "description": p.description, "key_levels": p.key_levels,
+                            "timeframe": p.timeframe,
+                            "start_time": p.start_time,
+                            "end_time": p.end_time,
+                            "pivot_times": p.pivot_times,
+                        }
+                        for p in pat_result["patterns"]
+                    ], pat_result["support_resistance"]
+                except Exception:
+                    return [], {}
+
+            # Run on 5m
+            if df_5m is not None and not df_5m.empty:
+                pats_5m, sr_5m = _extract_patterns(df_5m, "5m")
+                patterns_data.extend(pats_5m)
+                sr_data = sr_5m  # Use 5m S/R as primary
+
+            # Run on 15m (more history = catches bigger patterns)
+            if df_15m is not None and not df_15m.empty:
+                pats_15m, sr_15m = _extract_patterns(df_15m, "15m")
+                patterns_data.extend(pats_15m)
+
+                # Merge 15m S/R levels into the data
+                if sr_15m:
+                    for key in ["support_levels", "resistance_levels"]:
+                        existing = set(sr_data.get(key, []))
+                        for level in sr_15m.get(key, []):
+                            # Only add if not too close to existing levels (within 0.2%)
+                            if not any(abs(level - e) / e < 0.002 for e in existing if e):
+                                existing.add(level)
+                        sr_data[key] = sorted(existing)
 
         # Primary signals (from 5m)
         signals_data = []
@@ -351,6 +382,7 @@ async def mtf_analyze():
             "orb_data": mtf.primary_result.orb_data if mtf.primary_result else {},
             "signals": signals_data,
             "price_data": price_data,
+            "chart_timeframe": chart_tf,
             "patterns": patterns_data,
             "support_resistance": sr_data,
         })
