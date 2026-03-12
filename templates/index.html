@@ -27,10 +27,32 @@
             </div>
             <div class="flex items-center gap-4">
                 <div id="data-source-badge"></div>
-                <button id="refresh-btn" onclick="loadAnalysis()"
+                <button id="refresh-btn" onclick="loadAnalysis(false)"
                         class="bg-[#ffc220] text-gray-900 px-4 py-2 rounded-lg font-bold hover:bg-yellow-400 transition"
                         aria-label="Refresh analysis">
                     🔄 Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Live Status Bar -->
+        <div class="bg-gray-900 text-white px-6 py-2 flex items-center justify-between text-sm">
+            <div class="flex items-center gap-3">
+                <span id="live-badge" class="flex items-center gap-1">
+                    <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                    🟢 LIVE • Auto-refreshing
+                </span>
+                <span class="text-gray-400">|</span>
+                <span>Next update in <strong id="countdown-text">30s</strong></span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="pause-btn" onclick="togglePause()"
+                        class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">
+                    ⏸️ Pause
+                </button>
+                <button onclick="loadAnalysis(true)"
+                        class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">
+                    ⚡ Refresh Now
                 </button>
             </div>
         </div>
@@ -226,16 +248,59 @@
             }, 1000);
         }
 
-        async function loadAnalysis() {
-            document.getElementById('loading').classList.remove('hidden');
-            document.getElementById('dashboard').classList.add('hidden');
-            document.getElementById('error-state').classList.add('hidden');
+        let refreshInterval = null;
+        let refreshCountdown = 30;
+        let isPaused = false;
+
+        async function loadAnalysis(isAutoRefresh = false) {
+            // Only show full loading spinner on first load
+            if (!isAutoRefresh) {
+                document.getElementById('loading').classList.remove('hidden');
+                document.getElementById('dashboard').classList.add('hidden');
+                document.getElementById('error-state').classList.add('hidden');
+            } else {
+                // Show subtle refresh indicator
+                const badge = document.getElementById('live-badge');
+                if (badge) badge.textContent = '⚡ Refreshing...';
+            }
             try {
                 const resp = await fetch('/api/mtf-analyze');
                 const data = await resp.json();
                 if (!data.success) { showError(data.error || 'Unknown error'); return; }
                 renderDashboard(data);
-            } catch (e) { showError(e.message); }
+                // Update last refresh time
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const badge = document.getElementById('live-badge');
+                if (badge) badge.textContent = `🟢 LIVE • Updated ${timeStr}`;
+            } catch (e) {
+                if (!isAutoRefresh) showError(e.message);
+                const badge = document.getElementById('live-badge');
+                if (badge) badge.textContent = '🔴 Update failed';
+            }
+            refreshCountdown = 30;
+        }
+
+        function startAutoRefresh() {
+            if (refreshInterval) clearInterval(refreshInterval);
+            refreshInterval = setInterval(() => {
+                if (isPaused) return;
+                refreshCountdown--;
+                const btn = document.getElementById('countdown-text');
+                if (btn) btn.textContent = `${refreshCountdown}s`;
+                if (refreshCountdown <= 0) {
+                    loadAnalysis(true);
+                }
+            }, 1000);
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            const btn = document.getElementById('pause-btn');
+            if (btn) btn.textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
+            const badge = document.getElementById('live-badge');
+            if (badge && isPaused) badge.textContent = '⏸️ PAUSED';
+        }
         }
 
         function showError(msg) {
@@ -544,7 +609,11 @@
             container.innerHTML = html;
         }
 
-        document.addEventListener('DOMContentLoaded', async () => { await checkStatus(); loadAnalysis(); });
+        document.addEventListener('DOMContentLoaded', async () => {
+            await checkStatus();
+            await loadAnalysis(false);
+            startAutoRefresh();
+        });
     </script>
 </body>
 </html>
