@@ -39,6 +39,10 @@ from kite_integration import kite_manager
 from mtf_analysis import run_mtf_analysis
 from trade_signals import analyze_trade
 from pattern_detector import detect_all_patterns
+from auto_trader import (
+    get_trader_status, start_auto_trader, stop_auto_trader,
+    activate_kill_switch, state as trader_state, evaluate_and_act,
+)
 
 app = FastAPI(title="Nifty 50 Intraday Probability Analyzer")
 templates = Jinja2Templates(directory="templates")
@@ -445,3 +449,45 @@ async def mtf_analyze(chart_tf: str = "5m"):
     except Exception as e:
         traceback.print_exc()
         return {"success": False, "error": str(e)}
+
+
+# ── Auto-Trader API ─────────────────────────────────────────────
+
+@app.get("/api/auto-trader/status")
+async def auto_trader_status():
+    """Get current auto-trader state."""
+    status = get_trader_status()
+    # Add unrealized P&L if there's an active trade
+    if status["active_trade"] and kite_manager.latest_tick:
+        price = kite_manager.latest_tick["last_price"]
+        trade = status["active_trade"]
+        if trade["direction"] == "long":
+            trade["pnl_unrealized"] = round(
+                (price - trade["entry_price"]) * trade["quantity"], 2
+            )
+        else:
+            trade["pnl_unrealized"] = round(
+                (trade["entry_price"] - price) * trade["quantity"], 2
+            )
+    return {"success": True, **status}
+
+
+@app.post("/api/auto-trader/start")
+async def auto_trader_start():
+    """Start the auto-trader."""
+    result = start_auto_trader()
+    return {"success": True, **result}
+
+
+@app.post("/api/auto-trader/stop")
+async def auto_trader_stop():
+    """Stop the auto-trader and exit positions."""
+    result = stop_auto_trader()
+    return {"success": True, **result}
+
+
+@app.post("/api/auto-trader/kill")
+async def auto_trader_kill():
+    """Emergency kill switch."""
+    result = activate_kill_switch()
+    return {"success": True, **result}
