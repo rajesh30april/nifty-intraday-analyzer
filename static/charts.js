@@ -14,11 +14,19 @@ function renderPriceChart(priceData, patterns, sr) {
     });
 
     // Build candlestick data — use today's date with time
+    // IMPORTANT: Lightweight Charts displays timestamps in UTC.
+    // We create UTC timestamps that numerically match IST times
+    // so "09:15 IST" displays as "09:15" on the chart (not shifted).
     const today = new Date().toISOString().slice(0, 10);
     const candleData = priceData.map(d => {
-        const [h, m] = d.time.split(':');
-        // Lightweight Charts expects Unix timestamp in seconds
-        const dt = new Date(`${today}T${d.time}:00+05:30`);
+        // Create a UTC date with the IST hours/minutes so chart shows correct IST time
+        const [h, m] = d.time.split(':').map(Number);
+        const dt = new Date(Date.UTC(
+            parseInt(today.slice(0, 4)),
+            parseInt(today.slice(5, 7)) - 1,
+            parseInt(today.slice(8, 10)),
+            h, m, 0
+        ));
         return {
             time: Math.floor(dt.getTime() / 1000),
             open: d.open || d.close,
@@ -50,12 +58,13 @@ function renderPriceChart(priceData, patterns, sr) {
     candlestickChart.priceScale('vol').applyOptions({
         scaleMargins: { top: 0.85, bottom: 0 },
     });
-    volSeries.setData(candleData.map(d => {
-        const pd_match = priceData.find(p => {
-            const dt = new Date(`${today}T${p.time}:00+05:30`);
-            return Math.floor(dt.getTime() / 1000) === d.time;
-        });
-        return { time: d.time, value: pd_match ? pd_match.volume : 0, color: d.close >= d.open ? 'rgba(42,135,3,0.3)' : 'rgba(234,17,0,0.3)' };
+    volSeries.setData(candleData.map((d, i) => {
+        const vol = (i < priceData.length) ? (priceData[i].volume || 0) : 0;
+        return {
+            time: d.time,
+            value: vol,
+            color: d.close >= d.open ? 'rgba(42,135,3,0.3)' : 'rgba(234,17,0,0.3)',
+        };
     }));
 
     // Add S/R horizontal lines
@@ -106,10 +115,14 @@ function renderPriceChart(priceData, patterns, sr) {
             p.pivot_times.forEach((ts, i) => {
                 try {
                     const dt = new Date(ts);
-                    const unixSec = Math.floor(dt.getTime() / 1000);
+                    // Convert to "fake UTC" matching our candle timestamps
+                    // Extract IST hours/minutes and create UTC timestamp with those values
+                    const istOffset = 5.5 * 3600; // IST is UTC+5:30
+                    const utcSec = Math.floor(dt.getTime() / 1000);
+                    const fakeUtcSec = utcSec + istOffset;
                     // Find nearest candle time
                     const nearest = candleData.reduce((prev, curr) =>
-                        Math.abs(curr.time - unixSec) < Math.abs(prev.time - unixSec) ? curr : prev
+                        Math.abs(curr.time - fakeUtcSec) < Math.abs(prev.time - fakeUtcSec) ? curr : prev
                     );
                     markers.push({
                         time: nearest.time,
