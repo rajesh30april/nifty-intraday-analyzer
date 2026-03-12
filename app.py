@@ -13,6 +13,7 @@ from fastapi.templating import Jinja2Templates
 from data_fetcher import fetch_intraday_data, get_todays_data
 from probability import calculate_probability
 from kite_integration import kite_manager
+from mtf_analysis import run_mtf_analysis
 
 app = FastAPI(title="Nifty 50 Intraday Probability Analyzer")
 templates = Jinja2Templates(directory="templates")
@@ -170,6 +171,79 @@ async def analyze(interval: str = "5m"):
             "day_change": result.day_change,
             "day_change_pct": result.day_change_pct,
             "orb_data": result.orb_data,
+            "signals": signals_data,
+            "price_data": price_data,
+        }
+    except Exception as e:
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+# ── Multi-Timeframe Analysis ─────────────────────────────────
+
+@app.get("/api/mtf-analyze")
+async def mtf_analyze():
+    """Run multi-timeframe analysis (1m + 5m + 15m combined)."""
+    try:
+        mtf = run_mtf_analysis()
+
+        # Build price_data from the 5m primary result
+        price_data = []
+        if mtf.primary_result:
+            try:
+                df = fetch_intraday_data(interval="5m", period="5d")
+                today_df = get_todays_data(df)
+                if not today_df.empty:
+                    for idx, row in today_df.iterrows():
+                        price_data.append({
+                            "time": idx.strftime("%H:%M"),
+                            "close": round(row["close"], 2),
+                            "volume": int(row["volume"]),
+                        })
+            except Exception:
+                pass
+
+        # Primary signals (from 5m)
+        signals_data = []
+        if mtf.primary_result:
+            signals_data = [
+                {
+                    "name": s.name, "value": str(s.value), "bias": s.bias,
+                    "strength": s.strength, "weight": s.weight,
+                    "description": s.description,
+                }
+                for s in mtf.primary_result.signals
+            ]
+
+        return {
+            "success": True,
+            "data_source": "multi_timeframe",
+            # Combined MTF probability
+            "bullish_probability": mtf.combined_bullish,
+            "bearish_probability": mtf.combined_bearish,
+            "overall_bias": mtf.combined_bias,
+            "confidence": mtf.combined_confidence,
+            "confluence": mtf.confluence,
+            "recommendation": mtf.recommendation,
+            # Per-timeframe breakdown
+            "timeframes": [
+                {
+                    "interval": tf.interval,
+                    "label": tf.label,
+                    "weight": int(tf.weight * 100),
+                    "bullish_pct": tf.bullish_pct,
+                    "bearish_pct": tf.bearish_pct,
+                    "bias": tf.bias,
+                    "confidence": tf.confidence,
+                    "error": tf.error,
+                }
+                for tf in mtf.timeframes
+            ],
+            # 5m data for charts/signals
+            "current_price": mtf.primary_result.current_price if mtf.primary_result else 0,
+            "day_change": mtf.primary_result.day_change if mtf.primary_result else 0,
+            "day_change_pct": mtf.primary_result.day_change_pct if mtf.primary_result else 0,
+            "orb_data": mtf.primary_result.orb_data if mtf.primary_result else {},
             "signals": signals_data,
             "price_data": price_data,
         }
