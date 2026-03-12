@@ -427,33 +427,61 @@ function renderTradeSignal(ts) {
 // ── Auto-Trader Controls & Renderer ─────────────────────────────
 
 async function startAutoTrader() {
-    if (!confirm('⚠️ Start auto-trader? It will evaluate strategy on every refresh.')) return;
+    const btn = document.getElementById('at-start-btn');
+    const statusEl = document.getElementById('at-status');
+    btn.disabled = true;
+    btn.textContent = '⏳ Starting...';
+    btn.className = 'bg-yellow-600 px-4 py-2 rounded-lg font-bold text-sm animate-pulse';
+    statusEl.textContent = '⏳ Starting...';
+    statusEl.className = 'text-sm font-bold text-yellow-400 animate-pulse';
     try {
         const resp = await fetch('/api/auto-trader/start', { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
-            // Trigger first evaluation immediately
+            statusEl.textContent = '⚙️ Evaluating...';
             await fetch('/api/auto-trader/evaluate', { method: 'POST' });
-            pollAutoTraderStatus();
+            await pollAutoTraderStatus();
         }
-    } catch (e) { console.error('Start failed:', e); }
+    } catch (e) {
+        console.error('Start failed:', e);
+        statusEl.textContent = '❌ Failed';
+        statusEl.className = 'text-sm font-bold text-red-400';
+    }
+    _updateAutoTraderButtons();
 }
 
 async function stopAutoTrader() {
+    const btn = document.getElementById('at-stop-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Stopping...';
     try {
-        const resp = await fetch('/api/auto-trader/stop', { method: 'POST' });
-        await resp.json();
-        pollAutoTraderStatus();
+        await fetch('/api/auto-trader/stop', { method: 'POST' });
+        await pollAutoTraderStatus();
     } catch (e) { console.error('Stop failed:', e); }
+    _updateAutoTraderButtons();
 }
 
 async function killAutoTrader() {
     if (!confirm('🚨 KILL SWITCH: Exit all positions and halt trading?')) return;
     try {
-        const resp = await fetch('/api/auto-trader/kill', { method: 'POST' });
-        await resp.json();
-        pollAutoTraderStatus();
+        await fetch('/api/auto-trader/kill', { method: 'POST' });
+        await pollAutoTraderStatus();
     } catch (e) { console.error('Kill failed:', e); }
+}
+
+function _updateAutoTraderButtons() {
+    const startBtn = document.getElementById('at-start-btn');
+    const stopBtn = document.getElementById('at-stop-btn');
+    const isRunning = document.getElementById('at-status')?.textContent?.includes('Running');
+    startBtn.disabled = isRunning;
+    stopBtn.disabled = !isRunning;
+    startBtn.textContent = isRunning ? '▶ Running' : '▶ Start';
+    startBtn.className = isRunning
+        ? 'bg-green-800 px-4 py-2 rounded-lg font-bold text-sm opacity-60 cursor-not-allowed'
+        : 'bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-bold text-sm transition';
+    stopBtn.className = !isRunning
+        ? 'bg-gray-700 px-4 py-2 rounded-lg font-bold text-sm opacity-60 cursor-not-allowed'
+        : 'bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded-lg font-bold text-sm transition';
 }
 
 async function pollAutoTraderStatus() {
@@ -547,4 +575,7 @@ function renderAutoTrader(data) {
         activeLabel.textContent = 'None';
         activeLabel.className = 'text-sm font-bold text-gray-500';
     }
+
+    // Update button states
+    _updateAutoTraderButtons();
 }
