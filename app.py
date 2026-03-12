@@ -10,6 +10,7 @@ import json as json_lib
 import numpy as np
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -39,6 +40,7 @@ from pattern_detector import detect_all_patterns
 
 app = FastAPI(title="Nifty 50 Intraday Probability Analyzer")
 templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 class NoCacheHTMLMiddleware(BaseHTTPMiddleware):
@@ -280,7 +282,10 @@ async def mtf_analyze():
                 for idx, row in today_df.iterrows():
                     price_data.append({
                         "time": idx.strftime("%H:%M"),
-                        "close": round(row["close"], 2),
+                        "open": round(float(row["open"]), 2),
+                        "high": round(float(row["high"]), 2),
+                        "low": round(float(row["low"]), 2),
+                        "close": round(float(row["close"]), 2),
                         "volume": int(row["volume"]),
                     })
 
