@@ -19,15 +19,10 @@ load_dotenv()
 API_KEY = os.getenv("KITE_API_KEY", "")
 API_SECRET = os.getenv("KITE_API_SECRET", "")
 
-# Walmart corporate proxy
-PROXY = "http://sysproxy.wal-mart.com:8080"
-PROXIES = {"http": PROXY, "https": PROXY}
-
-# Set env vars so WebSocket/ticker also picks up proxy
-os.environ.setdefault("HTTP_PROXY", PROXY)
-os.environ.setdefault("HTTPS_PROXY", PROXY)
-os.environ.setdefault("http_proxy", PROXY)
-os.environ.setdefault("https_proxy", PROXY)
+# Zerodha API is accessible DIRECTLY (not through Walmart proxy).
+# The Walmart proxy actually BLOCKS api.kite.trade.
+# So we explicitly set NO proxy for Kite requests.
+NO_PROXY_FOR_KITE = {"http": None, "https": None}
 
 # Nifty 50 instrument token (NSE index)
 NIFTY_INSTRUMENT_TOKEN = 256265
@@ -41,8 +36,10 @@ class KiteManager:
 
     def __init__(self):
         self.kite = KiteConnect(api_key=API_KEY)
-        # Configure proxy on the underlying requests session
-        self.kite.reqsession.proxies.update(PROXIES)
+        # Bypass Walmart proxy for Zerodha (proxy blocks api.kite.trade)
+        self.kite.reqsession.proxies.update(NO_PROXY_FOR_KITE)
+        # Also clear any env-level proxy for this session
+        self.kite.reqsession.trust_env = False
         self.access_token: str | None = None
         self.ticker: KiteTicker | None = None
         self.is_streaming = False
@@ -148,6 +145,12 @@ class KiteManager:
             return
 
         self.ticker = KiteTicker(API_KEY, self.access_token)
+        # Bypass Walmart proxy for WebSocket too
+        if hasattr(self.ticker, 'socket_url'):
+            os.environ.pop('HTTP_PROXY', None)
+            os.environ.pop('HTTPS_PROXY', None)
+            os.environ.pop('http_proxy', None)
+            os.environ.pop('https_proxy', None)
 
         def on_connect(ws, response):
             ws.subscribe([NIFTY_INSTRUMENT_TOKEN])

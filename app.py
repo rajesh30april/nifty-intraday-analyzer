@@ -63,16 +63,23 @@ async def login():
 async def callback(request: Request):
     """Handle Zerodha OAuth callback with request_token."""
     request_token = request.query_params.get("request_token")
+    status_param = request.query_params.get("status", "")
+    print(f"\n🔑 Kite callback received: status={status_param}, token={'yes' if request_token else 'NO'}")
+
     if not request_token:
+        print(f"❌ No request_token! Full URL: {request.url}")
         return RedirectResponse(url="/?error=no_token")
 
     try:
+        print(f"🔄 Exchanging request_token for access_token...")
         kite_manager.generate_session(request_token)
+        print(f"✅ Zerodha authenticated! Starting WebSocket...")
         # Start live WebSocket streaming after login
         kite_manager.start_ticker()
         return RedirectResponse(url="/?live=true")
     except Exception as e:
-        print(f"Auth error: {e}")
+        print(f"❌ Auth error: {e}")
+        import traceback; traceback.print_exc()
         return RedirectResponse(url=f"/?error={e}")
 
 
