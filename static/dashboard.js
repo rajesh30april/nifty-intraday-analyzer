@@ -20,20 +20,29 @@ function switchChartTimeframe(tf) {
     loadAnalysis(true);
 }
 
+var isAuthenticated = false;
+
 async function checkStatus() {
     try {
         const resp = await fetch('/api/status');
         const data = await resp.json();
         const badge = document.getElementById('data-source-badge');
         const banner = document.getElementById('login-banner');
+        const loginOverlay = document.getElementById('login-required-overlay');
         if (data.authenticated) {
+            isAuthenticated = true;
             badge.innerHTML = '<span class="flex items-center gap-2 bg-green-500 text-white px-3 py-1.5 rounded-full text-sm font-bold"><span class="w-2 h-2 bg-white rounded-full live-dot"></span>LIVE</span>';
             banner.classList.add('hidden');
-            document.getElementById('source-label').textContent = 'Zerodha Kite (LIVE)';
+            if (loginOverlay) loginOverlay.classList.add('hidden');
             startLiveTickPolling();
+            loadMargins();
         } else {
-            badge.innerHTML = '<span class="flex items-center gap-2 bg-yellow-500 text-gray-900 px-3 py-1.5 rounded-full text-sm font-bold">\u23f1 DELAYED</span>';
+            isAuthenticated = false;
+            badge.innerHTML = '<span class="flex items-center gap-2 bg-red-500 text-white px-3 py-1.5 rounded-full text-sm font-bold">⚠️ NOT CONNECTED</span>';
             banner.classList.remove('hidden');
+            if (loginOverlay) loginOverlay.classList.remove('hidden');
+            // Hide loading, show login required
+            document.getElementById('loading').classList.add('hidden');
         }
     } catch (e) { console.error(e); }
 }
@@ -82,23 +91,17 @@ function startLiveTickPolling() {
     }, 1000);
 }
 
-let refreshInterval = null;
-let refreshCountdown = 60;
-let isPaused = false;
 let isLoadingAnalysis = false;
 
-async function loadAnalysis(isAutoRefresh = false) {
-    if (isLoadingAnalysis && isAutoRefresh) return;
+async function loadAnalysis() {
+    if (isLoadingAnalysis) return;
+    if (!isAuthenticated) return;
     isLoadingAnalysis = true;
 
-    if (!isAutoRefresh) {
-        document.getElementById('loading').classList.remove('hidden');
-        document.getElementById('dashboard').classList.add('hidden');
-        document.getElementById('error-state').classList.add('hidden');
-    } else {
-        const b = document.getElementById('live-badge');
-        if (b) b.textContent = '\u26a1 Refreshing...';
-    }
+    document.getElementById('loading').classList.remove('hidden');
+    document.getElementById('dashboard').classList.add('hidden');
+    document.getElementById('error-state').classList.add('hidden');
+
     try {
         const resp = await fetch(`/api/mtf-analyze?chart_tf=${selectedChartTF}`);
         const data = await resp.json();
@@ -107,36 +110,12 @@ async function loadAnalysis(isAutoRefresh = false) {
         const now = new Date();
         const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const liveBadge = document.getElementById('live-badge');
-        if (liveBadge) liveBadge.textContent = `\ud83d\udfe2 LIVE \u2022 Updated ${timeStr}`;
+        if (liveBadge) liveBadge.textContent = `\ud83d\udfe2 Updated ${timeStr}`;
     } catch (e) {
-        if (!isAutoRefresh) showError(e.message);
-        const errBadge = document.getElementById('live-badge');
-        if (errBadge) errBadge.textContent = '\ud83d\udd34 Update failed';
+        showError(e.message);
     } finally {
         isLoadingAnalysis = false;
     }
-    refreshCountdown = 60;
-}
-
-function startAutoRefresh() {
-    if (refreshInterval) clearInterval(refreshInterval);
-    refreshInterval = setInterval(() => {
-        if (isPaused) return;
-        refreshCountdown--;
-        const btn = document.getElementById('countdown-text');
-        if (btn) btn.textContent = `${refreshCountdown}s`;
-        if (refreshCountdown <= 0) {
-            loadAnalysis(true);
-        }
-    }, 1000);
-}
-
-function togglePause() {
-    isPaused = !isPaused;
-    const btn = document.getElementById('pause-btn');
-    if (btn) btn.textContent = isPaused ? '\u25b6\ufe0f Resume' : '\u23f8\ufe0f Pause';
-    const badge = document.getElementById('live-badge');
-    if (badge && isPaused) badge.textContent = '\u23f8\ufe0f PAUSED';
 }
 
 function showError(msg) {

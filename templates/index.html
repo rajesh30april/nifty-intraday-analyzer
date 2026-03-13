@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nifty 50 Intraday Probability Analyzer</title>
+    <title>Nifty 50 Intraday Analyzer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
@@ -25,12 +25,12 @@
     <header class="bg-[#0053e2] text-white shadow-lg">
         <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
             <div>
-                <h1 class="text-2xl font-bold">📈 Nifty 50 Intraday Probability Analyzer</h1>
-                <p class="text-blue-200 text-sm">Multi-Timeframe Analysis • Powered by Code Puppy 🐶</p>
+                <h1 class="text-2xl font-bold">📈 Nifty 50 Intraday Analyzer</h1>
+                <p class="text-blue-200 text-sm">Multi-Timeframe Analysis • Zerodha Live Data • Powered by Code Puppy 🐶</p>
             </div>
             <div class="flex items-center gap-4">
                 <div id="data-source-badge"></div>
-                <button id="refresh-btn" onclick="loadAnalysis(false)"
+                <button id="refresh-btn" onclick="loadAnalysis()"
                         class="bg-[#ffc220] text-gray-900 px-4 py-2 rounded-lg font-bold hover:bg-yellow-400 transition"
                         aria-label="Refresh analysis">
                     🔄 Refresh
@@ -38,22 +38,15 @@
             </div>
         </div>
 
-        <!-- Live Status Bar -->
+        <!-- Status Bar -->
         <div class="bg-gray-900 text-white px-6 py-2 flex items-center justify-between text-sm">
             <div class="flex items-center gap-3">
                 <span id="live-badge" class="flex items-center gap-1">
-                    <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-                    🟢 LIVE • Auto-refreshing
+                    🟡 Click Refresh to load data
                 </span>
-                <span class="text-gray-400">|</span>
-                <span>Next update in <strong id="countdown-text">60s</strong></span>
             </div>
             <div class="flex items-center gap-2">
-                <button id="pause-btn" onclick="togglePause()"
-                        class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">
-                    ⏸️ Pause
-                </button>
-                <button onclick="loadAnalysis(true)"
+                <button onclick="loadAnalysis()"
                         class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">
                     ⚡ Refresh Now
                 </button>
@@ -66,12 +59,24 @@
         <!-- Zerodha Login Banner -->
         <div id="login-banner" class="hidden mb-6 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl shadow-md p-5 flex items-center justify-between slide-in">
             <div>
-                <h3 class="text-lg font-bold">🚀 Go Live with Zerodha!</h3>
-                <p class="text-orange-100 text-sm">Currently using Yahoo Finance (15 min delay). Login with Zerodha for real-time data.</p>
+                <h3 class="text-lg font-bold">🔑 Login Required</h3>
+                <p class="text-orange-100 text-sm">Connect your Zerodha account to access live market data and analysis.</p>
             </div>
             <a href="/login" class="bg-white text-orange-600 px-6 py-2 rounded-lg font-bold hover:bg-orange-50 transition">
                 🔑 Login with Zerodha
             </a>
+        </div>
+
+        <!-- Login Required Overlay (shown when not authenticated) -->
+        <div id="login-required-overlay" class="hidden text-center py-20">
+            <div class="max-w-md mx-auto">
+                <p class="text-6xl mb-4">🔒</p>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Connect Zerodha to Start</h2>
+                <p class="text-gray-500 mb-6">This app requires a live Zerodha connection for real-time market data.</p>
+                <a href="/login" class="bg-[#0053e2] text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 transition text-lg">
+                    🔑 Login with Zerodha
+                </a>
+            </div>
         </div>
 
         <!-- Loading -->
@@ -375,7 +380,7 @@
             <div class="bg-white rounded-xl shadow-md overflow-hidden slide-in">
                 <div class="px-5 py-4 bg-gradient-to-r from-purple-700 to-indigo-700 text-white">
                     <h3 class="text-lg font-bold">🔬 Strategy Backtester</h3>
-                    <p class="text-purple-200 text-sm">Test VWAP Breakout strategy on historical data (Yahoo Finance • 60 days • 5m candles)</p>
+                    <p class="text-purple-200 text-sm">Test strategy on historical data (60 days • 5m candles)</p>
                 </div>
 
                 <!-- Settings Form -->
@@ -528,7 +533,7 @@
             <!-- Disclaimer -->
             <div class="text-center text-xs text-gray-400 py-4">
                 <p>⚠️ Educational & analysis purposes only. Not financial advice. Manage your risk!</p>
-                <p>Data from <span id="source-label">Yahoo Finance</span>. Multi-timeframe analysis combines 1m + 5m + 15m.</p>
+                <p>Live data from Zerodha Kite. Multi-timeframe analysis combines 1m + 5m + 15m.</p>
             </div>
         </div>
     </main>
@@ -539,9 +544,10 @@
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             await checkStatus();
-            await loadMargins();
-            await loadAnalysis(false);
-            startAutoRefresh();
+            if (isAuthenticated) {
+                await loadMargins();
+                await loadAnalysis();
+            }
         });
     </script>
 </body>

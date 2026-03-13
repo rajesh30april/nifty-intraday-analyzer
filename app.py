@@ -118,7 +118,7 @@ async def status():
     return {
         "authenticated": kite_manager.is_authenticated,
         "streaming": kite_manager.is_streaming,
-        "data_source": "zerodha_live" if kite_manager.is_authenticated else "yahoo_delayed",
+        "data_source": "zerodha_live" if kite_manager.is_authenticated else "not_connected",
     }
 
 
@@ -196,28 +196,27 @@ def _kite_history_to_dataframe(data: list[dict]) -> pd.DataFrame:
 
 @app.get("/api/analyze")
 async def analyze(interval: str = "5m"):
-    """Run probability analysis. Uses Kite if authenticated, else Yahoo."""
+    """Run probability analysis. Requires Zerodha authentication."""
     try:
-        source = "yahoo_delayed"
+        if not kite_manager.is_authenticated:
+            return {"success": False, "error": "Please login with Zerodha first"}
 
-        if kite_manager.is_authenticated:
-            # Map interval to Kite format
-            kite_interval_map = {
-                "1m": "minute", "5m": "5minute",
-                "15m": "15minute", "30m": "30minute",
-            }
-            kite_interval = kite_interval_map.get(interval, "5minute")
-            kite_data = kite_manager.get_historical_data(
-                interval=kite_interval, days=5
-            )
+        # Map interval to Kite format
+        kite_interval_map = {
+            "1m": "minute", "5m": "5minute",
+            "15m": "15minute", "30m": "30minute",
+        }
+        kite_interval = kite_interval_map.get(interval, "5minute")
+        kite_data = kite_manager.get_historical_data(
+            interval=kite_interval, days=5
+        )
 
-            if kite_data:
-                df = _kite_history_to_dataframe(kite_data)
-                source = "zerodha_live"
-            else:
-                df = fetch_intraday_data(interval=interval, period="5d")
+        if kite_data:
+            df = _kite_history_to_dataframe(kite_data)
         else:
-            df = fetch_intraday_data(interval=interval, period="5d")
+            return {"success": False, "error": "Failed to fetch data from Zerodha"}
+
+        source = "zerodha_live"
 
         result = calculate_probability(df)
 

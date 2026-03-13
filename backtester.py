@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 from data_fetcher import fetch_intraday_data
 from strategy import evaluate_vwap_breakout, Direction
+from strategy_router import route_strategy
 
 
 # ── Configuration ──────────────────────────────────────────────
@@ -78,6 +79,7 @@ def run_backtest(
     trailing_sl: float = DEFAULT_TRAILING_SL,
     rr_ratio: float = DEFAULT_RR_RATIO,
     max_trades_per_day: int = 3,
+    use_router: bool = True,
 ) -> BacktestResult:
     """Run backtest on historical data.
 
@@ -116,6 +118,7 @@ def run_backtest(
             trailing_sl=trailing_sl,
             rr_ratio=rr_ratio,
             max_trades=max_trades_per_day,
+            use_router=use_router,
         )
 
     # Calculate summary stats
@@ -132,6 +135,7 @@ def _backtest_day(
     trailing_sl: float,
     rr_ratio: float,
     max_trades: int,
+    use_router: bool = True,
 ):
     """Backtest a single trading day."""
     trades_today = 0
@@ -245,7 +249,13 @@ def _backtest_day(
         # Use full_df up to current candle's timestamp for prev day context
         current_ts = df.index[i]
         lookback_df = full_df[full_df.index <= current_ts]
-        signal = evaluate_vwap_breakout(lookback_df)
+
+        # Smart router: picks best strategy based on market regime
+        if use_router:
+            router_result = route_strategy(lookback_df)
+            signal = router_result.signal
+        else:
+            signal = evaluate_vwap_breakout(lookback_df)
 
         if not signal.should_enter or signal.direction is None:
             continue
