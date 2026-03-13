@@ -424,6 +424,325 @@ def detect_flag(close: pd.Series, volume: pd.Series) -> PatternMatch | None:
     return None
 
 
+def detect_triple_top(
+    high: pd.Series, low: pd.Series, close: pd.Series,
+    tolerance_pct: float = 0.3,
+) -> PatternMatch | None:
+    """Detect Triple Top (bearish reversal) — 3 peaks at similar levels."""
+    peaks, troughs = _find_peaks_troughs(high, low, order=4)
+    if len(peaks) < 3 or len(troughs) < 2:
+        return None
+
+    p1, p2, p3 = peaks[-3], peaks[-2], peaks[-1]
+    v1, v2, v3 = high.iloc[p1], high.iloc[p2], high.iloc[p3]
+
+    # All three peaks within tolerance
+    avg_peak = (v1 + v2 + v3) / 3
+    if all(abs(v - avg_peak) / avg_peak * 100 < tolerance_pct for v in [v1, v2, v3]):
+        # Min spacing between peaks
+        if (p2 - p1) < 6 or (p3 - p2) < 6:
+            return None
+        # Need troughs between peaks
+        mid_troughs = [t for t in troughs if p1 < t < p3]
+        if len(mid_troughs) < 2:
+            return None
+        neckline = min(low.iloc[t] for t in mid_troughs)
+        current = close.iloc[-1]
+        confirmed = current < neckline
+        return PatternMatch(
+            name="Triple Top",
+            pattern_type="reversal",
+            bias="bearish",
+            confidence=0.9 if confirmed else 0.65,
+            description=f"Three peaks near {round(avg_peak, 1)}, neckline {round(neckline, 1)}. "
+                        f"{'CONFIRMED — broke neckline!' if confirmed else 'Watch for neckline break.'}",
+            start_idx=p1, end_idx=len(close) - 1,
+            key_levels={"peak_avg": round(avg_peak, 2), "neckline": round(neckline, 2)},
+            pivot_times=[p1, mid_troughs[0], p2, mid_troughs[-1], p3],
+        )
+    return None
+
+
+def detect_triple_bottom(
+    high: pd.Series, low: pd.Series, close: pd.Series,
+    tolerance_pct: float = 0.3,
+) -> PatternMatch | None:
+    """Detect Triple Bottom (bullish reversal) — 3 troughs at similar levels."""
+    peaks, troughs = _find_peaks_troughs(high, low, order=4)
+    if len(troughs) < 3 or len(peaks) < 2:
+        return None
+
+    t1, t2, t3 = troughs[-3], troughs[-2], troughs[-1]
+    v1, v2, v3 = low.iloc[t1], low.iloc[t2], low.iloc[t3]
+
+    avg_trough = (v1 + v2 + v3) / 3
+    if all(abs(v - avg_trough) / avg_trough * 100 < tolerance_pct for v in [v1, v2, v3]):
+        if (t2 - t1) < 6 or (t3 - t2) < 6:
+            return None
+        mid_peaks = [p for p in peaks if t1 < p < t3]
+        if len(mid_peaks) < 2:
+            return None
+        neckline = max(high.iloc[p] for p in mid_peaks)
+        current = close.iloc[-1]
+        confirmed = current > neckline
+        return PatternMatch(
+            name="Triple Bottom",
+            pattern_type="reversal",
+            bias="bullish",
+            confidence=0.9 if confirmed else 0.65,
+            description=f"Three troughs near {round(avg_trough, 1)}, neckline {round(neckline, 1)}. "
+                        f"{'CONFIRMED — broke neckline!' if confirmed else 'Watch for neckline break.'}",
+            start_idx=t1, end_idx=len(close) - 1,
+            key_levels={"trough_avg": round(avg_trough, 2), "neckline": round(neckline, 2)},
+            pivot_times=[t1, mid_peaks[0], t2, mid_peaks[-1], t3],
+        )
+    return None
+
+
+def detect_wedge(
+    high: pd.Series, low: pd.Series, close: pd.Series,
+) -> PatternMatch | None:
+    """Detect Rising Wedge (bearish) or Falling Wedge (bullish).
+
+    A wedge has converging trendlines that both slope in the same direction.
+    - Rising Wedge: both highs and lows making higher points, but converging → bearish
+    - Falling Wedge: both highs and lows making lower points, but converging → bullish
+    """
+    peaks, troughs = _find_peaks_troughs(high, low, order=4)
+    if len(peaks) < 3 or len(troughs) < 3:
+        return None
+
+    rp = peaks[-3:]
+    rt = troughs[-3:]
+    pv = [high.iloc[i] for i in rp]
+    tv = [low.iloc[i] for i in rt]
+
+    # Calculate slopes
+    peak_slope = (pv[-1] - pv[0]) / max(1, rp[-1] - rp[0])
+    trough_slope = (tv[-1] - tv[0]) / max(1, rt[-1] - rt[0])
+
+    # Converging = slopes are in same direction but gap narrowing
+    initial_range = pv[0] - tv[0] if (pv[0] > tv[0]) else 1
+    final_range = pv[-1] - tv[-1] if (pv[-1] > tv[-1]) else 1
+    converging = final_range < initial_range * 0.8  # at least 20% narrower
+
+    if not converging:
+        return None
+
+    # Rising wedge: both slopes positive
+    if peak_slope > 0 and trough_slope > 0:
+        current = close.iloc[-1]
+        breakdown = current < tv[-1]
+        return PatternMatch(
+            name="Rising Wedge",
+            pattern_type="reversal",
+            bias="bearish",
+            confidence=0.8 if breakdown else 0.6,
+            description=f"Converging up-sloping trendlines. Range narrowing from "
+                        f"{round(initial_range, 1)} to {round(final_range, 1)} pts. "
+                        f"{'BREAKDOWN confirmed!' if breakdown else 'Watch for breakdown below lower trendline.'}",
+            start_idx=min(rp[0], rt[0]), end_idx=len(close) - 1,
+            key_levels={"upper_trend": round(pv[-1], 2), "lower_trend": round(tv[-1], 2)},
+            pivot_times=[rp[0], rt[0], rp[1], rt[1], rp[2], rt[2]],
+        )
+
+    # Falling wedge: both slopes negative
+    if peak_slope < 0 and trough_slope < 0:
+        current = close.iloc[-1]
+        breakout = current > pv[-1]
+        return PatternMatch(
+            name="Falling Wedge",
+            pattern_type="reversal",
+            bias="bullish",
+            confidence=0.8 if breakout else 0.6,
+            description=f"Converging down-sloping trendlines. Range narrowing from "
+                        f"{round(initial_range, 1)} to {round(final_range, 1)} pts. "
+                        f"{'BREAKOUT confirmed!' if breakout else 'Watch for breakout above upper trendline.'}",
+            start_idx=min(rp[0], rt[0]), end_idx=len(close) - 1,
+            key_levels={"upper_trend": round(pv[-1], 2), "lower_trend": round(tv[-1], 2)},
+            pivot_times=[rp[0], rt[0], rp[1], rt[1], rp[2], rt[2]],
+        )
+
+    return None
+
+
+def detect_ascending_triangle(
+    high: pd.Series, low: pd.Series, close: pd.Series,
+    tolerance_pct: float = 0.2,
+) -> PatternMatch | None:
+    """Ascending Triangle: flat resistance + rising support → bullish breakout."""
+    peaks, troughs = _find_peaks_troughs(high, low, order=4)
+    if len(peaks) < 2 or len(troughs) < 2:
+        return None
+
+    rp = peaks[-3:] if len(peaks) >= 3 else peaks[-2:]
+    rt = troughs[-3:] if len(troughs) >= 3 else troughs[-2:]
+    pv = [high.iloc[i] for i in rp]
+    tv = [low.iloc[i] for i in rt]
+
+    # Flat resistance: peaks within tolerance
+    avg_peak = np.mean(pv)
+    flat_res = all(abs(v - avg_peak) / avg_peak * 100 < tolerance_pct for v in pv)
+    # Rising support: higher lows
+    rising_sup = all(tv[i] > tv[i - 1] for i in range(1, len(tv)))
+
+    if flat_res and rising_sup:
+        current = close.iloc[-1]
+        breakout = current > max(pv)
+        return PatternMatch(
+            name="Ascending Triangle",
+            pattern_type="continuation",
+            bias="bullish",
+            confidence=0.8 if breakout else 0.65,
+            description=f"Flat resistance near {round(avg_peak, 1)} with rising lows "
+                        f"({', '.join(str(round(v, 1)) for v in tv)}). "
+                        f"{'BREAKOUT confirmed!' if breakout else 'Expect bullish breakout.'}",
+            start_idx=min(rp[0], rt[0]), end_idx=len(close) - 1,
+            key_levels={"resistance": round(avg_peak, 2), "latest_support": round(tv[-1], 2)},
+            pivot_times=[*rp, *rt],
+        )
+    return None
+
+
+def detect_descending_triangle(
+    high: pd.Series, low: pd.Series, close: pd.Series,
+    tolerance_pct: float = 0.2,
+) -> PatternMatch | None:
+    """Descending Triangle: flat support + falling resistance → bearish breakdown."""
+    peaks, troughs = _find_peaks_troughs(high, low, order=4)
+    if len(peaks) < 2 or len(troughs) < 2:
+        return None
+
+    rp = peaks[-3:] if len(peaks) >= 3 else peaks[-2:]
+    rt = troughs[-3:] if len(troughs) >= 3 else troughs[-2:]
+    pv = [high.iloc[i] for i in rp]
+    tv = [low.iloc[i] for i in rt]
+
+    # Flat support: troughs within tolerance
+    avg_trough = np.mean(tv)
+    flat_sup = all(abs(v - avg_trough) / avg_trough * 100 < tolerance_pct for v in tv)
+    # Falling resistance: lower highs
+    falling_res = all(pv[i] < pv[i - 1] for i in range(1, len(pv)))
+
+    if flat_sup and falling_res:
+        current = close.iloc[-1]
+        breakdown = current < min(tv)
+        return PatternMatch(
+            name="Descending Triangle",
+            pattern_type="continuation",
+            bias="bearish",
+            confidence=0.8 if breakdown else 0.65,
+            description=f"Flat support near {round(avg_trough, 1)} with falling highs "
+                        f"({', '.join(str(round(v, 1)) for v in pv)}). "
+                        f"{'BREAKDOWN confirmed!' if breakdown else 'Expect bearish breakdown.'}",
+            start_idx=min(rp[0], rt[0]), end_idx=len(close) - 1,
+            key_levels={"support": round(avg_trough, 2), "latest_resistance": round(pv[-1], 2)},
+            pivot_times=[*rp, *rt],
+        )
+    return None
+
+
+def detect_engulfing(
+    open_: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series,
+) -> PatternMatch | None:
+    """Detect Bullish/Bearish Engulfing on recent candles."""
+    if len(close) < 3:
+        return None
+
+    # Check last 2 candles
+    prev_o, prev_c = open_.iloc[-2], close.iloc[-2]
+    curr_o, curr_c = open_.iloc[-1], close.iloc[-1]
+
+    prev_body = abs(prev_c - prev_o)
+    curr_body = abs(curr_c - curr_o)
+
+    # Need meaningful body (not doji)
+    if prev_body < 1 or curr_body < 1:
+        return None
+
+    # Bullish engulfing: prev red, curr green, curr body covers prev body
+    if prev_c < prev_o and curr_c > curr_o and curr_body > prev_body * 1.3:
+        if curr_o <= prev_c and curr_c >= prev_o:
+            return PatternMatch(
+                name="Bullish Engulfing",
+                pattern_type="reversal",
+                bias="bullish",
+                confidence=0.65,
+                description=f"Big green candle ({round(curr_body, 1)} pts) completely engulfed "
+                            f"previous red candle ({round(prev_body, 1)} pts). Bullish reversal signal.",
+                start_idx=len(close) - 2, end_idx=len(close) - 1,
+                key_levels={"engulf_low": round(min(low.iloc[-2], low.iloc[-1]), 2)},
+                pivot_times=[len(close) - 2, len(close) - 1],
+            )
+
+    # Bearish engulfing: prev green, curr red, curr body covers prev body
+    if prev_c > prev_o and curr_c < curr_o and curr_body > prev_body * 1.3:
+        if curr_o >= prev_c and curr_c <= prev_o:
+            return PatternMatch(
+                name="Bearish Engulfing",
+                pattern_type="reversal",
+                bias="bearish",
+                confidence=0.65,
+                description=f"Big red candle ({round(curr_body, 1)} pts) completely engulfed "
+                            f"previous green candle ({round(prev_body, 1)} pts). Bearish reversal signal.",
+                start_idx=len(close) - 2, end_idx=len(close) - 1,
+                key_levels={"engulf_high": round(max(high.iloc[-2], high.iloc[-1]), 2)},
+                pivot_times=[len(close) - 2, len(close) - 1],
+            )
+
+    return None
+
+
+def detect_morning_evening_star(
+    open_: pd.Series, high: pd.Series, low: pd.Series, close: pd.Series,
+) -> PatternMatch | None:
+    """Detect Morning Star (bullish) / Evening Star (bearish) 3-candle pattern."""
+    if len(close) < 4:
+        return None
+
+    c1_o, c1_c = open_.iloc[-3], close.iloc[-3]
+    c2_o, c2_c = open_.iloc[-2], close.iloc[-2]
+    c3_o, c3_c = open_.iloc[-1], close.iloc[-1]
+
+    c1_body = abs(c1_c - c1_o)
+    c2_body = abs(c2_c - c2_o)
+    c3_body = abs(c3_c - c3_o)
+
+    # Middle candle must be a small body (doji/spinning top)
+    if c2_body > c1_body * 0.4:
+        return None
+
+    # Morning Star: big red → small body → big green
+    if c1_c < c1_o and c3_c > c3_o and c3_body > c1_body * 0.5:
+        return PatternMatch(
+            name="Morning Star",
+            pattern_type="reversal",
+            bias="bullish",
+            confidence=0.7,
+            description="3-candle bullish reversal: big red → small indecision → big green. "
+                        "Strong bottom signal.",
+            start_idx=len(close) - 3, end_idx=len(close) - 1,
+            key_levels={"star_low": round(min(low.iloc[-3:-1].min(), low.iloc[-1]), 2)},
+            pivot_times=[len(close) - 3, len(close) - 2, len(close) - 1],
+        )
+
+    # Evening Star: big green → small body → big red
+    if c1_c > c1_o and c3_c < c3_o and c3_body > c1_body * 0.5:
+        return PatternMatch(
+            name="Evening Star",
+            pattern_type="reversal",
+            bias="bearish",
+            confidence=0.7,
+            description="3-candle bearish reversal: big green → small indecision → big red. "
+                        "Strong top signal.",
+            start_idx=len(close) - 3, end_idx=len(close) - 1,
+            key_levels={"star_high": round(max(high.iloc[-3:-1].max(), high.iloc[-1]), 2)},
+            pivot_times=[len(close) - 3, len(close) - 2, len(close) - 1],
+        )
+
+    return None
+
+
 def _to_native(val):
     """Convert numpy types to native Python types for JSON serialization."""
     if isinstance(val, (np.integer,)):
@@ -455,6 +774,7 @@ def detect_all_patterns(df: pd.DataFrame, timeframe: str = "5m") -> dict:
     close = df["close"]
     high = df["high"]
     low = df["low"]
+    open_ = df["open"]
     volume = df.get("volume", pd.Series(dtype=float))
 
     patterns: list[PatternMatch] = []
@@ -472,7 +792,14 @@ def detect_all_patterns(df: pd.DataFrame, timeframe: str = "5m") -> dict:
         lambda: detect_double_top(high, low, close),
         lambda: detect_double_bottom(high, low, close),
         lambda: detect_head_and_shoulders(high, low, close),
+        lambda: detect_triple_top(high, low, close),
+        lambda: detect_triple_bottom(high, low, close),
+        lambda: detect_wedge(high, low, close),
+        lambda: detect_ascending_triangle(high, low, close),
+        lambda: detect_descending_triangle(high, low, close),
         lambda: detect_flag(close, volume),
+        lambda: detect_engulfing(open_, high, low, close),
+        lambda: detect_morning_evening_star(open_, high, low, close),
     ]
 
     for detector in detectors:
@@ -497,7 +824,27 @@ def detect_all_patterns(df: pd.DataFrame, timeframe: str = "5m") -> dict:
     # Sort by confidence
     patterns.sort(key=lambda p: p.confidence, reverse=True)
 
+    # Build candle data slices for each pattern (for mini-chart rendering)
+    pattern_candles = {}
+    for i, p in enumerate(patterns):
+        pad = 5  # candles of context before/after
+        s = max(0, p.start_idx - pad)
+        e = min(len(df) - 1, p.end_idx + pad)
+        sliced = df.iloc[s:e + 1]
+        candles = []
+        for idx, row in sliced.iterrows():
+            candles.append({
+                "time": str(idx),
+                "open": _to_native(row.get("open", row["close"])),
+                "high": _to_native(row.get("high", row["close"])),
+                "low": _to_native(row.get("low", row["close"])),
+                "close": _to_native(row["close"]),
+                "volume": _to_native(row.get("volume", 0)),
+            })
+        pattern_candles[i] = candles
+
     return {
         "patterns": patterns,
+        "pattern_candles": pattern_candles,
         "support_resistance": sr,
     }

@@ -219,18 +219,25 @@ function renderInsights(data) {
     el.innerHTML = insights.map(i => `<p>• ${i}</p>`).join('');
 }
 
-function renderPatterns(patterns) {
+function renderPatterns(patterns, patternCandles) {
     const container = document.getElementById('patterns-container');
     if (!patterns.length) {
         container.innerHTML = '<p class="text-gray-400 text-center py-4">No clear patterns detected right now. Market may be ranging.</p>';
         return;
     }
     container.innerHTML = '';
-    patterns.forEach(p => {
+
+    // Track mini chart instances for cleanup
+    if (window._patternMiniCharts) {
+        window._patternMiniCharts.forEach(c => { try { c.remove(); } catch(e) {} });
+    }
+    window._patternMiniCharts = [];
+
+    patterns.forEach((p, idx) => {
         const biasColor = { bullish: 'border-green-500 bg-green-50', bearish: 'border-red-500 bg-red-50', neutral: 'border-gray-300 bg-gray-50' }[p.bias];
         const biasText = { bullish: 'text-green-700', bearish: 'text-red-700', neutral: 'text-gray-700' }[p.bias];
         const biasEmoji = { bullish: '🐂', bearish: '🐻', neutral: '⚖️' }[p.bias];
-        const typeLabel = { reversal: '🔄 Reversal', continuation: '➡️ Continuation', structure: '📀 Structure' }[p.type] || p.type;
+        const typeLabel = { reversal: '🔄 Reversal', continuation: '➡️ Continuation', structure: '💿 Structure' }[p.type] || p.type;
         const confPct = Math.round(p.confidence * 100);
         const confColor = confPct >= 80 ? 'text-green-600' : confPct >= 60 ? 'text-yellow-600' : 'text-gray-500';
 
@@ -242,7 +249,6 @@ function renderPatterns(patterns) {
                 ).join('') + '</div>';
         }
 
-        // Format timestamps for display
         const fmtTime = (ts) => {
             if (!ts) return '';
             try {
@@ -258,12 +264,15 @@ function renderPatterns(patterns) {
             timeInfo = `<div class="flex items-center gap-2 mt-1">${tfLabel} ${startEnd}</div>`;
         }
 
-        let pivotInfo = '';
-        if (p.pivot_times && p.pivot_times.length) {
-            pivotInfo = '<div class="flex flex-wrap gap-1 mt-1">' +
-                p.pivot_times.map((t, i) => `<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Pivot ${i+1}: ${fmtTime(t)}</span>`
-                ).join('') + '</div>';
-        }
+        // Unique ID for the mini chart container
+        const chartId = `pattern-minichart-${idx}`;
+        const hasCandles = patternCandles && patternCandles[idx] && patternCandles[idx].length > 2;
+
+        const miniChartHtml = hasCandles
+            ? `<div class="mt-3 border rounded-lg bg-white overflow-hidden">
+                   <div id="${chartId}" style="height: 180px; width: 100%;"></div>
+               </div>`
+            : '';
 
         container.innerHTML += `
             <div class="border-l-4 ${biasColor} rounded-lg p-3">
@@ -277,9 +286,125 @@ function renderPatterns(patterns) {
                 ${timeInfo}
                 <p class="text-sm text-gray-600 mt-1">${p.description}</p>
                 ${levelsHtml}
-                ${pivotInfo}
+                ${miniChartHtml}
             </div>`;
     });
+
+    // Now render the mini Lightweight Charts for each pattern
+    patterns.forEach((p, idx) => {
+        const chartId = `pattern-minichart-${idx}`;
+        const chartContainer = document.getElementById(chartId);
+        if (!chartContainer || !patternCandles || !patternCandles[idx]) return;
+
+        const candles = patternCandles[idx];
+        if (candles.length < 2) return;
+
+        _renderPatternMiniChart(chartContainer, candles, p);
+    });
+}
+
+/**
+ * Render a mini candlestick chart for a single pattern.
+ */
+function _renderPatternMiniChart(container, candles, pattern) {
+    const chart = LightweightCharts.createChart(container, {
+        width: container.clientWidth,
+        height: 180,
+        layout: { background: { color: '#fafafa' }, textColor: '#666', fontSize: 10 },
+        grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        rightPriceScale: { borderColor: '#e5e7eb', scaleMargins: { top: 0.1, bottom: 0.1 } },
+        timeScale: { borderColor: '#e5e7eb', timeVisible: true, secondsVisible: false },
+        handleScroll: false,
+        handleScale: false,
+    });
+    window._patternMiniCharts.push(chart);
+
+    // Parse candle data
+    const candleData = candles.map(d => {
+        const parts = d.time.split(' ');
+        let year, month, day, h = 0, m = 0;
+        if (parts.length >= 2) {
+            [year, month, day] = parts[0].split('-').map(Number);
+            [h, m] = parts[1].split(':').map(Number);
+        } else {
+            [year, month, day] = parts[0].split('-').map(Number);
+        }
+        const dt = new Date(Date.UTC(year, month - 1, day, h, m, 0));
+        return {
+            time: Math.floor(dt.getTime() / 1000),
+            open: d.open || d.close,
+            high: d.high || d.close,
+            low: d.low || d.close,
+            close: d.close,
+        };
+    }).filter(d => !isNaN(d.time));
+
+    if (!candleData.length) return;
+
+    const series = chart.addCandlestickSeries({
+        upColor: '#2a8703',
+        downColor: '#ea1100',
+        borderUpColor: '#2a8703',
+        borderDownColor: '#ea1100',
+        wickUpColor: '#2a8703',
+        wickDownColor: '#ea1100',
+    });
+    series.setData(candleData);
+
+    // Add key level lines
+    if (pattern.key_levels) {
+        Object.entries(pattern.key_levels).forEach(([name, level]) => {
+            const isNeckline = name.includes('neckline');
+            const isSupport = name.includes('support') || name.includes('trough') || name.includes('low');
+            const color = isNeckline ? '#7c3aed' : isSupport ? '#2a8703' : '#ea1100';
+            series.createPriceLine({
+                price: level,
+                color: color,
+                lineWidth: isNeckline ? 2 : 1,
+                lineStyle: isNeckline ? LightweightCharts.LineStyle.Solid : LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: true,
+                title: name.replace(/_/g, ' '),
+            });
+        });
+    }
+
+    // Add pivot markers
+    if (pattern.pivot_times && pattern.pivot_times.length) {
+        const markers = [];
+        pattern.pivot_times.forEach((ts, i) => {
+            try {
+                const dt = new Date(ts);
+                const istOffset = 5.5 * 3600;
+                const utcSec = Math.floor(dt.getTime() / 1000);
+                const fakeUtcSec = utcSec + istOffset;
+                const nearest = candleData.reduce((prev, curr) =>
+                    Math.abs(curr.time - fakeUtcSec) < Math.abs(prev.time - fakeUtcSec) ? curr : prev
+                );
+
+                const isBearish = pattern.bias === 'bearish';
+                const isMiddle = pattern.pivot_times.length >= 3 && i > 0 && i < pattern.pivot_times.length - 1;
+
+                markers.push({
+                    time: nearest.time,
+                    position: isMiddle ? (isBearish ? 'belowBar' : 'aboveBar') : (isBearish ? 'aboveBar' : 'belowBar'),
+                    color: isMiddle ? '#7c3aed' : (isBearish ? '#ea1100' : '#2a8703'),
+                    shape: isMiddle ? 'circle' : (isBearish ? 'arrowDown' : 'arrowUp'),
+                    text: `P${i + 1}`,
+                });
+            } catch (e) { /* skip */ }
+        });
+        markers.sort((a, b) => a.time - b.time);
+        if (markers.length) series.setMarkers(markers);
+    }
+
+    chart.timeScale().fitContent();
+
+    // Responsive
+    const ro = new ResizeObserver(() => {
+        chart.applyOptions({ width: container.clientWidth });
+    });
+    ro.observe(container);
 }
 
 function renderSupportResistance(sr, currentPrice) {

@@ -216,7 +216,7 @@ async function loadSectionChart() {
 
         renderPriceChart(data.price_data, data.patterns || [], data.support_resistance || {});
         renderVolumeChart(data.price_data);
-        renderPatterns(data.patterns || []);
+        renderPatterns(data.patterns || [], data.pattern_candles || {});
         renderSupportResistance(data.support_resistance || {},
             data.price_data.length > 0 ? data.price_data[data.price_data.length - 1].close : 0);
     } catch (e) {

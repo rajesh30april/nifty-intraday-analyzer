@@ -428,6 +428,7 @@ async def section_chart(tf: str = "5m"):
         # Detect patterns
         patterns_data = []
         sr_data = {}
+        pat_candles = {}
         try:
             pat_result = detect_all_patterns(df, timeframe=tf)
             patterns_data = [
@@ -442,6 +443,7 @@ async def section_chart(tf: str = "5m"):
                 for p in pat_result["patterns"]
             ]
             sr_data = pat_result["support_resistance"]
+            pat_candles = pat_result.get("pattern_candles", {})
         except Exception:
             pass
 
@@ -450,6 +452,7 @@ async def section_chart(tf: str = "5m"):
             "chart_timeframe": tf,
             "price_data": price_data,
             "patterns": patterns_data,
+            "pattern_candles": pat_candles,
             "support_resistance": sr_data,
         })
     except Exception as e:
@@ -578,6 +581,7 @@ async def patterns(interval: str = "5m"):
         return {
             "success": True,
             "patterns": patterns_data,
+            "pattern_candles": result.get("pattern_candles", {}),
             "support_resistance": result["support_resistance"],
         }
     except Exception as e:
