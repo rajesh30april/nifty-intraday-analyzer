@@ -122,21 +122,43 @@ def _is_market_hours() -> bool:
     return dt_time(9, 15) <= now <= dt_time(15, 30)
 
 
-# ── Order Placement ───────────────────────────────────────────
+# ── Order Placement ───────────────────────────────────────────────────────
+
+CAPITAL = float(os.getenv("TRADING_CAPITAL", "96000"))
+LOT_SIZE = int(os.getenv("LOT_SIZE", "65"))
+
 
 def _get_option_symbol(nifty_price: float, direction: Direction) -> str:
-    """Calculate ATM option symbol for Nifty.
+    """Smart strike selection — maximizes profit per rupee.
 
-    Nifty options have 50-point strike intervals.
-    BUY CE for long, BUY PE for short.
+    Logic:
+    1. ATM strike = round to nearest 50
+    2. For LONG (CE): pick 1 strike OTM (+50 pts) — cheaper, more lots
+    3. For SHORT (PE): pick 1 strike OTM (-50 pts) — cheaper, more lots
+    4. This gives ~0.40 delta with ~₹120 premium vs ₹200 ATM
+    5. With ₹96K: 12 lots (780 units) vs 7 lots (455 units) at ATM
     """
-    # Round to nearest 50
     atm_strike = round(nifty_price / 50) * 50
-    option_type = "CE" if direction == Direction.LONG else "PE"
 
-    # Format: NIFTY{YYMDD}{STRIKE}{CE/PE}
+    if direction == Direction.LONG:
+        # Buy CE — 1 strike OTM (above current price)
+        strike = atm_strike + 50
+        option_type = "CE"
+    else:
+        # Buy PE — 1 strike OTM (below current price)
+        strike = atm_strike - 50
+        option_type = "PE"
+
     expiry = _get_nearest_expiry()
-    return f"NFO:NIFTY{expiry}{atm_strike}{option_type}"
+    symbol = f"NFO:NIFTY{expiry}{strike}{option_type}"
+
+    print(f"\U0001f3af Strike Selection:")
+    print(f"   Nifty: ₹{nifty_price:.0f} | ATM: {atm_strike}")
+    print(f"   Picked: {strike} {option_type} (1 strike OTM)")
+    print(f"   Why: Cheaper premium (~₹120 vs ₹200 ATM) = more lots for ₹{CAPITAL:.0f}")
+    print(f"   Symbol: {symbol}")
+
+    return symbol
 
 
 def _get_nearest_expiry() -> str:
