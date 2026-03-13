@@ -5,6 +5,32 @@ var candleSeries = null;
 var volumeChart = null;
 var liveTickInterval = null;
 var selectedChartTF = '5m';
+var currentPageId = 'overview';
+
+// ── Sidebar Navigation ──────────────────────────────────────────
+
+function switchPage(pageId) {
+    currentPageId = pageId;
+    // Hide all pages
+    document.querySelectorAll('.page-section').forEach(p => p.classList.remove('active'));
+    // Show target page
+    const target = document.getElementById('page-' + pageId);
+    if (target) target.classList.add('active');
+    // Update sidebar active state
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.page === pageId);
+    });
+    // Re-render charts if switching to charts page (canvas sizing)
+    if (pageId === 'charts' && candlestickChart) {
+        setTimeout(() => {
+            const container = document.getElementById('candlestickChart');
+            if (container && candlestickChart) {
+                candlestickChart.applyOptions({ width: container.clientWidth });
+                candlestickChart.timeScale().fitContent();
+            }
+        }, 100);
+    }
+}
 
 function switchChartTimeframe(tf) {
     selectedChartTF = tf;
@@ -83,182 +109,16 @@ function startLiveTickPolling() {
             const resp = await fetch('/api/live-tick');
             const data = await resp.json();
             if (data.success) {
-                document.getElementById('current-price').textContent = data.last_price.toLocaleString('en-IN');
+                const priceStr = data.last_price.toLocaleString('en-IN');
+                document.getElementById('current-price').textContent = priceStr;
+                const headerPrice = document.getElementById('header-price');
+                if (headerPrice) headerPrice.textContent = '₹' + priceStr;
                 document.getElementById('live-price-time').textContent = `Live \u2022 ${new Date().toLocaleTimeString()}`;
             }
         } catch (e) { /* silent */ }
     }, 1000);
 }
 
-// ── Per-Section Loading with Progress Tracking ──────────────────
-
-const SECTIONS = [
-    { id: 'section-probability', label: '🎯 Probability', emoji: '🎯', avgTime: 5000 },
-    { id: 'section-trend-health', label: '🦠 Trend Health', emoji: '🦠', avgTime: 2500 },
-    { id: 'section-chart', label: '📊 Charts', emoji: '📊', avgTime: 4000 },
-    { id: 'section-trade-signal', label: '🚦 Trade Signal', emoji: '🚦', avgTime: 2000 },
-];
-
-// Track section load times for better ETA estimates
-const _sectionTimings = {};
-let _progressInterval = null;
-let _loadStartTime = 0;
-let _sectionStates = {}; // { sectionId: 'pending' | 'loading' | 'done' | 'error' }
-
-function _sectionLoading(sectionId, loading = true) {
-    const el = document.getElementById(sectionId);
-    if (!el) return;
-    const spinner = el.querySelector('.section-spinner');
-    const content = el.querySelector('.section-content');
-    if (spinner) spinner.classList.toggle('hidden', !loading);
-    if (content) content.classList.toggle('opacity-50', loading);
-
-    if (loading) {
-        _sectionStates[sectionId] = 'loading';
-    }
-}
-
-function _sectionDone(sectionId, success = true) {
-    _sectionStates[sectionId] = success ? 'done' : 'error';
-    _updateProgress();
-}
-
-function _sectionError(sectionId, msg) {
-    const el = document.getElementById(sectionId);
-    if (!el) return;
-    const spinner = el.querySelector('.section-spinner');
-    if (spinner) spinner.innerHTML = `<span class="text-red-500 text-xs">⚠️ ${msg}</span>`;
-    _sectionStates[sectionId] = 'error';
-    _updateProgress();
-}
-
-function _showProgress() {
-    const container = document.getElementById('progress-container');
-    if (container) container.classList.remove('hidden');
-    _loadStartTime = Date.now();
-    _sectionStates = {};
-    SECTIONS.forEach(s => { _sectionStates[s.id] = 'pending'; });
-    _updateProgress();
-
-    // Smooth progress animation — update every 200ms
-    if (_progressInterval) clearInterval(_progressInterval);
-    _progressInterval = setInterval(_animateProgress, 200);
-}
-
-function _hideProgress() {
-    if (_progressInterval) { clearInterval(_progressInterval); _progressInterval = null; }
-    const container = document.getElementById('progress-container');
-    if (container) {
-        // Show 100% briefly then hide
-        _setProgressBar(100, 'All done! 🐶');
-        setTimeout(() => {
-            container.classList.add('hidden');
-        }, 800);
-    }
-}
-
-function _setProgressBar(pct, label) {
-    const bar = document.getElementById('progress-bar');
-    const pctEl = document.getElementById('progress-pct');
-    const labelEl = document.getElementById('progress-label');
-    if (bar) bar.style.width = `${pct}%`;
-    if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
-    if (labelEl && label) labelEl.textContent = label;
-
-    // Color transitions
-    if (bar) {
-        if (pct >= 100) {
-            bar.className = 'h-3 rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-green-500 to-emerald-400';
-        } else if (pct >= 50) {
-            bar.className = 'h-3 rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-[#0053e2] to-blue-400';
-        }
-    }
-}
-
-function _updateProgress() {
-    const total = SECTIONS.length;
-    const done = SECTIONS.filter(s => _sectionStates[s.id] === 'done' || _sectionStates[s.id] === 'error').length;
-    const basePct = (done / total) * 100;
-
-    // Render section pills
-    const sectionsEl = document.getElementById('progress-sections');
-    if (sectionsEl) {
-        sectionsEl.innerHTML = SECTIONS.map(s => {
-            const state = _sectionStates[s.id] || 'pending';
-            const styles = {
-                pending: 'bg-gray-100 text-gray-400',
-                loading: 'bg-blue-100 text-blue-700 animate-pulse',
-                done: 'bg-green-100 text-green-700',
-                error: 'bg-red-100 text-red-600',
-            };
-            const icons = { pending: '⏳', loading: '⚙️', done: '✅', error: '❌' };
-            return `<span class="px-2 py-1 rounded-full font-bold ${styles[state]}">${icons[state]} ${s.label}</span>`;
-        }).join('');
-    }
-
-    // Label
-    const label = done >= total ? 'All done! 🐶' : `Loading ${done}/${total} sections...`;
-
-    // ETA calculation
-    const elapsed = Date.now() - _loadStartTime;
-    const etaEl = document.getElementById('progress-eta');
-    if (etaEl) {
-        if (done > 0 && done < total) {
-            // Use remaining sections' average times
-            const remainingSections = SECTIONS.filter(s => _sectionStates[s.id] !== 'done' && _sectionStates[s.id] !== 'error');
-            const maxRemaining = Math.max(...remainingSections.map(s => {
-                const hist = _sectionTimings[s.id];
-                return hist ? hist : s.avgTime;
-            }));
-            // Since they run in parallel, ETA = max remaining time - already elapsed
-            const etaSec = Math.max(0, Math.ceil((maxRemaining - elapsed) / 1000));
-            etaEl.textContent = etaSec > 0 ? `~${etaSec}s remaining` : 'Almost done...';
-        } else if (done >= total) {
-            etaEl.textContent = `Done in ${(elapsed / 1000).toFixed(1)}s`;
-        } else {
-            // Estimate total from slowest section
-            const maxTime = Math.max(...SECTIONS.map(s => _sectionTimings[s.id] || s.avgTime));
-            etaEl.textContent = `~${Math.ceil(maxTime / 1000)}s estimated`;
-        }
-    }
-
-    _setProgressBar(basePct, label);
-}
-
-function _animateProgress() {
-    // Smooth animation: for loading sections, show intermediate progress
-    const total = SECTIONS.length;
-    const done = SECTIONS.filter(s => _sectionStates[s.id] === 'done' || _sectionStates[s.id] === 'error').length;
-    const loading = SECTIONS.filter(s => _sectionStates[s.id] === 'loading');
-
-    const basePct = (done / total) * 100;
-    const elapsed = Date.now() - _loadStartTime;
-
-    // For each loading section, estimate partial progress
-    let partialPct = 0;
-    loading.forEach(s => {
-        const expectedTime = _sectionTimings[s.id] || s.avgTime;
-        const sectionProgress = Math.min(0.9, elapsed / expectedTime); // cap at 90%
-        partialPct += (sectionProgress / total) * 100;
-    });
-
-    const smoothPct = Math.min(99, basePct + partialPct);
-    _setProgressBar(smoothPct, null); // don't update label here
-
-    // Update ETA
-    const etaEl = document.getElementById('progress-eta');
-    if (etaEl && done < total) {
-        const remainingSections = SECTIONS.filter(s => _sectionStates[s.id] !== 'done' && _sectionStates[s.id] !== 'error');
-        const maxRemaining = Math.max(...remainingSections.map(s => _sectionTimings[s.id] || s.avgTime));
-        const etaSec = Math.max(0, Math.ceil((maxRemaining - elapsed) / 1000));
-        etaEl.textContent = etaSec > 0 ? `~${etaSec}s remaining` : 'Almost done...';
-    }
-
-    // Auto-stop when all done
-    if (done >= total) {
-        _hideProgress();
-    }
-}
 
 // Load ALL sections in parallel (initial load or full refresh)
 async function loadAnalysis() {
@@ -358,6 +218,7 @@ async function loadSectionProbability() {
         // Signals table
         renderSignals(data.signals || []);
         renderInsights(data);
+        _updateSidebarBadges(data);
     } catch (e) {
         _sectionError('section-probability', e.message);
     } finally {
@@ -380,6 +241,9 @@ async function loadSectionChart() {
         renderVolumeChart(data.price_data);
         renderPatterns(data.patterns || [], data.pattern_candles || {});
         renderSupportResistance(data.support_resistance || {},
+            data.price_data.length > 0 ? data.price_data[data.price_data.length - 1].close : 0);
+        // Update trend info banner on charts page
+        _updateChartTrendBanner(data.patterns || [], data.support_resistance || {},
             data.price_data.length > 0 ? data.price_data[data.price_data.length - 1].close : 0);
     } catch (e) {
         _sectionError('section-chart', e.message);
@@ -497,12 +361,162 @@ function renderTrendHealth(data) {
                 </div>
             </div>`;
     });
+
+    // Update sidebar trend badge
+    const trendBadge = document.getElementById('sidebar-trend-badge');
+    if (trendBadge) {
+        const badgeColors = {
+            'TREND CONTINUES': 'bg-green-100 text-green-700',
+            'REVERSAL LIKELY': 'bg-red-100 text-red-700',
+            'REVERSAL BREWING': 'bg-yellow-100 text-yellow-700',
+            'MIXED SIGNALS': 'bg-gray-200 text-gray-600',
+        };
+        const shortLabels = {
+            'TREND CONTINUES': '✅',
+            'REVERSAL LIKELY': '🔴',
+            'REVERSAL BREWING': '🟡',
+            'MIXED SIGNALS': '⚪',
+        };
+        trendBadge.textContent = shortLabels[data.verdict] || '--';
+        trendBadge.className = `badge ${badgeColors[data.verdict] || 'bg-gray-200 text-gray-500'}`;
+    }
 }
 
 function showError(msg) {
     document.getElementById('loading').classList.add('hidden');
     document.getElementById('error-state').classList.remove('hidden');
     document.getElementById('error-msg').textContent = msg;
+}
+
+// ── Chart Trend Info Banner ───────────────────────────────────────
+
+function _updateChartTrendBanner(patterns, sr, currentPrice) {
+    const banner = document.getElementById('chart-trend-banner');
+    if (!banner) return;
+
+    // Count patterns by bias
+    const bullishPatterns = patterns.filter(p => p.bias === 'bullish');
+    const bearishPatterns = patterns.filter(p => p.bias === 'bearish');
+    const patternCount = patterns.length;
+
+    // Determine pattern bias
+    let patternBias = 'NEUTRAL';
+    let patternBiasColor = 'text-gray-600';
+    let biasEmoji = '⚖️';
+    if (bullishPatterns.length > bearishPatterns.length) {
+        patternBias = '🐂 BULLISH';
+        patternBiasColor = 'text-green-600';
+        biasEmoji = '📈';
+    } else if (bearishPatterns.length > bullishPatterns.length) {
+        patternBias = '🐻 BEARISH';
+        patternBiasColor = 'text-red-600';
+        biasEmoji = '📉';
+    } else if (patternCount > 0) {
+        patternBias = '⚖️ MIXED';
+        patternBiasColor = 'text-yellow-600';
+        biasEmoji = '⚖️';
+    }
+
+    // Determine trend from structure patterns
+    const structurePattern = patterns.find(p => p.type === 'structure');
+    let trendLabel = 'No Clear Trend';
+    let trendDetail = 'Waiting for pattern data...';
+    let trendEmoji = '📊';
+    let borderColor = 'border-gray-300';
+
+    if (structurePattern) {
+        if (structurePattern.name.includes('Higher')) {
+            trendLabel = '⬆️ UPTREND (HH/HL)';
+            trendDetail = structurePattern.description;
+            trendEmoji = '📈';
+            borderColor = 'border-green-500';
+        } else if (structurePattern.name.includes('Lower')) {
+            trendLabel = '⬇️ DOWNTREND (LH/LL)';
+            trendDetail = structurePattern.description;
+            trendEmoji = '📉';
+            borderColor = 'border-red-500';
+        } else if (structurePattern.name.includes('Expanding')) {
+            trendLabel = '⇔ EXPANDING RANGE';
+            trendDetail = structurePattern.description;
+            trendEmoji = '📊';
+            borderColor = 'border-yellow-500';
+        } else {
+            trendLabel = structurePattern.name;
+            trendDetail = structurePattern.description;
+        }
+    } else if (patternCount > 0) {
+        // Infer from reversal/continuation patterns
+        const continuationPatterns = patterns.filter(p => p.type === 'continuation');
+        const reversalPatterns = patterns.filter(p => p.type === 'reversal');
+        if (continuationPatterns.length > reversalPatterns.length) {
+            trendLabel = '➡️ TREND CONTINUING';
+            trendDetail = `${continuationPatterns.length} continuation pattern(s) detected`;
+            trendEmoji = '➡️';
+            borderColor = 'border-blue-500';
+        } else if (reversalPatterns.length > 0) {
+            trendLabel = '🔄 REVERSAL SIGNALS';
+            trendDetail = `${reversalPatterns.length} reversal pattern(s) detected`;
+            trendEmoji = '🔄';
+            borderColor = 'border-orange-500';
+        }
+    }
+
+    // S/R proximity
+    let srStatus = '--';
+    if (sr && currentPrice) {
+        const nearestSupport = sr.nearest_support;
+        const nearestResistance = sr.nearest_resistance;
+        if (nearestSupport && nearestResistance) {
+            const distToSupport = currentPrice - nearestSupport;
+            const distToResistance = nearestResistance - currentPrice;
+            const range = nearestResistance - nearestSupport;
+            const posInRange = range > 0 ? ((currentPrice - nearestSupport) / range * 100).toFixed(0) : 50;
+            if (distToSupport < distToResistance * 0.3) {
+                srStatus = `🟢 Near Support (${posInRange}%)`;
+            } else if (distToResistance < distToSupport * 0.3) {
+                srStatus = `🔴 Near Resistance (${posInRange}%)`;
+            } else {
+                srStatus = `Mid-range (${posInRange}%)`;
+            }
+        }
+    }
+
+    // Update DOM
+    banner.className = `bg-white rounded-xl shadow-sm p-4 border-l-4 ${borderColor}`;
+    document.getElementById('chart-trend-emoji').textContent = trendEmoji;
+    document.getElementById('chart-trend-label').textContent = trendLabel;
+    document.getElementById('chart-trend-detail').textContent = trendDetail;
+    document.getElementById('chart-pattern-count').textContent = patternCount;
+    const patternBiasEl = document.getElementById('chart-pattern-bias');
+    patternBiasEl.textContent = patternBias;
+    patternBiasEl.className = `text-lg font-black ${patternBiasColor}`;
+    document.getElementById('chart-sr-status').textContent = srStatus;
+}
+
+// ── Sidebar Badge Updates ─────────────────────────────────────
+
+function _updateSidebarBadges(data) {
+    // Called from loadSectionProbability with the probability data
+    const sidebarBias = document.getElementById('sidebar-bias');
+    const sidebarConf = document.getElementById('sidebar-conf');
+    if (sidebarBias && data.overall_bias) {
+        const biasEmojis = { bullish: '🐂', bearish: '🐻', neutral: '⚖️' };
+        const biasColors = { bullish: 'text-green-600', bearish: 'text-red-600', neutral: 'text-gray-600' };
+        sidebarBias.textContent = biasEmojis[data.overall_bias] || '--';
+        sidebarBias.className = `font-bold ${biasColors[data.overall_bias] || ''}`;
+    }
+    if (sidebarConf && data.confidence) {
+        sidebarConf.textContent = data.confidence.toUpperCase();
+        const confColors = { high: 'text-green-600', medium: 'text-yellow-600', low: 'text-red-500' };
+        sidebarConf.className = `font-bold ${confColors[data.confidence] || ''}`;
+    }
+    // Update header change
+    const headerChange = document.getElementById('header-change');
+    if (headerChange && data.day_change != null) {
+        const sign = data.day_change >= 0 ? '+' : '';
+        headerChange.textContent = `${sign}${data.day_change} (${sign}${data.day_change_pct}%)`;
+        headerChange.className = `text-sm font-semibold ${data.day_change >= 0 ? 'text-green-300' : 'text-red-300'}`;
+    }
 }
 
 
