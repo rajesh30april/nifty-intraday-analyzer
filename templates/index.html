@@ -90,6 +90,24 @@
         <!-- ==================== DASHBOARD ==================== -->
         <div id="dashboard" class="hidden space-y-6">
 
+            <!-- Progress Bar (shown during loading) -->
+            <div id="progress-container" class="hidden bg-white rounded-xl shadow-md p-4 slide-in border border-gray-200">
+                <div class="flex justify-between items-center mb-2">
+                    <div class="flex items-center gap-2">
+                        <div class="inline-block animate-spin rounded-full h-4 w-4 border-2 border-[#0053e2] border-t-transparent"></div>
+                        <span id="progress-label" class="text-sm font-bold text-gray-700">Loading analysis...</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span id="progress-pct" class="text-xl font-black text-[#0053e2]">0%</span>
+                        <span id="progress-eta" class="text-xs text-gray-400"></span>
+                    </div>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                    <div id="progress-bar" class="h-3 rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-[#0053e2] to-blue-400" style="width: 0%"></div>
+                </div>
+                <div id="progress-sections" class="flex gap-3 mt-3 text-xs"></div>
+            </div>
+
             <!-- ====== SECTION 1: Probability ====== -->
             <div id="section-probability">
                 <div class="section-spinner hidden text-center py-4">
@@ -415,9 +433,9 @@
         </div><!-- /dashboard -->
     </main>
 
-    <script src="/static/dashboard.js"></script>
-    <script src="/static/charts.js"></script>
-    <script src="/static/backtest.js"></script>
+    <script src="/static/dashboard.js?v=2"></script>
+    <script src="/static/charts.js?v=2"></script>
+    <script src="/static/backtest.js?v=2"></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             await checkStatus();
