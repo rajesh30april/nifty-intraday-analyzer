@@ -526,3 +526,67 @@ async def auto_trader_evaluate():
         return {"success": True, **get_trader_status()}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# ── Backtest API ────────────────────────────────────────────────
+
+@app.post("/api/backtest")
+async def run_backtest_api(
+    period: str = "60d",
+    sl_points: float = 30.0,
+    trailing_sl: float = 15.0,
+    rr_ratio: float = 2.0,
+    max_trades: int = 3,
+):
+    """Run a backtest with given parameters."""
+    from backtester import run_backtest, BacktestResult
+    import dataclasses
+
+    try:
+        result = run_backtest(
+            period=period,
+            interval="5m",
+            sl_points=sl_points,
+            trailing_sl=trailing_sl,
+            rr_ratio=rr_ratio,
+            max_trades_per_day=max_trades,
+        )
+
+        # Build equity curve from cumulative P&L
+        equity_curve = []
+        cumulative = 0.0
+        for t in result.trades:
+            cumulative += t.pnl_points
+            equity_curve.append({
+                "date": t.date,
+                "time": t.exit_time,
+                "cumulative": round(cumulative, 2),
+            })
+
+        return {
+            "success": True,
+            "total_trades": result.total_trades,
+            "winners": result.winners,
+            "losers": result.losers,
+            "win_rate": result.win_rate,
+            "total_pnl_points": result.total_pnl_points,
+            "total_pnl_rupees": result.total_pnl_rupees,
+            "max_win": result.max_win,
+            "max_loss": result.max_loss,
+            "avg_win": result.avg_win,
+            "avg_loss": result.avg_loss,
+            "profit_factor": result.profit_factor,
+            "max_drawdown": result.max_drawdown,
+            "sharpe_approx": result.sharpe_approx,
+            "days_tested": result.days_tested,
+            "data_source": result.data_source,
+            "period": result.period,
+            "daily_pnl": result.daily_pnl,
+            "equity_curve": equity_curve,
+            "trades": [
+                dataclasses.asdict(t) for t in result.trades
+            ],
+        }
+    except Exception as e:
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
