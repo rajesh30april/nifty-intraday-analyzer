@@ -848,6 +848,16 @@ async def auto_trader_evaluate():
 
 # ── Backtest API ────────────────────────────────────────────────
 
+# ── Strategy Registry API ──────────────────────────────────────
+
+@app.get("/api/strategies")
+async def list_strategies():
+    """Return all available strategies for the backtest dropdown."""
+    import strategies.loader  # noqa: F401
+    from strategies.registry import to_json
+    return {"success": True, "strategies": to_json()}
+
+
 @app.post("/api/backtest")
 async def run_backtest_api(
     period: str = "60d",
@@ -855,8 +865,9 @@ async def run_backtest_api(
     trailing_sl: float = 15.0,
     rr_ratio: float = 2.0,
     max_trades: int = 3,
+    strategy: str = "smart_router",
 ):
-    """Run a backtest with given parameters."""
+    """Run a backtest with given parameters and strategy."""
     from backtester import run_backtest, BacktestResult
     import dataclasses
 
@@ -868,6 +879,7 @@ async def run_backtest_api(
             trailing_sl=trailing_sl,
             rr_ratio=rr_ratio,
             max_trades_per_day=max_trades,
+            strategy_id=strategy,
         )
 
         # Build equity curve from cumulative P&L

@@ -17,6 +17,12 @@
         .live-dot { animation: live-pulse 1.5s ease-in-out infinite; }
         .tf-btn { color: #6b7280; cursor: pointer; }
         .tf-btn-active { background: #0053e2; color: white; }
+.learn-cat-active { background: #0053e2 !important; color: white !important; }
+.learn-card { transition: all 0.2s; }
+.learn-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.difficulty-beginner { background: #dcfce7; color: #166534; }
+.difficulty-intermediate { background: #fef3c7; color: #92400e; }
+.difficulty-advanced { background: #fce7f3; color: #9d174d; }
         /* Sidebar */
         .sidebar { width: 220px; min-height: calc(100vh - 56px); transition: width 0.2s; }
         .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; cursor: pointer;
@@ -94,6 +100,9 @@
                 </div>
                 <div class="sidebar-item" data-page="backtester" onclick="switchPage('backtester')">
                     <span>🔬</span><span>Backtester</span>
+                </div>
+                <div class="sidebar-item" data-page="learn" onclick="switchPage('learn')">
+                    <span>📚</span><span>Learn</span>
                 </div>
             </div>
             <!-- Sidebar footer: quick stats -->
@@ -419,6 +428,13 @@
                         <p class="text-purple-200 text-xs">60 days • 5m candles</p>
                     </div>
                     <div class="p-4 bg-gray-50 border-b">
+                        <div class="mb-3">
+                            <label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-strategy">Strategy</label>
+                            <select id="bt-strategy" class="w-full border rounded-lg px-3 py-2 text-sm bg-white font-medium" aria-label="Select strategy">
+                                <option value="smart_router">🧠 Smart Router (Auto)</option>
+                            </select>
+                            <p id="bt-strategy-desc" class="text-xs text-gray-400 mt-1">Auto-detects market regime and picks the best strategy.</p>
+                        </div>
                         <div class="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
                             <div><label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-period">Period</label><select id="bt-period" class="w-full border rounded-lg px-2 py-1.5 text-xs bg-white"><option value="5d">5 Days</option><option value="30d">30 Days</option><option value="60d" selected>60 Days</option></select></div>
                             <div><label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-sl">SL (pts)</label><input id="bt-sl" type="number" value="30" min="5" max="100" step="5" class="w-full border rounded-lg px-2 py-1.5 text-xs"></div>
@@ -461,6 +477,31 @@
                 </div>
             </div><!-- /page-backtester -->
 
+            <!-- ====== PAGE: Learn Strategies ====== -->
+            <div id="page-learn" class="page-section">
+                <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <div class="px-4 py-3 bg-gradient-to-r from-indigo-700 to-purple-700 text-white">
+                        <h3 class="text-sm font-bold">📚 Strategy Library</h3>
+                        <p class="text-indigo-200 text-xs">Learn every strategy with examples and visuals</p>
+                    </div>
+                    <!-- Category filter tabs -->
+                    <div class="px-4 py-2 bg-gray-50 border-b flex gap-2 flex-wrap">
+                        <button class="learn-cat-btn learn-cat-active text-xs px-3 py-1 rounded-full" data-cat="all" onclick="filterStrategies('all')">All</button>
+                        <button class="learn-cat-btn text-xs px-3 py-1 rounded-full bg-gray-200 text-gray-600" data-cat="trend" onclick="filterStrategies('trend')">🏄 Trend</button>
+                        <button class="learn-cat-btn text-xs px-3 py-1 rounded-full bg-gray-200 text-gray-600" data-cat="reversal" onclick="filterStrategies('reversal')">🔄 Reversal</button>
+                        <button class="learn-cat-btn text-xs px-3 py-1 rounded-full bg-gray-200 text-gray-600" data-cat="breakout" onclick="filterStrategies('breakout')">🚀 Breakout</button>
+                        <button class="learn-cat-btn text-xs px-3 py-1 rounded-full bg-gray-200 text-gray-600" data-cat="momentum" onclick="filterStrategies('momentum')">📈 Momentum</button>
+                        <button class="learn-cat-btn text-xs px-3 py-1 rounded-full bg-gray-200 text-gray-600" data-cat="adaptive" onclick="filterStrategies('adaptive')">🧠 Adaptive</button>
+                    </div>
+                    <div id="learn-strategies-container" class="p-4 space-y-4">
+                        <div class="text-center py-8 text-gray-400">
+                            <div class="animate-spin inline-block h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full"></div>
+                            <p class="mt-2 text-sm">Loading strategies...</p>
+                        </div>
+                    </div>
+                </div>
+            </div><!-- /page-learn -->
+
             <!-- Disclaimer -->
             <div class="text-center text-xs text-gray-400 py-3">
                 <p>⚠️ Educational only. Not financial advice. Manage your risk!</p>
@@ -474,6 +515,7 @@
     <script src="/static/charts.js?v=3"></script>
     <script src="/static/auto-trader.js?v=3"></script>
     <script src="/static/backtest.js?v=3"></script>
+    <script src="/static/learn.js?v=3"></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             await checkStatus();

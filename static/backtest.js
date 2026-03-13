@@ -29,10 +29,11 @@ async function runBacktest() {
     const trailingSl = document.getElementById('bt-trail').value;
     const rrRatio = document.getElementById('bt-rr').value;
     const maxTrades = document.getElementById('bt-max-trades').value;
+    const strategy = document.getElementById('bt-strategy').value;
 
     const params = new URLSearchParams({
         period, sl_points: slPoints, trailing_sl: trailingSl,
-        rr_ratio: rrRatio, max_trades: maxTrades,
+        rr_ratio: rrRatio, max_trades: maxTrades, strategy,
     });
 
     try {

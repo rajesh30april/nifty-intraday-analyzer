@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from data_fetcher import fetch_intraday_data
 from strategy import evaluate_vwap_breakout, Direction
 from strategy_router import route_strategy
+import strategies.loader  # noqa: F401 — ensure all strategies registered
+from strategies.registry import get as get_strategy
 
 
 # ── Configuration ──────────────────────────────────────────────
@@ -80,6 +82,7 @@ def run_backtest(
     rr_ratio: float = DEFAULT_RR_RATIO,
     max_trades_per_day: int = 3,
     use_router: bool = True,
+    strategy_id: str = "smart_router",
 ) -> BacktestResult:
     """Run backtest on historical data.
 
@@ -119,6 +122,7 @@ def run_backtest(
             rr_ratio=rr_ratio,
             max_trades=max_trades_per_day,
             use_router=use_router,
+            strategy_id=strategy_id,
         )
 
     # Calculate summary stats
@@ -136,6 +140,7 @@ def _backtest_day(
     rr_ratio: float,
     max_trades: int,
     use_router: bool = True,
+    strategy_id: str = "smart_router",
 ):
     """Backtest a single trading day."""
     trades_today = 0
@@ -250,8 +255,11 @@ def _backtest_day(
         current_ts = df.index[i]
         lookback_df = full_df[full_df.index <= current_ts]
 
-        # Smart router: picks best strategy based on market regime
-        if use_router:
+        # Use specified strategy from registry
+        strat_info = get_strategy(strategy_id)
+        if strat_info:
+            signal = strat_info.evaluate(lookback_df)
+        elif use_router:
             router_result = route_strategy(lookback_df)
             signal = router_result.signal
         else:
