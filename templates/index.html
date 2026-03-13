@@ -37,36 +37,18 @@
                 </button>
             </div>
         </div>
-
         <!-- Status Bar -->
         <div class="bg-gray-900 text-white px-6 py-2 flex items-center justify-between text-sm">
             <div class="flex items-center gap-3">
-                <span id="live-badge" class="flex items-center gap-1">
-                    🟡 Click a refresh button to load data
-                </span>
+                <span id="live-badge" class="flex items-center gap-1">🟡 Click a refresh button to load data</span>
             </div>
             <div class="flex items-center gap-2">
-                <button onclick="loadAnalysis()" title="Load all sections"
-                        class="text-xs bg-[#0053e2] hover:bg-blue-700 px-3 py-1 rounded transition font-bold">
-                    ⚡ Refresh All
-                </button>
+                <button onclick="loadAnalysis()" title="Load all sections" class="text-xs bg-[#0053e2] hover:bg-blue-700 px-3 py-1 rounded transition font-bold">⚡ Refresh All</button>
                 <span class="text-gray-600">|</span>
-                <button onclick="loadSectionProbability()" title="Refresh probability analysis"
-                        class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">
-                    🎯 Probability
-                </button>
-                <button onclick="loadSectionTrendHealth()" title="Is trend continuing or reversing?"
-                        class="text-xs bg-emerald-700 hover:bg-emerald-600 px-3 py-1 rounded transition">
-                    🦠 Trend Health
-                </button>
-                <button onclick="loadSectionChart()" title="Refresh chart data"
-                        class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">
-                    📊 Charts
-                </button>
-                <button onclick="loadSectionTradeSignal()" title="Refresh trade signal"
-                        class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">
-                    🎯 Trade Signal
-                </button>
+                <button onclick="loadSectionProbability()" title="Refresh probability" class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">🎯 Probability</button>
+                <button onclick="loadSectionTrendHealth()" title="Trend health" class="text-xs bg-emerald-700 hover:bg-emerald-600 px-3 py-1 rounded transition">🦠 Trend Health</button>
+                <button onclick="loadSectionChart()" title="Refresh charts" class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">📊 Charts</button>
+                <button onclick="loadSectionTradeSignal()" title="Refresh trade signal" class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">🚦 Trade Signal</button>
             </div>
         </div>
     </header>
@@ -79,20 +61,16 @@
                 <h3 class="text-lg font-bold">🔑 Login Required</h3>
                 <p class="text-orange-100 text-sm">Connect your Zerodha account to access live market data and analysis.</p>
             </div>
-            <a href="/login" class="bg-white text-orange-600 px-6 py-2 rounded-lg font-bold hover:bg-orange-50 transition">
-                🔑 Login with Zerodha
-            </a>
+            <a href="/login" class="bg-white text-orange-600 px-6 py-2 rounded-lg font-bold hover:bg-orange-50 transition">🔑 Login with Zerodha</a>
         </div>
 
-        <!-- Login Required Overlay (shown when not authenticated) -->
+        <!-- Login Required Overlay -->
         <div id="login-required-overlay" class="hidden text-center py-20">
             <div class="max-w-md mx-auto">
                 <p class="text-6xl mb-4">🔒</p>
                 <h2 class="text-2xl font-bold text-gray-800 mb-2">Connect Zerodha to Start</h2>
                 <p class="text-gray-500 mb-6">This app requires a live Zerodha connection for real-time market data.</p>
-                <a href="/login" class="bg-[#0053e2] text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 transition text-lg">
-                    🔑 Login with Zerodha
-                </a>
+                <a href="/login" class="bg-[#0053e2] text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 transition text-lg">🔑 Login with Zerodha</a>
             </div>
         </div>
 
@@ -109,165 +87,241 @@
             <button onclick="loadAnalysis()" class="mt-4 bg-[#0053e2] text-white px-6 py-2 rounded-lg">Try Again</button>
         </div>
 
-        <!-- Dashboard -->
+        <!-- ==================== DASHBOARD ==================== -->
         <div id="dashboard" class="hidden space-y-6">
 
-            <!-- ========= SECTION: Price + Probability ========= -->
+            <!-- ====== SECTION 1: Probability ====== -->
             <div id="section-probability">
                 <div class="section-spinner hidden text-center py-4">
                     <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-[#0053e2] border-t-transparent"></div>
                     <span class="text-sm text-gray-500 ml-2">Loading probability...</span>
                 </div>
+                <div class="section-content space-y-4">
+                    <!-- Price + Probability + Bias -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 slide-in">
+                        <div class="bg-white rounded-xl shadow-md p-5 border-l-4 border-[#0053e2]">
+                            <p class="text-sm text-gray-500 uppercase tracking-wide">Current Price</p>
+                            <p id="current-price" class="text-3xl font-bold text-gray-800">--</p>
+                            <p id="day-change" class="text-sm font-semibold">--</p>
+                            <p id="live-price-time" class="text-xs text-gray-400 mt-1"></p>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-md p-5 border-l-4 border-[#ffc220] col-span-2">
+                            <p class="text-sm text-gray-500 uppercase tracking-wide mb-2">Combined MTF Probability</p>
+                            <div class="flex justify-between text-sm font-bold mb-1">
+                                <span class="text-green-600">🐂 Bullish: <span id="bull-pct">--</span>%</span>
+                                <span class="text-red-600">🐻 Bearish: <span id="bear-pct">--</span>%</span>
+                            </div>
+                            <div class="w-full bg-red-200 rounded-full h-5 overflow-hidden">
+                                <div id="prob-bar" class="bg-green-500 h-5 rounded-full transition-all duration-1000 ease-out" style="width: 50%"></div>
+                            </div>
+                            <p class="text-xs text-gray-400 mt-1">Weighted: 15m (50%) + 5m (30%) + 1m (20%)</p>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-md p-5 glow-blue">
+                            <p class="text-sm text-gray-500 uppercase tracking-wide">Overall Bias</p>
+                            <p id="overall-bias" class="text-2xl font-black">--</p>
+                            <p class="text-sm text-gray-500">Confidence: <span id="confidence" class="font-bold">--</span></p>
+                            <p class="text-sm text-gray-500">Confluence: <span id="confluence" class="font-bold">--</span></p>
+                        </div>
+                    </div>
+                    <!-- Account Capital -->
+                    <div id="capital-panel" class="hidden bg-white rounded-xl shadow-md p-5 slide-in border-l-4 border-[#ffc220]">
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="text-lg font-bold text-gray-800">💰 Account Capital</h3>
+                            <button onclick="loadMargins()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1 rounded transition">🔄 Refresh</button>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                            <div class="bg-gray-50 rounded-lg p-3 text-center"><div class="text-xs text-gray-500 uppercase">Opening Balance</div><div id="cap-opening" class="text-xl font-bold text-gray-800">--</div></div>
+                            <div class="bg-gray-50 rounded-lg p-3 text-center"><div class="text-xs text-gray-500 uppercase">Available Cash</div><div id="cap-cash" class="text-xl font-bold text-green-600">--</div></div>
+                            <div class="bg-gray-50 rounded-lg p-3 text-center"><div class="text-xs text-gray-500 uppercase">Available Margin</div><div id="cap-margin" class="text-xl font-bold text-[#0053e2]">--</div></div>
+                            <div class="bg-gray-50 rounded-lg p-3 text-center"><div class="text-xs text-gray-500 uppercase">Used Margin</div><div id="cap-used" class="text-xl font-bold text-red-600">--</div></div>
+                            <div class="bg-gray-50 rounded-lg p-3 text-center"><div class="text-xs text-gray-500 uppercase">Collateral</div><div id="cap-collateral" class="text-xl font-bold text-gray-600">--</div></div>
+                        </div>
+                    </div>
+                    <!-- MTF Breakdown -->
+                    <div class="bg-white rounded-xl shadow-md p-5 slide-in">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">🔬 Timeframe Breakdown</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="tf-breakdown"></div>
+                    </div>
+                    <!-- Recommendation -->
+                    <div id="recommendation-card" class="rounded-xl shadow-md p-5 slide-in">
+                        <h3 class="text-lg font-bold mb-2">🎯 MTF Recommendation</h3>
+                        <p id="recommendation" class="text-base"></p>
+                    </div>
+                    <!-- ORB -->
+                    <div class="bg-white rounded-xl shadow-md p-5 slide-in">
+                        <h3 class="text-lg font-bold text-gray-800 mb-2">🎯 Opening Range Breakout (15 min)</h3>
+                        <div class="flex gap-6 text-sm">
+                            <span>ORB High: <strong id="orb-high" class="text-green-600">--</strong></span>
+                            <span>ORB Low: <strong id="orb-low" class="text-red-600">--</strong></span>
+                            <span>Status: <strong id="orb-status">--</strong></span>
+                        </div>
+                    </div>
+                    <!-- Signals Table -->
+                    <div class="bg-white rounded-xl shadow-md overflow-hidden slide-in">
+                        <div class="px-5 py-4 bg-gray-800 text-white">
+                            <h3 class="text-lg font-bold">🛡️ Signal Breakdown (5-min candles)</h3>
+                            <p class="text-gray-300 text-sm">Detailed indicators from the 5-minute timeframe</p>
+                        </div>
+                        <table class="w-full text-left" aria-label="Technical signal breakdown">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-3 text-sm font-semibold text-gray-600">Indicator</th>
+                                    <th class="px-4 py-3 text-sm font-semibold text-gray-600">Value</th>
+                                    <th class="px-4 py-3 text-sm font-semibold text-gray-600">Bias</th>
+                                    <th class="px-4 py-3 text-sm font-semibold text-gray-600">Strength</th>
+                                    <th class="px-4 py-3 text-sm font-semibold text-gray-600">Insight</th>
+                                </tr>
+                            </thead>
+                            <tbody id="signals-body">
+                                <tr><td colspan="5" class="text-center py-8 text-gray-400">Loading signals...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Insights -->
+                    <div class="bg-gradient-to-r from-[#0053e2] to-blue-700 text-white rounded-xl shadow-md p-6 slide-in">
+                        <h3 class="text-lg font-bold mb-3">🧠 Puppy's Intraday Insights</h3>
+                        <div id="insights" class="space-y-2 text-blue-100"><p>Click 🔄 Refresh to load</p></div>
+                    </div>
+                </div>
+            </div><!-- /section-probability -->
+
+            <!-- ====== SECTION 2: Trend Health ====== -->
+            <div id="section-trend-health">
+                <div class="section-spinner hidden text-center py-4">
+                    <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-emerald-600 border-t-transparent"></div>
+                    <span class="text-sm text-gray-500 ml-2">Analyzing trend health...</span>
+                </div>
                 <div class="section-content">
-
-            <!-- Top Row: Price + Combined Probability + Bias -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 slide-in">
-                <div class="bg-white rounded-xl shadow-md p-5 border-l-4 border-[#0053e2]">
-                    <p class="text-sm text-gray-500 uppercase tracking-wide">Current Price</p>
-                    <p id="current-price" class="text-3xl font-bold text-gray-800">--</p>
-                    <p id="day-change" class="text-sm font-semibold">--</p>
-                    <p id="live-price-time" class="text-xs text-gray-400 mt-1"></p>
-                </div>
-
-                <div class="bg-white rounded-xl shadow-md p-5 border-l-4 border-[#ffc220] col-span-2">
-                    <p class="text-sm text-gray-500 uppercase tracking-wide mb-2">Combined MTF Probability</p>
-                    <div class="flex justify-between text-sm font-bold mb-1">
-                        <span class="text-green-600">🐂 Bullish: <span id="bull-pct">--</span>%</span>
-                        <span class="text-red-600">🐻 Bearish: <span id="bear-pct">--</span>%</span>
-                    </div>
-                    <div class="w-full bg-red-200 rounded-full h-5 overflow-hidden">
-                        <div id="prob-bar" class="bg-green-500 h-5 rounded-full transition-all duration-1000 ease-out" style="width: 50%"></div>
-                    </div>
-                    <p class="text-xs text-gray-400 mt-1">Weighted: 15m (50%) + 5m (30%) + 1m (20%)</p>
-                </div>
-
-                <div class="bg-white rounded-xl shadow-md p-5 glow-blue">
-                    <p class="text-sm text-gray-500 uppercase tracking-wide">Overall Bias</p>
-                    <p id="overall-bias" class="text-2xl font-black">--</p>
-                    <p class="text-sm text-gray-500">Confidence: <span id="confidence" class="font-bold">--</span></p>
-                    <p class="text-sm text-gray-500">Confluence: <span id="confluence" class="font-bold">--</span></p>
-                </div>
-            </div>
-
-            <!-- Account Capital (Zerodha) -->
-            <div id="capital-panel" class="hidden bg-white rounded-xl shadow-md p-5 slide-in border-l-4 border-[#ffc220]">
-                <div class="flex justify-between items-center mb-3">
-                    <h3 class="text-lg font-bold text-gray-800">💰 Account Capital</h3>
-                    <button onclick="loadMargins()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1 rounded transition" aria-label="Refresh margins">
-                        🔄 Refresh
-                    </button>
-                </div>
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    <div class="bg-gray-50 rounded-lg p-3 text-center">
-                        <div class="text-xs text-gray-500 uppercase tracking-wide">Opening Balance</div>
-                        <div id="cap-opening" class="text-xl font-bold text-gray-800">--</div>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-3 text-center">
-                        <div class="text-xs text-gray-500 uppercase tracking-wide">Available Cash</div>
-                        <div id="cap-cash" class="text-xl font-bold text-green-600">--</div>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-3 text-center">
-                        <div class="text-xs text-gray-500 uppercase tracking-wide">Available Margin</div>
-                        <div id="cap-margin" class="text-xl font-bold text-[#0053e2]">--</div>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-3 text-center">
-                        <div class="text-xs text-gray-500 uppercase tracking-wide">Used Margin</div>
-                        <div id="cap-used" class="text-xl font-bold text-red-600">--</div>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-3 text-center">
-                        <div class="text-xs text-gray-500 uppercase tracking-wide">Collateral</div>
-                        <div id="cap-collateral" class="text-xl font-bold text-gray-600">--</div>
+                    <div id="trend-health-panel" class="bg-white rounded-xl shadow-md overflow-hidden slide-in border-2 border-gray-100">
+                        <div class="px-5 py-4 bg-gradient-to-r from-emerald-700 to-teal-700 text-white">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <h3 class="text-lg font-bold">🦠 Trend Health — Continue or Reverse?</h3>
+                                    <p id="th-summary" class="text-emerald-200 text-sm">Click Refresh to analyze</p>
+                                </div>
+                                <button onclick="loadSectionTrendHealth()" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded text-sm font-bold transition">🔄 Refresh</button>
+                            </div>
+                        </div>
+                        <div id="th-verdict-banner" class="px-5 py-4 bg-gray-50 border-b flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <span id="th-verdict-emoji" class="text-4xl">❓</span>
+                                <div>
+                                    <p id="th-verdict" class="text-2xl font-black text-gray-800">Loading...</p>
+                                    <p id="th-trend" class="text-sm text-gray-500">Current trend: --</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="flex gap-4">
+                                    <div class="text-center"><p class="text-xs text-gray-500">Continue</p><p id="th-continue-score" class="text-2xl font-black text-green-600">0</p></div>
+                                    <div class="text-center"><p class="text-xs text-gray-500">Reverse</p><p id="th-reverse-score" class="text-2xl font-black text-red-600">0</p></div>
+                                    <div class="text-center"><p class="text-xs text-gray-500">Total</p><p id="th-total" class="text-2xl font-black text-gray-600">0</p></div>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">Confidence: <span id="th-confidence" class="font-bold">--</span></p>
+                            </div>
+                        </div>
+                        <div id="th-signals" class="p-5 space-y-3">
+                            <p class="text-gray-400 text-center py-4">Click 🔄 Refresh to see trend signals</p>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </div><!-- /section-trend-health -->
 
-            <!-- MTF Breakdown -->
-            <div class="bg-white rounded-xl shadow-md p-5 slide-in">
-                <h3 class="text-lg font-bold text-gray-800 mb-4">🔬 Timeframe Breakdown</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="tf-breakdown"></div>
-            </div>
-
-            <!-- Recommendation -->
-            <div id="recommendation-card" class="rounded-xl shadow-md p-5 slide-in">
-                <h3 class="text-lg font-bold mb-2">🎯 MTF Recommendation</h3>
-                <p id="recommendation" class="text-base"></p>
-            </div>
-
-            <!-- ORB Card -->
-            <div class="bg-white rounded-xl shadow-md p-5 slide-in">
-                <h3 class="text-lg font-bold text-gray-800 mb-2">🎯 Opening Range Breakout (15 min)</h3>
-                <div class="flex gap-6 text-sm">
-                    <span>ORB High: <strong id="orb-high" class="text-green-600">--</strong></span>
-                    <span>ORB Low: <strong id="orb-low" class="text-red-600">--</strong></span>
-                    <span>Status: <strong id="orb-status">--</strong></span>
+            <!-- ====== SECTION 3: Charts + Patterns ====== -->
+            <div id="section-chart">
+                <div class="section-spinner hidden text-center py-4">
+                    <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-purple-600 border-t-transparent"></div>
+                    <span class="text-sm text-gray-500 ml-2">Loading charts...</span>
                 </div>
-            </div>
+                <div class="section-content space-y-6">
+                    <!-- Candlestick Chart -->
+                    <div class="bg-white rounded-xl shadow-md p-5 slide-in">
+                        <div class="flex justify-between items-center mb-3">
+                            <div class="flex items-center gap-4">
+                                <h3 class="text-lg font-bold text-gray-800">📊 Candlestick Chart — Patterns & S/R</h3>
+                                <div class="flex bg-gray-100 rounded-lg p-0.5" role="tablist" aria-label="Chart timeframe">
+                                    <button onclick="switchChartTimeframe('5m')" id="tf-btn-5m" class="px-3 py-1 text-sm font-bold rounded-md transition tf-btn tf-btn-active" role="tab" aria-selected="true">5m</button>
+                                    <button onclick="switchChartTimeframe('15m')" id="tf-btn-15m" class="px-3 py-1 text-sm font-bold rounded-md transition tf-btn" role="tab" aria-selected="false">15m</button>
+                                </div>
+                            </div>
+                            <div class="flex gap-2 text-xs">
+                                <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-green-500 inline-block"></span> Support</span>
+                                <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-red-500 inline-block"></span> Resistance</span>
+                                <span class="flex items-center gap-1"><span class="w-3 h-3 bg-purple-200 border border-purple-500 rounded-full inline-block"></span> Pattern</span>
+                            </div>
+                        </div>
+                        <div id="candlestickChart" style="height: 420px; width: 100%;"></div>
+                    </div>
+                    <!-- Volume -->
+                    <div class="bg-white rounded-xl shadow-md p-5 slide-in">
+                        <h3 class="text-lg font-bold text-gray-800 mb-3">📊 Volume Profile</h3>
+                        <div style="height: 200px;"><canvas id="volumeChart"></canvas></div>
+                    </div>
+                    <!-- Patterns + S/R Grid -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 slide-in">
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                            <div class="px-5 py-4 bg-purple-700 text-white">
+                                <h3 class="text-lg font-bold">🔍 Chart Patterns Detected</h3>
+                                <p class="text-purple-200 text-sm">Auto-detected from price action</p>
+                            </div>
+                            <div id="patterns-container" class="p-4 space-y-3">
+                                <p class="text-gray-400 text-center py-4">Scanning for patterns...</p>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                            <div class="px-5 py-4 bg-indigo-700 text-white">
+                                <h3 class="text-lg font-bold">📍 Support & Resistance Levels</h3>
+                                <p class="text-indigo-200 text-sm">Key price levels from peak/trough clustering</p>
+                            </div>
+                            <div id="sr-container" class="p-4">
+                                <p class="text-gray-400 text-center py-4">Calculating levels...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div><!-- /section-chart -->
 
-            <!-- Trade Signal & Reversal Probability -->
-                </div><!-- /.section-content -->
-            </div><!-- /#section-chart -->
-
-            <!-- ========= SECTION: Trade Signal ========= -->
+            <!-- ====== SECTION 4: Trade Signal ====== -->
             <div id="section-trade-signal">
                 <div class="section-spinner hidden text-center py-4">
                     <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-green-600 border-t-transparent"></div>
                     <span class="text-sm text-gray-500 ml-2">Loading trade signal...</span>
                 </div>
                 <div class="section-content">
-            <!-- Trade Signal Panel -->
-            <div id="trade-signal-panel" class="rounded-xl shadow-md p-5 slide-in bg-white border-2 border-gray-100">
-                <div class="flex justify-between items-start mb-3">
-                    <div>
-                        <h3 class="text-lg font-bold text-gray-800">🚦 Trade Signal</h3>
-                        <p id="ts-trend" class="text-sm text-gray-500">Loading...</p>
-                    </div>
-                    <div class="text-right">
-                        <span id="ts-action" class="text-2xl font-black px-4 py-1 rounded-lg">--</span>
+                    <div id="trade-signal-panel" class="rounded-xl shadow-md p-5 slide-in bg-white border-2 border-gray-100">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-800">🚦 Trade Signal</h3>
+                                <p id="ts-trend" class="text-sm text-gray-500">Loading...</p>
+                            </div>
+                            <div class="text-right">
+                                <span id="ts-action" class="text-2xl font-black px-4 py-1 rounded-lg">--</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-4 gap-3 mb-4">
+                            <div class="bg-gray-50 rounded-lg p-3 text-center"><div class="text-xs text-gray-500">Entry</div><div id="ts-entry" class="text-lg font-bold text-gray-800">--</div></div>
+                            <div class="bg-gray-50 rounded-lg p-3 text-center"><div class="text-xs text-gray-500">Stop Loss</div><div id="ts-sl" class="text-lg font-bold text-red-600">--</div></div>
+                            <div class="bg-gray-50 rounded-lg p-3 text-center"><div class="text-xs text-gray-500">Target</div><div id="ts-target" class="text-lg font-bold text-green-600">--</div></div>
+                            <div class="bg-gray-50 rounded-lg p-3 text-center"><div class="text-xs text-gray-500">Risk:Reward</div><div id="ts-rr" class="text-lg font-bold text-blue-600">--</div></div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-sm font-semibold text-gray-700">⚠️ Reversal Probability</span>
+                                <span id="ts-rev-pct" class="text-xl font-black">0%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
+                                <div id="ts-rev-bar" class="h-full rounded-full transition-all duration-700" style="width: 0%; background: linear-gradient(90deg, #2a8703, #ffc220, #ea1100);"></div>
+                            </div>
+                            <p id="ts-reasoning" class="text-xs text-gray-500 mt-1"></p>
+                        </div>
+                        <details class="text-sm">
+                            <summary class="cursor-pointer text-blue-600 hover:text-blue-800 font-medium">View reversal signals breakdown</summary>
+                            <div id="ts-rev-signals" class="mt-2 space-y-1"></div>
+                        </details>
                     </div>
                 </div>
-                <!-- Entry / SL / Target -->
-                <div class="grid grid-cols-4 gap-3 mb-4">
-                    <div class="bg-gray-50 rounded-lg p-3 text-center">
-                        <div class="text-xs text-gray-500">Entry</div>
-                        <div id="ts-entry" class="text-lg font-bold text-gray-800">--</div>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-3 text-center">
-                        <div class="text-xs text-gray-500">Stop Loss</div>
-                        <div id="ts-sl" class="text-lg font-bold text-red-600">--</div>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-3 text-center">
-                        <div class="text-xs text-gray-500">Target</div>
-                        <div id="ts-target" class="text-lg font-bold text-green-600">--</div>
-                    </div>
-                    <div class="bg-gray-50 rounded-lg p-3 text-center">
-                        <div class="text-xs text-gray-500">Risk:Reward</div>
-                        <div id="ts-rr" class="text-lg font-bold text-blue-600">--</div>
-                    </div>
-                </div>
-                <!-- Reversal Probability Meter -->
-                <div class="mb-3">
-                    <div class="flex justify-between items-center mb-1">
-                        <span class="text-sm font-semibold text-gray-700">⚠️ Reversal Probability</span>
-                        <span id="ts-rev-pct" class="text-xl font-black">0%</span>
-                    </div>
-                    <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-                        <div id="ts-rev-bar" class="h-full rounded-full transition-all duration-700"
-                             style="width: 0%; background: linear-gradient(90deg, #2a8703, #ffc220, #ea1100);"></div>
-                    </div>
-                    <p id="ts-reasoning" class="text-xs text-gray-500 mt-1"></p>
-                </div>
-                <!-- Reversal Signals Breakdown -->
-                <details class="text-sm">
-                    <summary class="cursor-pointer text-blue-600 hover:text-blue-800 font-medium">View reversal signals breakdown</summary>
-                    <div id="ts-rev-signals" class="mt-2 space-y-1"></div>
-                </details>
-            </div>
+            </div><!-- /section-trade-signal -->
 
-            <!-- Auto-Trader -->
-                </div><!-- /.section-content -->
-            </div><!-- /#section-trade-signal -->
-
-            <!-- Auto-Trader Section -->
+            <!-- ====== Auto-Trader (no section wrapper) ====== -->
             <div id="auto-trader-panel" class="bg-gray-900 text-white rounded-xl shadow-md p-5 slide-in">
                 <div class="flex justify-between items-center mb-4">
                     <div>
@@ -278,45 +332,18 @@
                         </p>
                     </div>
                     <div class="flex gap-2">
-                        <button onclick="startAutoTrader()" id="at-start-btn"
-                                class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-bold text-sm transition">
-                            ▶ Start
-                        </button>
-                        <button onclick="stopAutoTrader()" id="at-stop-btn"
-                                class="bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded-lg font-bold text-sm transition">
-                            ⏹ Stop
-                        </button>
-                        <button onclick="killAutoTrader()" id="at-kill-btn"
-                                class="bg-red-700 hover:bg-red-600 px-3 py-2 rounded-lg font-bold text-sm transition"
-                                title="Emergency kill switch">
-                            🚨
-                        </button>
+                        <button onclick="startAutoTrader()" id="at-start-btn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-bold text-sm transition">▶ Start</button>
+                        <button onclick="stopAutoTrader()" id="at-stop-btn" class="bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded-lg font-bold text-sm transition">⏹ Stop</button>
+                        <button onclick="killAutoTrader()" id="at-kill-btn" class="bg-red-700 hover:bg-red-600 px-3 py-2 rounded-lg font-bold text-sm transition" title="Emergency kill switch">🚨</button>
                     </div>
                 </div>
-                <!-- Status Grid -->
                 <div class="grid grid-cols-5 gap-3 mb-3">
-                    <div class="bg-gray-800 rounded-lg p-2 text-center">
-                        <div class="text-xs text-gray-400">Status</div>
-                        <div id="at-status" class="text-sm font-bold text-yellow-400">⏸ Idle</div>
-                    </div>
-                    <div class="bg-gray-800 rounded-lg p-2 text-center">
-                        <div class="text-xs text-gray-400">Day P&L</div>
-                        <div id="at-pnl" class="text-sm font-bold">₹0</div>
-                    </div>
-                    <div class="bg-gray-800 rounded-lg p-2 text-center">
-                        <div class="text-xs text-gray-400">Orders</div>
-                        <div id="at-orders" class="text-sm font-bold">0/6</div>
-                    </div>
-                    <div class="bg-gray-800 rounded-lg p-2 text-center">
-                        <div class="text-xs text-gray-400">Active</div>
-                        <div id="at-active" class="text-sm font-bold text-gray-500">None</div>
-                    </div>
-                    <div class="bg-gray-800 rounded-lg p-2 text-center">
-                        <div class="text-xs text-gray-400">Auto-Exit</div>
-                        <div id="at-exit-time" class="text-sm font-bold">15:15</div>
-                    </div>
+                    <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-xs text-gray-400">Status</div><div id="at-status" class="text-sm font-bold text-yellow-400">⏸ Idle</div></div>
+                    <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-xs text-gray-400">Day P&L</div><div id="at-pnl" class="text-sm font-bold">₹0</div></div>
+                    <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-xs text-gray-400">Orders</div><div id="at-orders" class="text-sm font-bold">0/6</div></div>
+                    <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-xs text-gray-400">Active</div><div id="at-active" class="text-sm font-bold text-gray-500">None</div></div>
+                    <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-xs text-gray-400">Auto-Exit</div><div id="at-exit-time" class="text-sm font-bold">15:15</div></div>
                 </div>
-                <!-- Active Trade Detail -->
                 <div id="at-trade-detail" class="hidden bg-gray-800 rounded-lg p-3 mb-3">
                     <div class="grid grid-cols-5 gap-2 text-center text-sm">
                         <div><span class="text-gray-400 text-xs">Direction</span><br><strong id="at-dir">--</strong></div>
@@ -329,311 +356,50 @@
                 <div id="at-signal" class="text-xs text-gray-500"></div>
             </div>
 
-            <!-- Candlestick Chart with Patterns & S/R -->
-            <div class="bg-white rounded-xl shadow-md p-5 slide-in">
-                <div class="flex justify-between items-center mb-3">
-                    <div class="flex items-center gap-4">
-                        <h3 class="text-lg font-bold text-gray-800">📊 Candlestick Chart — Patterns & S/R</h3>
-                        <!-- Timeframe Selector -->
-                        <div class="flex bg-gray-100 rounded-lg p-0.5" role="tablist" aria-label="Chart timeframe">
-                            <button onclick="switchChartTimeframe('5m')" id="tf-btn-5m"
-                                    class="px-3 py-1 text-sm font-bold rounded-md transition tf-btn tf-btn-active"
-                                    role="tab" aria-selected="true">
-                                5m
-                            </button>
-                            <button onclick="switchChartTimeframe('15m')" id="tf-btn-15m"
-                                    class="px-3 py-1 text-sm font-bold rounded-md transition tf-btn"
-                                    role="tab" aria-selected="false">
-                                15m
-                            </button>
-                        </div>
-                    </div>
-                    <div class="flex gap-2 text-xs">
-                        <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-green-500 inline-block"></span> Support</span>
-                        <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-red-500 inline-block"></span> Resistance</span>
-                        <span class="flex items-center gap-1"><span class="w-3 h-3 bg-purple-200 border border-purple-500 rounded-full inline-block"></span> Pattern Pivot</span>
-                    </div>
-                </div>
-                <div id="candlestickChart" style="height: 420px; width: 100%;"></div>
-            </div>
-
-            <!-- Volume Chart -->
-            <div class="bg-white rounded-xl shadow-md p-5 slide-in">
-                <h3 class="text-lg font-bold text-gray-800 mb-3">📊 Volume Profile (5m)</h3>
-                <div style="height: 200px;"><canvas id="volumeChart"></canvas></div>
-            </div>
-
-            <!-- Chart Patterns & Support/Resistance -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 slide-in">
-                <!-- Chart Patterns -->
-                <div class="bg-white rounded-xl shadow-md overflow-hidden">
-                    <div class="px-5 py-4 bg-purple-700 text-white">
-                        <h3 class="text-lg font-bold">🔍 Chart Patterns Detected</h3>
-                        <p class="text-purple-200 text-sm">Auto-detected from price action</p>
-                    </div>
-                    <div id="patterns-container" class="p-4 space-y-3">
-                        <p class="text-gray-400 text-center py-4">Scanning for patterns...</p>
-                    </div>
-                </div>
-
-                <!-- Support & Resistance -->
-                <div class="bg-white rounded-xl shadow-md overflow-hidden">
-                    <div class="px-5 py-4 bg-indigo-700 text-white">
-                        <h3 class="text-lg font-bold">📍 Support & Resistance Levels</h3>
-                        <p class="text-indigo-200 text-sm">Key price levels from peak/trough clustering</p>
-                    </div>
-                    <div id="sr-container" class="p-4">
-                        <p class="text-gray-400 text-center py-4">Calculating levels...</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Signals Table (5m) -->
-            <div class="bg-white rounded-xl shadow-md overflow-hidden slide-in">
-                <div class="px-5 py-4 bg-gray-800 text-white">
-                    <h3 class="text-lg font-bold">🛡️ Signal Breakdown (5-min candles)</h3>
-                    <p class="text-gray-300 text-sm">Detailed indicators from the 5-minute timeframe</p>
-                </div>
-                <table class="w-full text-left" aria-label="Technical signal breakdown">
-                    <thead class="bg-gray-100">
-                        <tr>
-                            <th class="px-4 py-3 text-sm font-semibold text-gray-600">Indicator</th>
-                            <th class="px-4 py-3 text-sm font-semibold text-gray-600">Value</th>
-                            <th class="px-4 py-3 text-sm font-semibold text-gray-600">Bias</th>
-                            <th class="px-4 py-3 text-sm font-semibold text-gray-600">Strength</th>
-                            <th class="px-4 py-3 text-sm font-semibold text-gray-600">Insight</th>
-                        </tr>
-                    </thead>
-                    <tbody id="signals-body">
-                        <tr><td colspan="5" class="text-center py-8 text-gray-400">Loading signals...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Insights -->
-            <div class="bg-gradient-to-r from-[#0053e2] to-blue-700 text-white rounded-xl shadow-md p-6 slide-in">
-                <h3 class="text-lg font-bold mb-3">🧠 Puppy's Intraday Insights</h3>
-                <div id="insights" class="space-y-2 text-blue-100"><p>Click 🔄 Refresh to load</p></div>
-            </div>
-
-                </div><!-- /.section-content -->
-            </div><!-- /#section-probability -->
-
-            <!-- ========= SECTION: Trend Health (NEW!) ========= -->
-            <div id="section-trend-health">
-                <div class="section-spinner hidden text-center py-4">
-                    <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-emerald-600 border-t-transparent"></div>
-                    <span class="text-sm text-gray-500 ml-2">Analyzing trend health...</span>
-                </div>
-                <div class="section-content">
-
-            <!-- Trend Health Panel -->
-            <div id="trend-health-panel" class="bg-white rounded-xl shadow-md overflow-hidden slide-in border-2 border-gray-100">
-                <div class="px-5 py-4 bg-gradient-to-r from-emerald-700 to-teal-700 text-white">
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <h3 class="text-lg font-bold">🦠 Trend Health — Continue or Reverse?</h3>
-                            <p id="th-summary" class="text-emerald-200 text-sm">Click Refresh to analyze</p>
-                        </div>
-                        <button onclick="loadSectionTrendHealth()" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded text-sm font-bold transition">
-                            🔄 Refresh
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Verdict Banner -->
-                <div id="th-verdict-banner" class="px-5 py-4 bg-gray-50 border-b flex items-center justify-between">
-                    <div class="flex items-center gap-3">
-                        <span id="th-verdict-emoji" class="text-4xl">❓</span>
-                        <div>
-                            <p id="th-verdict" class="text-2xl font-black text-gray-800">Loading...</p>
-                            <p id="th-trend" class="text-sm text-gray-500">Current trend: --</p>
-                        </div>
-                    </div>
-                    <div class="text-right">
-                        <div class="flex gap-4">
-                            <div class="text-center">
-                                <p class="text-xs text-gray-500">Continue</p>
-                                <p id="th-continue-score" class="text-2xl font-black text-green-600">0</p>
-                            </div>
-                            <div class="text-center">
-                                <p class="text-xs text-gray-500">Reverse</p>
-                                <p id="th-reverse-score" class="text-2xl font-black text-red-600">0</p>
-                            </div>
-                            <div class="text-center">
-                                <p class="text-xs text-gray-500">Total</p>
-                                <p id="th-total" class="text-2xl font-black text-gray-600">0</p>
-                            </div>
-                        </div>
-                        <p class="text-xs text-gray-500 mt-1">Confidence: <span id="th-confidence" class="font-bold">--</span></p>
-                    </div>
-                </div>
-
-                <!-- Signal Checklist -->
-                <div id="th-signals" class="p-5 space-y-3">
-                    <p class="text-gray-400 text-center py-4">Click 🔄 Refresh to see trend signals</p>
-                </div>
-            </div>
-
-                </div><!-- /.section-content -->
-            </div><!-- /#section-trend-health -->
-
-            <!-- ========= SECTION: Charts + Patterns ========= -->
-            <div id="section-chart">
-                <div class="section-spinner hidden text-center py-4">
-                    <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-purple-600 border-t-transparent"></div>
-                    <span class="text-sm text-gray-500 ml-2">Loading charts...</span>
-                </div>
-                <div class="section-content space-y-6">
-
-            <!-- Backtest Panel -->
+            <!-- ====== Backtester (no section wrapper) ====== -->
             <div class="bg-white rounded-xl shadow-md overflow-hidden slide-in">
                 <div class="px-5 py-4 bg-gradient-to-r from-purple-700 to-indigo-700 text-white">
                     <h3 class="text-lg font-bold">🔬 Strategy Backtester</h3>
                     <p class="text-purple-200 text-sm">Test strategy on historical data (60 days • 5m candles)</p>
                 </div>
-
-                <!-- Settings Form -->
                 <div class="p-5 bg-gray-50 border-b">
                     <div class="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
-                        <div>
-                            <label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-period">Period</label>
-                            <select id="bt-period" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
-                                <option value="5d">5 Days</option>
-                                <option value="30d">30 Days</option>
-                                <option value="60d" selected>60 Days (Max)</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-sl">Stop Loss (pts)</label>
-                            <input id="bt-sl" type="number" value="30" min="5" max="100" step="5"
-                                   class="w-full border rounded-lg px-3 py-2 text-sm">
-                        </div>
-                        <div>
-                            <label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-trail">Trail SL (pts)</label>
-                            <input id="bt-trail" type="number" value="15" min="5" max="60" step="5"
-                                   class="w-full border rounded-lg px-3 py-2 text-sm">
-                        </div>
-                        <div>
-                            <label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-rr">Risk:Reward</label>
-                            <select id="bt-rr" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
-                                <option value="1.5">1:1.5</option>
-                                <option value="2" selected>1:2</option>
-                                <option value="2.5">1:2.5</option>
-                                <option value="3">1:3</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-max-trades">Max Trades/Day</label>
-                            <select id="bt-max-trades" class="w-full border rounded-lg px-3 py-2 text-sm bg-white">
-                                <option value="1">1</option>
-                                <option value="2">2</option>
-                                <option value="3" selected>3</option>
-                                <option value="5">5</option>
-                            </select>
-                        </div>
-                        <div>
-                            <button id="bt-run-btn" onclick="runBacktest()"
-                                    class="bg-[#0053e2] hover:bg-blue-700 px-6 py-2 rounded-lg font-bold text-sm text-white transition w-full">
-                                🚀 Run Backtest
-                            </button>
-                        </div>
+                        <div><label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-period">Period</label><select id="bt-period" class="w-full border rounded-lg px-3 py-2 text-sm bg-white"><option value="5d">5 Days</option><option value="30d">30 Days</option><option value="60d" selected>60 Days (Max)</option></select></div>
+                        <div><label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-sl">Stop Loss (pts)</label><input id="bt-sl" type="number" value="30" min="5" max="100" step="5" class="w-full border rounded-lg px-3 py-2 text-sm"></div>
+                        <div><label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-trail">Trail SL (pts)</label><input id="bt-trail" type="number" value="15" min="5" max="60" step="5" class="w-full border rounded-lg px-3 py-2 text-sm"></div>
+                        <div><label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-rr">Risk:Reward</label><select id="bt-rr" class="w-full border rounded-lg px-3 py-2 text-sm bg-white"><option value="1.5">1:1.5</option><option value="2" selected>1:2</option><option value="2.5">1:2.5</option><option value="3">1:3</option></select></div>
+                        <div><label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-max-trades">Max Trades/Day</label><select id="bt-max-trades" class="w-full border rounded-lg px-3 py-2 text-sm bg-white"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="5">5</option></select></div>
+                        <div><button id="bt-run-btn" onclick="runBacktest()" class="bg-[#0053e2] hover:bg-blue-700 px-6 py-2 rounded-lg font-bold text-sm text-white transition w-full">🚀 Run Backtest</button></div>
                     </div>
                 </div>
-
-                <!-- Loading -->
                 <div id="bt-loading" class="hidden text-center py-8">
                     <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-purple-600 border-t-transparent"></div>
-                    <p class="mt-2 text-gray-500 text-sm">Running backtest... fetching 60 days of data 🐶</p>
+                    <p class="mt-2 text-gray-500 text-sm">Running backtest... 🐶</p>
                 </div>
-
-                <!-- Results (hidden until run) -->
                 <div id="bt-results" class="hidden p-5 space-y-5">
-
-                    <!-- Summary Cards -->
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div class="bg-gray-50 rounded-lg p-3 text-center border">
-                            <div class="text-xs text-gray-500 uppercase">Win Rate</div>
-                            <div id="bt-winrate" class="text-2xl font-black">--</div>
-                            <div class="text-xs text-gray-400">
-                                <span id="bt-winners" class="text-green-600 font-bold">0</span>W /
-                                <span id="bt-losers" class="text-red-600 font-bold">0</span>L of
-                                <span id="bt-total-trades" class="font-bold">0</span>
-                            </div>
-                        </div>
-                        <div class="bg-gray-50 rounded-lg p-3 text-center border">
-                            <div class="text-xs text-gray-500 uppercase">Total P&L</div>
-                            <div id="bt-total-pnl" class="text-2xl font-black">--</div>
-                            <div id="bt-pnl-rupees" class="text-sm font-bold">₹0</div>
-                        </div>
-                        <div class="bg-gray-50 rounded-lg p-3 text-center border">
-                            <div class="text-xs text-gray-500 uppercase">Profit Factor</div>
-                            <div id="bt-profit-factor" class="text-2xl font-black">--</div>
-                            <div class="text-xs text-gray-400">Want > 1.5</div>
-                        </div>
-                        <div class="bg-gray-50 rounded-lg p-3 text-center border">
-                            <div class="text-xs text-gray-500 uppercase">Max Drawdown</div>
-                            <div id="bt-max-dd" class="text-xl font-black text-red-600">--</div>
-                            <div class="text-xs text-gray-400">Sharpe: <span id="bt-sharpe">--</span></div>
-                        </div>
+                        <div class="bg-gray-50 rounded-lg p-3 text-center border"><div class="text-xs text-gray-500 uppercase">Win Rate</div><div id="bt-winrate" class="text-2xl font-black">--</div><div class="text-xs text-gray-400"><span id="bt-winners" class="text-green-600 font-bold">0</span>W / <span id="bt-losers" class="text-red-600 font-bold">0</span>L of <span id="bt-total-trades" class="font-bold">0</span></div></div>
+                        <div class="bg-gray-50 rounded-lg p-3 text-center border"><div class="text-xs text-gray-500 uppercase">Total P&L</div><div id="bt-total-pnl" class="text-2xl font-black">--</div><div id="bt-pnl-rupees" class="text-sm font-bold">₹0</div></div>
+                        <div class="bg-gray-50 rounded-lg p-3 text-center border"><div class="text-xs text-gray-500 uppercase">Profit Factor</div><div id="bt-profit-factor" class="text-2xl font-black">--</div><div class="text-xs text-gray-400">Want > 1.5</div></div>
+                        <div class="bg-gray-50 rounded-lg p-3 text-center border"><div class="text-xs text-gray-500 uppercase">Max Drawdown</div><div id="bt-max-dd" class="text-xl font-black text-red-600">--</div><div class="text-xs text-gray-400">Sharpe: <span id="bt-sharpe">--</span></div></div>
                     </div>
-
-                    <!-- Secondary stats -->
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center text-sm">
-                        <div class="bg-green-50 rounded-lg p-2 border border-green-200">
-                            <span class="text-gray-500">Max Win:</span>
-                            <strong id="bt-max-win" class="text-green-700">--</strong>
-                        </div>
-                        <div class="bg-red-50 rounded-lg p-2 border border-red-200">
-                            <span class="text-gray-500">Max Loss:</span>
-                            <strong id="bt-max-loss" class="text-red-700">--</strong>
-                        </div>
-                        <div class="bg-green-50 rounded-lg p-2 border border-green-200">
-                            <span class="text-gray-500">Avg Win:</span>
-                            <strong id="bt-avg-win" class="text-green-700">--</strong>
-                        </div>
-                        <div class="bg-red-50 rounded-lg p-2 border border-red-200">
-                            <span class="text-gray-500">Avg Loss:</span>
-                            <strong id="bt-avg-loss" class="text-red-700">--</strong>
-                        </div>
+                        <div class="bg-green-50 rounded-lg p-2 border border-green-200"><span class="text-gray-500">Max Win:</span> <strong id="bt-max-win" class="text-green-700">--</strong></div>
+                        <div class="bg-red-50 rounded-lg p-2 border border-red-200"><span class="text-gray-500">Max Loss:</span> <strong id="bt-max-loss" class="text-red-700">--</strong></div>
+                        <div class="bg-green-50 rounded-lg p-2 border border-green-200"><span class="text-gray-500">Avg Win:</span> <strong id="bt-avg-win" class="text-green-700">--</strong></div>
+                        <div class="bg-red-50 rounded-lg p-2 border border-red-200"><span class="text-gray-500">Avg Loss:</span> <strong id="bt-avg-loss" class="text-red-700">--</strong></div>
                     </div>
-
-                    <div class="text-xs text-gray-400 text-center">
-                        <span id="bt-days">--</span> • Source: <span id="bt-source">--</span> • Lot size: 50
-                    </div>
-
-                    <!-- Equity Curve -->
-                    <div>
-                        <h4 class="text-sm font-bold text-gray-700 mb-2">📈 Equity Curve (Cumulative P&L)</h4>
-                        <div style="height: 250px;"><canvas id="bt-equity-chart"></canvas></div>
-                    </div>
-
-                    <!-- Daily P&L -->
-                    <div>
-                        <h4 class="text-sm font-bold text-gray-700 mb-2">📊 Daily P&L Breakdown</h4>
-                        <div style="height: 220px;"><canvas id="bt-daily-chart"></canvas></div>
-                    </div>
-
-                    <!-- Trade Log -->
+                    <div class="text-xs text-gray-400 text-center"><span id="bt-days">--</span> • Source: <span id="bt-source">--</span> • Lot size: 50</div>
+                    <div><h4 class="text-sm font-bold text-gray-700 mb-2">📈 Equity Curve</h4><div style="height: 250px;"><canvas id="bt-equity-chart"></canvas></div></div>
+                    <div><h4 class="text-sm font-bold text-gray-700 mb-2">📊 Daily P&L</h4><div style="height: 220px;"><canvas id="bt-daily-chart"></canvas></div></div>
                     <div>
                         <h4 class="text-sm font-bold text-gray-700 mb-2">📝 Trade Log (<span id="bt-trade-count">0</span> trades)</h4>
                         <div class="max-h-96 overflow-y-auto border rounded-lg">
                             <table class="w-full text-left text-sm" aria-label="Backtest trade log">
                                 <thead class="bg-gray-100 sticky top-0">
-                                    <tr>
-                                        <th class="px-3 py-2 text-xs">Date</th>
-                                        <th class="px-3 py-2 text-xs">Time</th>
-                                        <th class="px-3 py-2 text-xs">Dir</th>
-                                        <th class="px-3 py-2 text-xs">Entry</th>
-                                        <th class="px-3 py-2 text-xs">Exit</th>
-                                        <th class="px-3 py-2 text-xs">Reason</th>
-                                        <th class="px-3 py-2 text-xs">P&L</th>
-                                        <th class="px-3 py-2 text-xs">₹</th>
-                                    </tr>
+                                    <tr><th class="px-3 py-2 text-xs">Date</th><th class="px-3 py-2 text-xs">Time</th><th class="px-3 py-2 text-xs">Dir</th><th class="px-3 py-2 text-xs">Entry</th><th class="px-3 py-2 text-xs">Exit</th><th class="px-3 py-2 text-xs">Reason</th><th class="px-3 py-2 text-xs">P&L</th><th class="px-3 py-2 text-xs">₹</th></tr>
                                 </thead>
-                                <tbody id="bt-trades-body">
-                                    <tr><td colspan="8" class="text-center py-4 text-gray-400">Run a backtest to see trades</td></tr>
-                                </tbody>
+                                <tbody id="bt-trades-body"><tr><td colspan="8" class="text-center py-4 text-gray-400">Run a backtest to see trades</td></tr></tbody>
                             </table>
                         </div>
                     </div>
@@ -645,7 +411,8 @@
                 <p>⚠️ Educational & analysis purposes only. Not financial advice. Manage your risk!</p>
                 <p>Live data from Zerodha Kite. Multi-timeframe analysis combines 1m + 5m + 15m.</p>
             </div>
-        </div>
+
+        </div><!-- /dashboard -->
     </main>
 
     <script src="/static/dashboard.js"></script>
