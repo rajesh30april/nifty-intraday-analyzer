@@ -24,6 +24,8 @@ from dotenv import load_dotenv
 
 from kite_integration import kite_manager
 from strategy import evaluate_vwap_breakout, Direction
+import strategies.loader  # noqa: F401 — register all strategies
+from strategies.registry import get as get_strategy
 
 load_dotenv()
 
@@ -82,6 +84,7 @@ class TraderState:
     last_signal_reason: str = ""
     last_conditions: list[dict] = field(default_factory=list)  # strategy conditions
     kill_switch: bool = False  # Emergency stop
+    selected_strategy: str = "smart_router"  # default strategy
 
 
 # ── Singleton State ─────────────────────────────────────────────
@@ -253,9 +256,14 @@ def evaluate_and_act(df, current_price: float):
         _manage_active_trade(current_price)
         return
 
-    # 3. No active trade — always evaluate strategy for display
-    signal = evaluate_vwap_breakout(df)
-    state.last_signal_reason = signal.reason
+    # 3. No active trade — evaluate selected strategy
+    strat_info = get_strategy(state.selected_strategy)
+    if strat_info:
+        signal = strat_info.evaluate(df)
+    else:
+        signal = evaluate_vwap_breakout(df)  # fallback
+
+    state.last_signal_reason = f"[{state.selected_strategy}] {signal.reason}"
     state.last_conditions = [
         {"name": c.name, "met": c.met, "detail": c.detail}
         for c in signal.conditions
@@ -417,22 +425,29 @@ def get_trader_status() -> dict:
         "exit_time": EXIT_TIME.strftime("%H:%M"),
         "sl_points": SL_POINTS,
         "trailing_sl_points": TRAILING_SL_POINTS,
+        "selected_strategy": state.selected_strategy,
     }
 
 
-def start_auto_trader():
+def start_auto_trader(strategy_id: str | None = None):
     """Start the auto-trader loop."""
     if state.is_running:
         return {"status": "already_running"}
 
+    # Set selected strategy
+    if strategy_id:
+        state.selected_strategy = strategy_id
+
     state.is_running = True
     state.kill_switch = False
     mode = "📝 PAPER" if state.is_paper_mode else "🟢 LIVE"
+    strat_name = state.selected_strategy
     print(f"\n🚀 Auto-Trader STARTED [{mode} MODE]")
+    print(f"   Strategy: {strat_name}")
     print(f"   Max loss: ₹{MAX_LOSS_PER_DAY} | Max orders: {MAX_ORDERS_PER_DAY}")
     print(f"   SL: {SL_POINTS}pts | Trail: {TRAILING_SL_POINTS}pts")
     print(f"   Auto-exit: {EXIT_TIME.strftime('%H:%M')} IST\n")
-    return {"status": "started", "mode": mode}
+    return {"status": "started", "mode": mode, "strategy": strat_name}
 
 
 def stop_auto_trader():

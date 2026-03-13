@@ -810,9 +810,9 @@ async def auto_trader_status():
 
 
 @app.post("/api/auto-trader/start")
-async def auto_trader_start():
-    """Start the auto-trader."""
-    result = start_auto_trader()
+async def auto_trader_start(strategy: str = "smart_router"):
+    """Start the auto-trader with a selected strategy."""
+    result = start_auto_trader(strategy_id=strategy)
     return {"success": True, **result}
 
 

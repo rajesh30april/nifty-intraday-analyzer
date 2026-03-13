@@ -12,3 +12,4 @@ import strategies.supertrend_strat # noqa: F401 — Supertrend
 import strategies.rsi_reversal     # noqa: F401 — RSI Reversal
 import strategies.macd_momentum    # noqa: F401 — MACD Momentum
 import strategies.smart_router     # noqa: F401 — Smart Router (Auto)
+import strategies.scalping          # noqa: F401 — Scalping strategies (EMA/VWAP/Momentum)

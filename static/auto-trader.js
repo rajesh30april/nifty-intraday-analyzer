@@ -1,15 +1,33 @@
 // ── Auto-Trader Controls & Renderer ─────────────────────────────
 
+// Populate auto-trader strategy dropdown on load
+async function populateAutoTraderStrategies() {
+    try {
+        const resp = await fetch('/api/strategies');
+        const data = await resp.json();
+        if (!data.success) return;
+        const select = document.getElementById('at-strategy');
+        if (!select) return;
+        select.innerHTML = data.strategies.map(s =>
+            `<option value="${s.id}">${s.emoji} ${s.name}</option>`
+        ).join('');
+        // Default to ORB for scalping
+        select.value = 'orb';
+    } catch (e) { console.error('Failed to load strategies for AT:', e); }
+}
+document.addEventListener('DOMContentLoaded', populateAutoTraderStrategies);
+
 async function startAutoTrader() {
     const btn = document.getElementById('at-start-btn');
     const statusEl = document.getElementById('at-status');
+    const strategyId = document.getElementById('at-strategy')?.value || 'smart_router';
     btn.disabled = true;
     btn.textContent = '⏳ Starting...';
     btn.className = 'bg-yellow-600 px-4 py-2 rounded-lg font-bold text-sm animate-pulse';
     statusEl.textContent = '⏳ Starting...';
     statusEl.className = 'text-sm font-bold text-yellow-400 animate-pulse';
     try {
-        const resp = await fetch('/api/auto-trader/start', { method: 'POST' });
+        const resp = await fetch(`/api/auto-trader/start?strategy=${strategyId}`, { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
             statusEl.textContent = '⚙️ Evaluating...';
@@ -82,6 +100,23 @@ function renderAutoTrader(data) {
     } else {
         modeEl.textContent = '🟢 LIVE';
         modeEl.className = 'bg-green-600 text-xs px-2 py-0.5 rounded font-bold';
+    }
+
+    // Strategy badge
+    if (data.selected_strategy) {
+        const stratSelect = document.getElementById('at-strategy');
+        const stratLabel = document.getElementById('at-strat-label');
+        if (stratSelect && !data.is_running) {
+            stratSelect.disabled = false;
+        } else if (stratSelect && data.is_running) {
+            stratSelect.value = data.selected_strategy;
+            stratSelect.disabled = true;
+        }
+        // Update the status grid label
+        if (stratLabel && stratSelect) {
+            const opt = stratSelect.options[stratSelect.selectedIndex];
+            stratLabel.textContent = opt ? opt.textContent : data.selected_strategy;
+        }
     }
 
     // Status

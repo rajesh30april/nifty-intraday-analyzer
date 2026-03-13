@@ -395,13 +395,17 @@
                             </p>
                         </div>
                         <div class="flex gap-2">
+                            <select id="at-strategy" class="bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs font-bold text-white" aria-label="Strategy">
+                                <option value="smart_router">🧠 Smart Router</option>
+                            </select>
                             <button onclick="startAutoTrader()" id="at-start-btn" class="bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg font-bold text-xs transition">▶ Start</button>
                             <button onclick="stopAutoTrader()" id="at-stop-btn" class="bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded-lg font-bold text-xs transition">⏹ Stop</button>
                             <button onclick="killAutoTrader()" id="at-kill-btn" class="bg-red-700 hover:bg-red-600 px-2 py-1.5 rounded-lg font-bold text-xs transition">🚨</button>
                         </div>
                     </div>
-                    <div class="grid grid-cols-5 gap-2 mb-3">
+                    <div class="grid grid-cols-6 gap-2 mb-3">
                         <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Status</div><div id="at-status" class="text-xs font-bold text-yellow-400">⏸ Idle</div></div>
+                        <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Strategy</div><div id="at-strat-label" class="text-xs font-bold text-blue-400">🧠 Auto</div></div>
                         <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Day P&L</div><div id="at-pnl" class="text-xs font-bold">₹0</div></div>
                         <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Orders</div><div id="at-orders" class="text-xs font-bold">0/6</div></div>
                         <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Active</div><div id="at-active" class="text-xs font-bold text-gray-500">None</div></div>
