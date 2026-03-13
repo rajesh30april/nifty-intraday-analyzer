@@ -859,7 +859,22 @@ async def auto_trader_evaluate():
         return {"success": False, "error": str(e)}
 
 
-# ── Backtest API ────────────────────────────────────────────────
+@app.get("/api/auto-trader/history")
+async def auto_trader_history():
+    """Return trade history from trade log."""
+    from pathlib import Path
+    import json as _json
+    log_file = Path(__file__).parent / "trade_log.json"
+    if not log_file.exists():
+        return {"success": True, "trades": [], "total_pnl": 0}
+    try:
+        data = _json.loads(log_file.read_text())
+        return {"success": True, **data}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ── Backtest API ─────────────────────────────────────────────────────
 
 # ── Strategy Registry API ──────────────────────────────────────
 

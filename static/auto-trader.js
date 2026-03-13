@@ -189,3 +189,87 @@ function renderAutoTrader(data) {
     // Update button states
     _updateAutoTraderButtons();
 }
+
+// ── Trade History ─────────────────────────────────────────
+
+async function loadTradeHistory() {
+    try {
+        const resp = await fetch('/api/auto-trader/history');
+        const data = await resp.json();
+        if (!data.success) return;
+        renderTradeHistory(data);
+    } catch (e) { console.error('History load failed:', e); }
+}
+
+function renderTradeHistory(data) {
+    const trades = data.trades || [];
+    const totalPnl = data.total_pnl || 0;
+
+    // Summary
+    const wins = trades.filter(t => t.pnl > 0).length;
+    const losses = trades.filter(t => t.pnl < 0).length;
+
+    document.getElementById('ath-count').textContent = trades.length;
+
+    const pnlEl = document.getElementById('ath-pnl');
+    pnlEl.textContent = `\u20b9${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)}`;
+    pnlEl.className = `text-xs font-bold ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+
+    document.getElementById('ath-wins').textContent = wins;
+    document.getElementById('ath-losses').textContent = losses;
+
+    // Table
+    const container = document.getElementById('at-history-table');
+    if (!trades.length) {
+        container.innerHTML = '<p class="text-gray-600 text-center py-3">No trades yet</p>';
+        return;
+    }
+
+    let html = `<table class="w-full" role="table">
+        <thead class="text-[10px] text-gray-500 uppercase">
+            <tr><th class="text-left py-1">Time</th><th>Dir</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Reason</th></tr>
+        </thead><tbody>`;
+
+    // Show most recent first
+    const reversed = [...trades].reverse();
+    for (const t of reversed) {
+        const pnlColor = t.pnl > 0 ? 'text-green-400' : t.pnl < 0 ? 'text-red-400' : 'text-gray-400';
+        const dirIcon = t.direction === 'long' ? '\u2b06' : '\u2b07';
+        const dirColor = t.direction === 'long' ? 'text-green-400' : 'text-red-400';
+        const time = t.timestamp ? t.timestamp.split('T')[1]?.substring(0, 8) || t.timestamp : '--';
+        const exitPrice = t.exit_price ? `\u20b9${Number(t.exit_price).toFixed(0)}` : '--';
+        const reason = (t.exit_reason || '').replace(/[\u2014—]/g, '-').substring(0, 25);
+        const emoji = t.pnl > 0 ? '\ud83d\udfe2' : t.pnl < 0 ? '\ud83d\udd34' : '\u26aa';
+
+        html += `<tr class="border-t border-gray-800 hover:bg-gray-800/50">
+            <td class="py-1.5 text-gray-400">${time}</td>
+            <td class="text-center ${dirColor} font-bold">${dirIcon}</td>
+            <td class="text-center">\u20b9${Number(t.entry_price).toFixed(0)}</td>
+            <td class="text-center">${exitPrice}</td>
+            <td class="text-center font-bold ${pnlColor}">${emoji} \u20b9${t.pnl >= 0 ? '+' : ''}${t.pnl.toFixed(0)}</td>
+            <td class="text-gray-500 truncate max-w-[120px]" title="${t.exit_reason || ''}">${reason}</td>
+        </tr>`;
+    }
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+// Load history when auto-trader page is shown
+const _origSwitchPage = typeof switchPage === 'function' ? switchPage : null;
+if (_origSwitchPage) {
+    const _wrappedSwitch = _origSwitchPage;
+    // We'll call loadTradeHistory from pollAutoTraderStatus instead
+}
+
+// Also load history after polling status
+const _origPoll = pollAutoTraderStatus;
+pollAutoTraderStatus = async function() {
+    await _origPoll();
+    await loadTradeHistory();
+};
+
+// Load on page init
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(loadTradeHistory, 2000);
+});
