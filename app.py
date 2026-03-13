@@ -819,15 +819,28 @@ async def auto_trader_start(strategy: str = "smart_router"):
 @app.post("/api/auto-trader/stop")
 async def auto_trader_stop():
     """Stop the auto-trader and exit positions."""
-    result = stop_auto_trader()
-    return {"success": True, **result}
+    try:
+        result = stop_auto_trader()
+        return {"success": True, **result}
+    except Exception as e:
+        # Force stop even if error
+        trader_state.is_running = False
+        trader_state.active_trade = None
+        return {"success": True, "status": "force_stopped", "error": str(e)}
 
 
 @app.post("/api/auto-trader/kill")
 async def auto_trader_kill():
     """Emergency kill switch."""
-    result = activate_kill_switch()
-    return {"success": True, **result}
+    try:
+        result = activate_kill_switch()
+        return {"success": True, **result}
+    except Exception as e:
+        # Force kill even if error
+        trader_state.is_running = False
+        trader_state.kill_switch = True
+        trader_state.active_trade = None
+        return {"success": True, "status": "force_killed", "error": str(e)}
 
 
 @app.post("/api/auto-trader/evaluate")

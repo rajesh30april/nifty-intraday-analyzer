@@ -454,9 +454,11 @@ def stop_auto_trader():
     """Stop the auto-trader and exit any active position."""
     state.is_running = False
     if state.active_trade:
-        # Get latest price for exit
-        tick = kite_manager.latest_tick
-        price = tick["last_price"] if tick else state.active_trade.entry_price
+        try:
+            tick = kite_manager.latest_tick
+            price = tick["last_price"] if tick and isinstance(tick, dict) else state.active_trade.entry_price
+        except Exception:
+            price = state.active_trade.entry_price
         _exit_position("Manual stop — auto-trader stopped", price)
 
     print("🛑 Auto-Trader STOPPED")
@@ -468,8 +470,11 @@ def activate_kill_switch():
     state.kill_switch = True
     state.is_running = False
     if state.active_trade:
-        tick = kite_manager.latest_tick
-        price = tick["last_price"] if tick else state.active_trade.entry_price
+        try:
+            tick = kite_manager.latest_tick
+            price = tick["last_price"] if tick and isinstance(tick, dict) else state.active_trade.entry_price
+        except Exception:
+            price = state.active_trade.entry_price
         _exit_position("🚨 KILL SWITCH — emergency exit", price)
 
     print("🚨 KILL SWITCH ACTIVATED — all trading halted!")
