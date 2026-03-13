@@ -269,8 +269,8 @@ function renderPatterns(patterns, patternCandles) {
         const hasCandles = patternCandles && patternCandles[idx] && patternCandles[idx].length > 2;
 
         const miniChartHtml = hasCandles
-            ? `<div class="mt-3 border rounded-lg bg-white overflow-hidden">
-                   <div id="${chartId}" style="height: 180px; width: 100%;"></div>
+            ? `<div class="mt-3 border rounded-lg bg-white overflow-hidden" style="min-height: 220px;">
+                   <div id="${chartId}" style="height: 220px; width: 100%;"></div>
                </div>`
             : '';
 
@@ -305,17 +305,34 @@ function renderPatterns(patterns, patternCandles) {
 
 /**
  * Render a mini candlestick chart for a single pattern.
+ * Handles hidden containers by deferring render if needed.
  */
 function _renderPatternMiniChart(container, candles, pattern) {
+    // If container is hidden (display:none), width will be 0.
+    // Use a reasonable fallback and re-fit when visible.
+    const containerWidth = container.clientWidth || 600;
+
     const chart = LightweightCharts.createChart(container, {
-        width: container.clientWidth,
-        height: 180,
-        layout: { background: { color: '#fafafa' }, textColor: '#666', fontSize: 10 },
-        grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
+        width: containerWidth,
+        height: 220,
+        layout: { background: { color: '#fafafa' }, textColor: '#555', fontSize: 11 },
+        grid: { vertLines: { color: '#f5f5f5' }, horzLines: { color: '#f5f5f5' } },
         crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-        rightPriceScale: { borderColor: '#e5e7eb', scaleMargins: { top: 0.1, bottom: 0.1 } },
-        timeScale: { borderColor: '#e5e7eb', timeVisible: true, secondsVisible: false },
-        handleScroll: false,
+        rightPriceScale: {
+            borderColor: '#e5e7eb',
+            scaleMargins: { top: 0.15, bottom: 0.15 },
+            entireTextOnly: true,
+        },
+        timeScale: {
+            borderColor: '#e5e7eb',
+            timeVisible: true,
+            secondsVisible: false,
+            rightOffset: 3,
+            barSpacing: Math.max(6, Math.min(20, containerWidth / (candles.length || 1))),
+            fixLeftEdge: true,
+            fixRightEdge: true,
+        },
+        handleScroll: { mouseWheel: false, pressedMouseMove: true },
         handleScale: false,
     });
     window._patternMiniCharts.push(chart);
@@ -345,12 +362,18 @@ function _renderPatternMiniChart(container, candles, pattern) {
     const series = chart.addCandlestickSeries({
         upColor: '#2a8703',
         downColor: '#ea1100',
-        borderUpColor: '#2a8703',
-        borderDownColor: '#ea1100',
+        borderUpColor: '#1a6b02',
+        borderDownColor: '#c50e00',
         wickUpColor: '#2a8703',
         wickDownColor: '#ea1100',
     });
     series.setData(candleData);
+
+    // Set proper visible range to show all candles nicely
+    chart.timeScale().setVisibleLogicalRange({
+        from: -1,
+        to: candleData.length + 1,
+    });
 
     // Add key level lines
     if (pattern.key_levels) {
@@ -400,9 +423,15 @@ function _renderPatternMiniChart(container, candles, pattern) {
 
     chart.timeScale().fitContent();
 
-    // Responsive
-    const ro = new ResizeObserver(() => {
-        chart.applyOptions({ width: container.clientWidth });
+    // Responsive — also handles when container transitions from hidden to visible
+    const ro = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+            const newWidth = entry.contentRect.width;
+            if (newWidth > 0) {
+                chart.applyOptions({ width: newWidth });
+                chart.timeScale().fitContent();
+            }
+        }
     });
     ro.observe(container);
 }

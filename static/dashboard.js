@@ -21,14 +21,27 @@ function switchPage(pageId) {
         item.classList.toggle('active', item.dataset.page === pageId);
     });
     // Re-render charts if switching to charts page (canvas sizing)
-    if (pageId === 'charts' && candlestickChart) {
+    if (pageId === 'charts') {
         setTimeout(() => {
+            // Re-fit main candlestick chart
             const container = document.getElementById('candlestickChart');
             if (container && candlestickChart) {
                 candlestickChart.applyOptions({ width: container.clientWidth });
                 candlestickChart.timeScale().fitContent();
             }
-        }, 100);
+            // Re-fit all pattern mini charts
+            if (window._patternMiniCharts) {
+                window._patternMiniCharts.forEach(mc => {
+                    try {
+                        const el = mc._chartElement || mc.chartElement();
+                        if (el && el.parentElement) {
+                            mc.applyOptions({ width: el.parentElement.clientWidth });
+                            mc.timeScale().fitContent();
+                        }
+                    } catch(e) { /* skip removed charts */ }
+                });
+            }
+        }, 150);
     }
 }
 
