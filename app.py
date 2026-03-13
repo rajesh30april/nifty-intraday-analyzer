@@ -262,6 +262,252 @@ async def analyze(interval: str = "5m"):
         return {"success": False, "error": str(e)}
 
 
+# ── Split API Endpoints (per-section refresh) ─────────────────────
+
+# Shared data cache so sections can reuse fetched data
+_section_cache: dict = {"df_5m": None, "df_15m": None, "df_1m": None, "timestamp": 0}
+SECTION_CACHE_TTL = 15  # seconds — reuse data within 15s
+
+
+def _get_cached_df(interval: str, period: str = "5d") -> pd.DataFrame | None:
+    """Get DataFrame from cache or fetch fresh from Zerodha."""
+    cache_key = f"df_{interval.replace('minute', 'm').replace('5m', '5m')}"
+    now = _time.time()
+
+    # Return cached if fresh
+    if (
+        _section_cache.get(cache_key) is not None
+        and (now - _section_cache["timestamp"]) < SECTION_CACHE_TTL
+    ):
+        return _section_cache[cache_key]
+
+    # Fetch fresh
+    if kite_manager.is_authenticated:
+        kite_map = {"1m": "minute", "5m": "5minute", "15m": "15minute"}
+        kite_data = kite_manager.get_historical_data(
+            interval=kite_map.get(interval, "5minute"), days=5
+        )
+        if kite_data:
+            df = _kite_history_to_dataframe(kite_data)
+            _section_cache[cache_key] = df
+            _section_cache["timestamp"] = now
+            return df
+
+    # Fallback to Yahoo (for backtester)
+    df = fetch_intraday_data(interval=interval, period=period)
+    _section_cache[cache_key] = df
+    _section_cache["timestamp"] = now
+    return df
+
+
+@app.get("/api/section/price")
+async def section_price():
+    """Quick price + day change. Uses WebSocket tick or REST quote."""
+    try:
+        if not kite_manager.is_authenticated:
+            return {"success": False, "error": "Not connected to Zerodha"}
+
+        # Try WebSocket tick first (instant)
+        if kite_manager.latest_tick:
+            tick = kite_manager.latest_tick
+            return {
+                "success": True,
+                "current_price": tick["last_price"],
+                "open": tick.get("open", 0),
+                "high": tick.get("high", 0),
+                "low": tick.get("low", 0),
+                "close": tick.get("close", 0),
+                "change": tick.get("change", 0),
+                "change_pct": tick.get("change_pct", 0),
+            }
+
+        # Fallback to REST quote
+        quote = kite_manager.get_live_quote()
+        if quote:
+            ohlc = quote.get("ohlc", {})
+            change = quote.get("last_price", 0) - ohlc.get("close", 0)
+            change_pct = (change / ohlc.get("close", 1)) * 100 if ohlc.get("close") else 0
+            return {
+                "success": True,
+                "current_price": quote.get("last_price", 0),
+                "open": ohlc.get("open", 0),
+                "high": ohlc.get("high", 0),
+                "low": ohlc.get("low", 0),
+                "close": ohlc.get("close", 0),
+                "change": round(change, 2),
+                "change_pct": round(change_pct, 2),
+            }
+
+        return {"success": False, "error": "No price data available"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/section/probability")
+async def section_probability():
+    """MTF probability analysis (1m + 5m + 15m combined)."""
+    try:
+        if not kite_manager.is_authenticated:
+            return {"success": False, "error": "Not connected to Zerodha"}
+
+        mtf = run_mtf_analysis()
+
+        # Cache 5m data for other sections
+        if mtf.primary_df is not None:
+            _section_cache["df_5m"] = mtf.primary_df
+            _section_cache["timestamp"] = _time.time()
+        if mtf.df_15m is not None:
+            _section_cache["df_15m"] = mtf.df_15m
+
+        signals_data = []
+        if mtf.primary_result:
+            signals_data = [
+                {
+                    "name": s.name, "value": str(s.value), "bias": s.bias,
+                    "strength": s.strength, "weight": s.weight,
+                    "description": s.description,
+                }
+                for s in mtf.primary_result.signals
+            ]
+
+        return safe_json_response({
+            "success": True,
+            "bullish_probability": mtf.combined_bullish,
+            "bearish_probability": mtf.combined_bearish,
+            "overall_bias": mtf.combined_bias,
+            "confidence": mtf.combined_confidence,
+            "confluence": mtf.confluence,
+            "recommendation": mtf.recommendation,
+            "current_price": mtf.primary_result.current_price if mtf.primary_result else 0,
+            "day_change": mtf.primary_result.day_change if mtf.primary_result else 0,
+            "day_change_pct": mtf.primary_result.day_change_pct if mtf.primary_result else 0,
+            "orb_data": mtf.primary_result.orb_data if mtf.primary_result else {},
+            "timeframes": [
+                {
+                    "interval": tf.interval, "label": tf.label,
+                    "weight": int(tf.weight * 100),
+                    "bullish_pct": tf.bullish_pct, "bearish_pct": tf.bearish_pct,
+                    "bias": tf.bias, "confidence": tf.confidence,
+                    "error": tf.error,
+                }
+                for tf in mtf.timeframes
+            ],
+            "signals": signals_data,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/section/chart")
+async def section_chart(tf: str = "5m"):
+    """Chart data (candles + patterns + S/R). Uses cached data if available."""
+    try:
+        if not kite_manager.is_authenticated:
+            return {"success": False, "error": "Not connected to Zerodha"}
+
+        df = _section_cache.get(f"df_{tf}")
+        if df is None or (hasattr(df, 'empty') and df.empty):
+            df = _get_cached_df(tf)
+        if df is None or df.empty:
+            return {"success": False, "error": f"No {tf} data available"}
+
+        # Build candle data
+        price_data = []
+        for idx, row in df.iterrows():
+            price_data.append({
+                "time": idx.strftime("%Y-%m-%d %H:%M"),
+                "open": round(float(row["open"]), 2),
+                "high": round(float(row["high"]), 2),
+                "low": round(float(row["low"]), 2),
+                "close": round(float(row["close"]), 2),
+                "volume": int(row["volume"]),
+            })
+
+        # Detect patterns
+        patterns_data = []
+        sr_data = {}
+        try:
+            pat_result = detect_all_patterns(df, timeframe=tf)
+            patterns_data = [
+                {
+                    "name": p.name, "type": p.pattern_type,
+                    "bias": p.bias, "confidence": p.confidence,
+                    "description": p.description, "key_levels": p.key_levels,
+                    "timeframe": p.timeframe,
+                    "start_time": p.start_time, "end_time": p.end_time,
+                    "pivot_times": p.pivot_times,
+                }
+                for p in pat_result["patterns"]
+            ]
+            sr_data = pat_result["support_resistance"]
+        except Exception:
+            pass
+
+        return safe_json_response({
+            "success": True,
+            "chart_timeframe": tf,
+            "price_data": price_data,
+            "patterns": patterns_data,
+            "support_resistance": sr_data,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/section/trade-signal")
+async def section_trade_signal():
+    """Trade signal analysis. Uses cached 5m data."""
+    try:
+        if not kite_manager.is_authenticated:
+            return {"success": False, "error": "Not connected to Zerodha"}
+
+        df = _section_cache.get("df_5m")
+        if df is None or (hasattr(df, 'empty') and df.empty):
+            df = _get_cached_df("5m")
+        if df is None or df.empty:
+            return {"success": False, "error": "No 5m data. Refresh Probability first."}
+
+        # Get S/R levels from patterns
+        sr_data = {}
+        try:
+            pat_result = detect_all_patterns(df, timeframe="5m")
+            sr_data = pat_result["support_resistance"]
+        except Exception:
+            pass
+
+        ts = analyze_trade(
+            df,
+            support_levels=sr_data.get("support_levels", []),
+            resistance_levels=sr_data.get("resistance_levels", []),
+        )
+
+        return safe_json_response({
+            "success": True,
+            "action": ts.action,
+            "entry_price": ts.entry_price,
+            "stop_loss": ts.stop_loss,
+            "target": ts.target,
+            "risk_reward": ts.risk_reward,
+            "current_trend": ts.current_trend,
+            "trend_strength": ts.trend_strength,
+            "reversal_probability": ts.reversal_probability,
+            "exit_warning": ts.exit_warning,
+            "reasoning": ts.reasoning,
+            "reversal_signals": [
+                {
+                    "name": s.name, "score": round(s.score * 100),
+                    "weight": s.weight, "detail": s.detail,
+                }
+                for s in ts.reversal_signals
+            ],
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
 # ── Pattern Detection ───────────────────────────────────────────
 
 @app.get("/api/patterns")

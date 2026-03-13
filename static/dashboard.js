@@ -38,10 +38,9 @@ async function checkStatus() {
             loadMargins();
         } else {
             isAuthenticated = false;
-            badge.innerHTML = '<span class="flex items-center gap-2 bg-red-500 text-white px-3 py-1.5 rounded-full text-sm font-bold">⚠️ NOT CONNECTED</span>';
+            badge.innerHTML = '<span class="flex items-center gap-2 bg-red-500 text-white px-3 py-1.5 rounded-full text-sm font-bold">\u26a0\ufe0f NOT CONNECTED</span>';
             banner.classList.remove('hidden');
             if (loginOverlay) loginOverlay.classList.remove('hidden');
-            // Hide loading, show login required
             document.getElementById('loading').classList.add('hidden');
         }
     } catch (e) { console.error(e); }
@@ -91,30 +90,153 @@ function startLiveTickPolling() {
     }, 1000);
 }
 
-let isLoadingAnalysis = false;
+// ── Per-Section Loading ──────────────────────────────────────────
 
+function _sectionLoading(sectionId, loading = true) {
+    const el = document.getElementById(sectionId);
+    if (!el) return;
+    const spinner = el.querySelector('.section-spinner');
+    const content = el.querySelector('.section-content');
+    if (spinner) spinner.classList.toggle('hidden', !loading);
+    if (content) content.classList.toggle('opacity-50', loading);
+}
+
+function _sectionError(sectionId, msg) {
+    const el = document.getElementById(sectionId);
+    if (!el) return;
+    const spinner = el.querySelector('.section-spinner');
+    if (spinner) spinner.innerHTML = `<span class="text-red-500 text-xs">⚠️ ${msg}</span>`;
+}
+
+// Load ALL sections in parallel (initial load or full refresh)
 async function loadAnalysis() {
-    if (isLoadingAnalysis) return;
     if (!isAuthenticated) return;
-    isLoadingAnalysis = true;
 
-    document.getElementById('loading').classList.remove('hidden');
-    document.getElementById('dashboard').classList.add('hidden');
+    // Show dashboard, hide loading overlay
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('dashboard').classList.remove('hidden');
     document.getElementById('error-state').classList.add('hidden');
 
+    // Fire all sections in parallel
+    await Promise.allSettled([
+        loadSectionProbability(),
+        loadSectionChart(),
+        loadSectionTradeSignal(),
+    ]);
+
+    pollAutoTraderStatus();
+    const now = new Date();
+    const liveBadge = document.getElementById('live-badge');
+    if (liveBadge) liveBadge.textContent = `\ud83d\udfe2 Updated ${now.toLocaleTimeString('en-IN')}`;
+}
+
+// Section 1: MTF Probability (heaviest — fetches 3 timeframes)
+async function loadSectionProbability() {
+    _sectionLoading('section-probability', true);
     try {
-        const resp = await fetch(`/api/mtf-analyze?chart_tf=${selectedChartTF}`);
+        const resp = await fetch('/api/section/probability');
         const data = await resp.json();
-        if (!data.success) { showError(data.error || 'Unknown error'); return; }
-        renderDashboard(data);
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const liveBadge = document.getElementById('live-badge');
-        if (liveBadge) liveBadge.textContent = `\ud83d\udfe2 Updated ${timeStr}`;
+        if (!data.success) { _sectionError('section-probability', data.error); return; }
+
+        // Price
+        document.getElementById('current-price').textContent =
+            data.current_price ? data.current_price.toLocaleString('en-IN') : '--';
+        const changeEl = document.getElementById('day-change');
+        if (data.day_change != null) {
+            const sign = data.day_change >= 0 ? '+' : '';
+            changeEl.textContent = `${sign}${data.day_change} (${sign}${data.day_change_pct}%)`;
+            changeEl.className = data.day_change >= 0 ? 'text-sm font-semibold text-green-600' : 'text-sm font-semibold text-red-600';
+        }
+
+        // Probability
+        document.getElementById('bull-pct').textContent = data.bullish_probability;
+        document.getElementById('bear-pct').textContent = data.bearish_probability;
+        document.getElementById('prob-bar').style.width = `${data.bullish_probability}%`;
+
+        // Bias
+        const biasEl = document.getElementById('overall-bias');
+        const biasEmoji = { bullish: '\ud83d\udc02 BULLISH', bearish: '\ud83d\udc3b BEARISH', neutral: '\u2696\ufe0f NEUTRAL' };
+        const biasColors = { bullish: 'text-green-600', bearish: 'text-red-600', neutral: 'text-gray-600' };
+        biasEl.textContent = biasEmoji[data.overall_bias] || data.overall_bias;
+        biasEl.className = `text-2xl font-black ${biasColors[data.overall_bias] || ''}`;
+
+        // Confidence & Confluence
+        const confEl = document.getElementById('confidence');
+        confEl.textContent = data.confidence.toUpperCase();
+        const confColors = { high: 'text-green-600', medium: 'text-yellow-600', low: 'text-red-500' };
+        confEl.className = `font-bold ${confColors[data.confidence] || ''}`;
+
+        const conflEl = document.getElementById('confluence');
+        const conflEmoji = { strong: '\ud83d\udfe2 STRONG', moderate: '\ud83d\udfe1 MODERATE', weak: '\u26aa WEAK', conflicting: '\ud83d\udd34 CONFLICTING' };
+        const conflColors = { strong: 'text-green-600', moderate: 'text-yellow-600', weak: 'text-gray-500', conflicting: 'text-red-600' };
+        conflEl.textContent = conflEmoji[data.confluence] || data.confluence;
+        conflEl.className = `font-bold ${conflColors[data.confluence] || ''}`;
+
+        // Timeframes
+        renderTimeframes(data.timeframes);
+
+        // Recommendation
+        const recCard = document.getElementById('recommendation-card');
+        const recBg = data.confluence === 'strong'
+            ? (data.overall_bias === 'bullish' ? 'bg-green-50 border border-green-200 text-green-900'
+                : 'bg-red-50 border border-red-200 text-red-900')
+            : data.confluence === 'conflicting'
+                ? 'bg-red-50 border border-red-200 text-red-900'
+                : 'bg-yellow-50 border border-yellow-200 text-yellow-900';
+        recCard.className = `${recBg} rounded-xl shadow-md p-5 slide-in`;
+        document.getElementById('recommendation').textContent = data.recommendation;
+
+        // ORB
+        if (data.orb_data) {
+            document.getElementById('orb-high').textContent = data.orb_data.orb_high || '--';
+            document.getElementById('orb-low').textContent = data.orb_data.orb_low || '--';
+            const orbStatus = document.getElementById('orb-status');
+            orbStatus.textContent = data.orb_data.breakout === 'bullish' ? '\ud83d\ude80 Bullish Breakout!'
+                : data.orb_data.breakout === 'bearish' ? '\ud83d\udcc9 Bearish Breakdown!' : '\ud83d\udd04 Inside Range';
+        }
+
+        // Signals table
+        renderSignals(data.signals || []);
+        renderInsights(data);
     } catch (e) {
-        showError(e.message);
+        _sectionError('section-probability', e.message);
     } finally {
-        isLoadingAnalysis = false;
+        _sectionLoading('section-probability', false);
+    }
+}
+
+// Section 2: Chart + Patterns + S/R
+async function loadSectionChart() {
+    _sectionLoading('section-chart', true);
+    try {
+        const resp = await fetch(`/api/section/chart?tf=${selectedChartTF}`);
+        const data = await resp.json();
+        if (!data.success) { _sectionError('section-chart', data.error); return; }
+
+        renderPriceChart(data.price_data, data.patterns || [], data.support_resistance || {});
+        renderVolumeChart(data.price_data);
+        renderPatterns(data.patterns || []);
+        renderSupportResistance(data.support_resistance || {},
+            data.price_data.length > 0 ? data.price_data[data.price_data.length - 1].close : 0);
+    } catch (e) {
+        _sectionError('section-chart', e.message);
+    } finally {
+        _sectionLoading('section-chart', false);
+    }
+}
+
+// Section 3: Trade Signal
+async function loadSectionTradeSignal() {
+    _sectionLoading('section-trade-signal', true);
+    try {
+        const resp = await fetch('/api/section/trade-signal');
+        const data = await resp.json();
+        if (!data.success) { _sectionError('section-trade-signal', data.error); return; }
+        renderTradeSignal(data);
+    } catch (e) {
+        _sectionError('section-trade-signal', e.message);
+    } finally {
+        _sectionLoading('section-trade-signal', false);
     }
 }
 
@@ -124,76 +246,7 @@ function showError(msg) {
     document.getElementById('error-msg').textContent = msg;
 }
 
-function renderDashboard(data) {
-    document.getElementById('loading').classList.add('hidden');
-    document.getElementById('dashboard').classList.remove('hidden');
 
-    // Price
-    document.getElementById('current-price').textContent = data.current_price.toLocaleString('en-IN');
-    const changeEl = document.getElementById('day-change');
-    const sign = data.day_change >= 0 ? '+' : '';
-    changeEl.textContent = `${sign}${data.day_change} (${sign}${data.day_change_pct}%)`;
-    changeEl.className = data.day_change >= 0 ? 'text-sm font-semibold text-green-600' : 'text-sm font-semibold text-red-600';
-
-    // Combined Probability
-    document.getElementById('bull-pct').textContent = data.bullish_probability;
-    document.getElementById('bear-pct').textContent = data.bearish_probability;
-    document.getElementById('prob-bar').style.width = `${data.bullish_probability}%`;
-
-    // Bias
-    const biasEl = document.getElementById('overall-bias');
-    const biasEmoji = { bullish: '\ud83d\udc02 BULLISH', bearish: '\ud83d\udc3b BEARISH', neutral: '\u2696\ufe0f NEUTRAL' };
-    const biasColors = { bullish: 'text-green-600', bearish: 'text-red-600', neutral: 'text-gray-600' };
-    biasEl.textContent = biasEmoji[data.overall_bias] || data.overall_bias;
-    biasEl.className = `text-2xl font-black ${biasColors[data.overall_bias] || ''}`;
-
-    // Confidence
-    const confEl = document.getElementById('confidence');
-    confEl.textContent = data.confidence.toUpperCase();
-    const confColors = { high: 'text-green-600', medium: 'text-yellow-600', low: 'text-red-500' };
-    confEl.className = `font-bold ${confColors[data.confidence] || ''}`;
-
-    // Confluence
-    const conflEl = document.getElementById('confluence');
-    const conflColors = { strong: 'text-green-600', moderate: 'text-yellow-600', weak: 'text-gray-500', conflicting: 'text-red-600' };
-    const conflEmoji = { strong: '\ud83d\udfe2 STRONG', moderate: '\ud83d\udfe1 MODERATE', weak: '\u26aa WEAK', conflicting: '\ud83d\udd34 CONFLICTING' };
-    conflEl.textContent = conflEmoji[data.confluence] || data.confluence;
-    conflEl.className = `font-bold ${conflColors[data.confluence] || ''}`;
-
-    renderTimeframes(data.timeframes);
-
-    // Recommendation
-    const recCard = document.getElementById('recommendation-card');
-    const recBg = data.confluence === 'strong'
-        ? (data.overall_bias === 'bullish' ? 'bg-green-50 border border-green-200 text-green-900'
-            : 'bg-red-50 border border-red-200 text-red-900')
-        : data.confluence === 'conflicting'
-            ? 'bg-red-50 border border-red-200 text-red-900'
-            : 'bg-yellow-50 border border-yellow-200 text-yellow-900';
-    recCard.className = `${recBg} rounded-xl shadow-md p-5 slide-in`;
-    document.getElementById('recommendation').textContent = data.recommendation;
-
-    // ORB
-    if (data.orb_data) {
-        document.getElementById('orb-high').textContent = data.orb_data.orb_high || '--';
-        document.getElementById('orb-low').textContent = data.orb_data.orb_low || '--';
-        const orbStatus = document.getElementById('orb-status');
-        orbStatus.textContent = data.orb_data.breakout === 'bullish' ? '\ud83d\ude80 Bullish Breakout!'
-            : data.orb_data.breakout === 'bearish' ? '\ud83d\udcc9 Bearish Breakdown!' : '\ud83d\udd04 Inside Range';
-        orbStatus.className = data.orb_data.breakout === 'bullish' ? 'text-green-600 font-bold'
-            : data.orb_data.breakout === 'bearish' ? 'text-red-600 font-bold' : 'text-gray-600 font-bold';
-    }
-
-    renderSignals(data.signals);
-    renderPriceChart(data.price_data, data.patterns || [], data.support_resistance || {});
-    renderVolumeChart(data.price_data);
-    renderPatterns(data.patterns || []);
-    renderSupportResistance(data.support_resistance || {}, data.current_price);
-    renderInsights(data);
-
-    if (data.trade_signal) renderTradeSignal(data.trade_signal);
-    pollAutoTraderStatus();
-}
 
 function renderTimeframes(timeframes) {
     const container = document.getElementById('tf-breakdown');

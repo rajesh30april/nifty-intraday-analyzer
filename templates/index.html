@@ -42,13 +42,26 @@
         <div class="bg-gray-900 text-white px-6 py-2 flex items-center justify-between text-sm">
             <div class="flex items-center gap-3">
                 <span id="live-badge" class="flex items-center gap-1">
-                    🟡 Click Refresh to load data
+                    🟡 Click a refresh button to load data
                 </span>
             </div>
             <div class="flex items-center gap-2">
-                <button onclick="loadAnalysis()"
+                <button onclick="loadAnalysis()" title="Load all sections"
+                        class="text-xs bg-[#0053e2] hover:bg-blue-700 px-3 py-1 rounded transition font-bold">
+                    ⚡ Refresh All
+                </button>
+                <span class="text-gray-600">|</span>
+                <button onclick="loadSectionProbability()" title="Refresh probability analysis"
                         class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">
-                    ⚡ Refresh Now
+                    🎯 Probability
+                </button>
+                <button onclick="loadSectionChart()" title="Refresh chart data"
+                        class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">
+                    📊 Charts
+                </button>
+                <button onclick="loadSectionTradeSignal()" title="Refresh trade signal"
+                        class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">
+                    🎯 Trade Signal
                 </button>
             </div>
         </div>
@@ -80,9 +93,9 @@
         </div>
 
         <!-- Loading -->
-        <div id="loading" class="text-center py-20">
+        <div id="loading" class="hidden text-center py-20">
             <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[#0053e2] border-t-transparent"></div>
-            <p class="mt-4 text-gray-600 text-lg">Analyzing 3 timeframes (1m + 5m + 15m)... This takes a few seconds 🐶</p>
+            <p class="mt-4 text-gray-600 text-lg">Loading... 🐶</p>
         </div>
 
         <!-- Error -->
@@ -94,6 +107,14 @@
 
         <!-- Dashboard -->
         <div id="dashboard" class="hidden space-y-6">
+
+            <!-- ========= SECTION: Price + Probability ========= -->
+            <div id="section-probability">
+                <div class="section-spinner hidden text-center py-4">
+                    <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-[#0053e2] border-t-transparent"></div>
+                    <span class="text-sm text-gray-500 ml-2">Loading probability...</span>
+                </div>
+                <div class="section-content">
 
             <!-- Top Row: Price + Combined Probability + Bias -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4 slide-in">
@@ -179,6 +200,17 @@
             </div>
 
             <!-- Trade Signal & Reversal Probability -->
+                </div><!-- /.section-content -->
+            </div><!-- /#section-chart -->
+
+            <!-- ========= SECTION: Trade Signal ========= -->
+            <div id="section-trade-signal">
+                <div class="section-spinner hidden text-center py-4">
+                    <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-green-600 border-t-transparent"></div>
+                    <span class="text-sm text-gray-500 ml-2">Loading trade signal...</span>
+                </div>
+                <div class="section-content">
+            <!-- Trade Signal Panel -->
             <div id="trade-signal-panel" class="rounded-xl shadow-md p-5 slide-in bg-white border-2 border-gray-100">
                 <div class="flex justify-between items-start mb-3">
                     <div>
@@ -227,7 +259,11 @@
                 </details>
             </div>
 
-            <!-- Auto-Trader Panel -->
+            <!-- Auto-Trader -->
+                </div><!-- /.section-content -->
+            </div><!-- /#section-trade-signal -->
+
+            <!-- Auto-Trader Section -->
             <div id="auto-trader-panel" class="bg-gray-900 text-white rounded-xl shadow-md p-5 slide-in">
                 <div class="flex justify-between items-center mb-4">
                     <div>
@@ -373,8 +409,19 @@
             <!-- Insights -->
             <div class="bg-gradient-to-r from-[#0053e2] to-blue-700 text-white rounded-xl shadow-md p-6 slide-in">
                 <h3 class="text-lg font-bold mb-3">🧠 Puppy's Intraday Insights</h3>
-                <div id="insights" class="space-y-2 text-blue-100"><p>Loading insights...</p></div>
+                <div id="insights" class="space-y-2 text-blue-100"><p>Click 🔄 Refresh to load</p></div>
             </div>
+
+                </div><!-- /.section-content -->
+            </div><!-- /#section-probability -->
+
+            <!-- ========= SECTION: Charts + Patterns ========= -->
+            <div id="section-chart">
+                <div class="section-spinner hidden text-center py-4">
+                    <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-purple-600 border-t-transparent"></div>
+                    <span class="text-sm text-gray-500 ml-2">Loading charts...</span>
+                </div>
+                <div class="section-content space-y-6">
 
             <!-- Backtest Panel -->
             <div class="bg-white rounded-xl shadow-md overflow-hidden slide-in">
