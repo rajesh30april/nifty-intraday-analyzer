@@ -33,7 +33,7 @@ load_dotenv()
 LIVE_TRADING = os.getenv("LIVE_TRADING", "false").lower() == "true"
 MAX_LOSS_PER_DAY = float(os.getenv("MAX_LOSS_PER_DAY", "5000"))  # ₹5000
 MAX_ORDERS_PER_DAY = int(os.getenv("MAX_ORDERS_PER_DAY", "6"))
-DEFAULT_QUANTITY = int(os.getenv("DEFAULT_QUANTITY", "50"))  # Nifty lot size
+DEFAULT_QUANTITY = int(os.getenv("DEFAULT_QUANTITY", "780"))  # 12 lots × 65 units
 SL_POINTS = float(os.getenv("SL_POINTS", "30"))  # Fixed SL in points
 TRAILING_SL_POINTS = float(os.getenv("TRAILING_SL_POINTS", "15"))  # Trail by 15pts
 EXIT_TIME = dt_time(15, 15)  # 3:15 PM IST — auto-exit all positions
