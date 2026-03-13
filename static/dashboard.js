@@ -120,6 +120,7 @@ async function loadAnalysis() {
     // Fire all sections in parallel
     await Promise.allSettled([
         loadSectionProbability(),
+        loadSectionTrendHealth(),
         loadSectionChart(),
         loadSectionTradeSignal(),
     ]);
@@ -238,6 +239,94 @@ async function loadSectionTradeSignal() {
     } finally {
         _sectionLoading('section-trade-signal', false);
     }
+}
+
+// Section 4: Trend Health — Continue or Reverse?
+async function loadSectionTrendHealth() {
+    _sectionLoading('section-trend-health', true);
+    try {
+        const resp = await fetch('/api/section/trend-health');
+        const data = await resp.json();
+        if (!data.success) { _sectionError('section-trend-health', data.error); return; }
+        renderTrendHealth(data);
+    } catch (e) {
+        _sectionError('section-trend-health', e.message);
+    } finally {
+        _sectionLoading('section-trend-health', false);
+    }
+}
+
+function renderTrendHealth(data) {
+    // Verdict banner
+    document.getElementById('th-verdict-emoji').textContent = data.verdict_emoji;
+    const verdictEl = document.getElementById('th-verdict');
+    verdictEl.textContent = data.verdict;
+
+    const verdictColors = {
+        'TREND CONTINUES': 'text-green-600',
+        'REVERSAL LIKELY': 'text-red-600',
+        'REVERSAL BREWING': 'text-yellow-600',
+        'MIXED SIGNALS': 'text-gray-600',
+    };
+    verdictEl.className = `text-2xl font-black ${verdictColors[data.verdict] || 'text-gray-800'}`;
+
+    // Banner background
+    const banner = document.getElementById('th-verdict-banner');
+    const bannerBg = {
+        'TREND CONTINUES': 'bg-green-50 border-b border-green-200',
+        'REVERSAL LIKELY': 'bg-red-50 border-b border-red-200',
+        'REVERSAL BREWING': 'bg-yellow-50 border-b border-yellow-200',
+        'MIXED SIGNALS': 'bg-gray-50 border-b border-gray-200',
+    };
+    banner.className = `px-5 py-4 flex items-center justify-between ${bannerBg[data.verdict] || 'bg-gray-50 border-b'}`;
+
+    // Trend label
+    const trendEmoji = { uptrend: '\ud83d\udcc8 UPTREND', downtrend: '\ud83d\udcc9 DOWNTREND', sideways: '\u2796 SIDEWAYS' };
+    document.getElementById('th-trend').textContent = `Current: ${trendEmoji[data.current_trend] || data.current_trend}`;
+
+    // Scores
+    document.getElementById('th-continue-score').textContent = data.continuation_score;
+    document.getElementById('th-reverse-score').textContent = data.reversal_score;
+    document.getElementById('th-total').textContent = data.total_signals;
+
+    // Confidence
+    const confEl = document.getElementById('th-confidence');
+    confEl.textContent = data.confidence.toUpperCase();
+    const confColors = { high: 'text-green-600', medium: 'text-yellow-600', low: 'text-red-500' };
+    confEl.className = `font-bold ${confColors[data.confidence] || ''}`;
+
+    // Summary
+    document.getElementById('th-summary').textContent = data.summary;
+
+    // Signal checklist
+    const container = document.getElementById('th-signals');
+    container.innerHTML = '';
+
+    data.signals.forEach(s => {
+        const statusColor = {
+            continuation: 'border-green-500 bg-green-50',
+            reversal: 'border-red-500 bg-red-50',
+            neutral: 'border-gray-300 bg-gray-50',
+        }[s.status];
+        const statusBadge = {
+            continuation: '<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">CONTINUE</span>',
+            reversal: '<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-bold">REVERSAL</span>',
+            neutral: '<span class="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full text-xs font-bold">NEUTRAL</span>',
+        }[s.status];
+
+        container.innerHTML += `
+            <div class="flex items-center gap-3 p-3 rounded-lg border-l-4 ${statusColor}">
+                <span class="text-2xl">${s.emoji}</span>
+                <div class="flex-1">
+                    <div class="flex items-center gap-2">
+                        <span class="font-bold text-gray-800">${s.name}</span>
+                        ${statusBadge}
+                        <span class="text-sm font-bold text-gray-600 ml-auto">${s.value}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-0.5">${s.detail}</p>
+                </div>
+            </div>`;
+    });
 }
 
 function showError(msg) {

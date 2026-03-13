@@ -39,6 +39,7 @@ from kite_integration import kite_manager
 from mtf_analysis import run_mtf_analysis
 from trade_signals import analyze_trade
 from pattern_detector import detect_all_patterns
+from trend_health import analyze_trend_health
 from auto_trader import (
     get_trader_status, start_auto_trader, stop_auto_trader,
     activate_kill_switch, state as trader_state, evaluate_and_act,
@@ -501,6 +502,47 @@ async def section_trade_signal():
                     "weight": s.weight, "detail": s.detail,
                 }
                 for s in ts.reversal_signals
+            ],
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/section/trend-health")
+async def section_trend_health():
+    """Trend Health analysis — is the trend continuing or reversing?"""
+    try:
+        if not kite_manager.is_authenticated:
+            return {"success": False, "error": "Not connected to Zerodha"}
+
+        df = _section_cache.get("df_5m")
+        if df is None or (hasattr(df, 'empty') and df.empty):
+            df = _get_cached_df("5m")
+        if df is None or df.empty:
+            return {"success": False, "error": "No 5m data. Refresh Probability first."}
+
+        result = analyze_trend_health(df)
+
+        return safe_json_response({
+            "success": True,
+            "verdict": result.verdict,
+            "verdict_emoji": result.verdict_emoji,
+            "continuation_score": result.continuation_score,
+            "reversal_score": result.reversal_score,
+            "total_signals": result.total_signals,
+            "confidence": result.confidence,
+            "current_trend": result.current_trend,
+            "summary": result.summary,
+            "signals": [
+                {
+                    "name": s.name,
+                    "emoji": s.emoji,
+                    "status": s.status,
+                    "detail": s.detail,
+                    "value": s.value,
+                }
+                for s in result.signals
             ],
         })
     except Exception as e:

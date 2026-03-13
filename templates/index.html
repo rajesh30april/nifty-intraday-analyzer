@@ -55,6 +55,10 @@
                         class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">
                     🎯 Probability
                 </button>
+                <button onclick="loadSectionTrendHealth()" title="Is trend continuing or reversing?"
+                        class="text-xs bg-emerald-700 hover:bg-emerald-600 px-3 py-1 rounded transition">
+                    🦠 Trend Health
+                </button>
                 <button onclick="loadSectionChart()" title="Refresh chart data"
                         class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded transition">
                     📊 Charts
@@ -414,6 +418,65 @@
 
                 </div><!-- /.section-content -->
             </div><!-- /#section-probability -->
+
+            <!-- ========= SECTION: Trend Health (NEW!) ========= -->
+            <div id="section-trend-health">
+                <div class="section-spinner hidden text-center py-4">
+                    <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-emerald-600 border-t-transparent"></div>
+                    <span class="text-sm text-gray-500 ml-2">Analyzing trend health...</span>
+                </div>
+                <div class="section-content">
+
+            <!-- Trend Health Panel -->
+            <div id="trend-health-panel" class="bg-white rounded-xl shadow-md overflow-hidden slide-in border-2 border-gray-100">
+                <div class="px-5 py-4 bg-gradient-to-r from-emerald-700 to-teal-700 text-white">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="text-lg font-bold">🦠 Trend Health — Continue or Reverse?</h3>
+                            <p id="th-summary" class="text-emerald-200 text-sm">Click Refresh to analyze</p>
+                        </div>
+                        <button onclick="loadSectionTrendHealth()" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded text-sm font-bold transition">
+                            🔄 Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Verdict Banner -->
+                <div id="th-verdict-banner" class="px-5 py-4 bg-gray-50 border-b flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span id="th-verdict-emoji" class="text-4xl">❓</span>
+                        <div>
+                            <p id="th-verdict" class="text-2xl font-black text-gray-800">Loading...</p>
+                            <p id="th-trend" class="text-sm text-gray-500">Current trend: --</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="flex gap-4">
+                            <div class="text-center">
+                                <p class="text-xs text-gray-500">Continue</p>
+                                <p id="th-continue-score" class="text-2xl font-black text-green-600">0</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-gray-500">Reverse</p>
+                                <p id="th-reverse-score" class="text-2xl font-black text-red-600">0</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-gray-500">Total</p>
+                                <p id="th-total" class="text-2xl font-black text-gray-600">0</p>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Confidence: <span id="th-confidence" class="font-bold">--</span></p>
+                    </div>
+                </div>
+
+                <!-- Signal Checklist -->
+                <div id="th-signals" class="p-5 space-y-3">
+                    <p class="text-gray-400 text-center py-4">Click 🔄 Refresh to see trend signals</p>
+                </div>
+            </div>
+
+                </div><!-- /.section-content -->
+            </div><!-- /#section-trend-health -->
 
             <!-- ========= SECTION: Charts + Patterns ========= -->
             <div id="section-chart">
