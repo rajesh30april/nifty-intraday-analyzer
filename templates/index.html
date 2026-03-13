@@ -119,6 +119,38 @@
                 </div>
             </div>
 
+            <!-- Account Capital (Zerodha) -->
+            <div id="capital-panel" class="hidden bg-white rounded-xl shadow-md p-5 slide-in border-l-4 border-[#ffc220]">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-lg font-bold text-gray-800">💰 Account Capital</h3>
+                    <button onclick="loadMargins()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1 rounded transition" aria-label="Refresh margins">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div class="bg-gray-50 rounded-lg p-3 text-center">
+                        <div class="text-xs text-gray-500 uppercase tracking-wide">Opening Balance</div>
+                        <div id="cap-opening" class="text-xl font-bold text-gray-800">--</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3 text-center">
+                        <div class="text-xs text-gray-500 uppercase tracking-wide">Available Cash</div>
+                        <div id="cap-cash" class="text-xl font-bold text-green-600">--</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3 text-center">
+                        <div class="text-xs text-gray-500 uppercase tracking-wide">Available Margin</div>
+                        <div id="cap-margin" class="text-xl font-bold text-[#0053e2]">--</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3 text-center">
+                        <div class="text-xs text-gray-500 uppercase tracking-wide">Used Margin</div>
+                        <div id="cap-used" class="text-xl font-bold text-red-600">--</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3 text-center">
+                        <div class="text-xs text-gray-500 uppercase tracking-wide">Collateral</div>
+                        <div id="cap-collateral" class="text-xl font-bold text-gray-600">--</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- MTF Breakdown -->
             <div class="bg-white rounded-xl shadow-md p-5 slide-in">
                 <h3 class="text-lg font-bold text-gray-800 mb-4">🔬 Timeframe Breakdown</h3>
@@ -507,6 +539,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             await checkStatus();
+            await loadMargins();
             await loadAnalysis(false);
             startAutoRefresh();
         });

@@ -476,6 +476,7 @@ function _updateAutoTraderButtons() {
     startBtn.disabled = isRunning;
     stopBtn.disabled = !isRunning;
     startBtn.textContent = isRunning ? '▶ Running' : '▶ Start';
+    stopBtn.textContent = isRunning ? '⏹ Stop' : '⏹ Stop';
     startBtn.className = isRunning
         ? 'bg-green-800 px-4 py-2 rounded-lg font-bold text-sm opacity-60 cursor-not-allowed'
         : 'bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-bold text-sm transition';

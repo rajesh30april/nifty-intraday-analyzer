@@ -111,6 +111,7 @@ def run_backtest(
     for day, day_df in trading_days:
         _backtest_day(
             day_df, str(day), result,
+            full_df=df,
             sl_points=sl_points,
             trailing_sl=trailing_sl,
             rr_ratio=rr_ratio,
@@ -126,6 +127,7 @@ def _backtest_day(
     df: pd.DataFrame,
     date_str: str,
     result: BacktestResult,
+    full_df: pd.DataFrame,
     sl_points: float,
     trailing_sl: float,
     rr_ratio: float,
@@ -240,7 +242,9 @@ def _backtest_day(
         if trades_today >= max_trades:
             continue
 
-        lookback_df = df.iloc[:i + 1]
+        # Use full_df up to current candle's timestamp for prev day context
+        current_ts = df.index[i]
+        lookback_df = full_df[full_df.index <= current_ts]
         signal = evaluate_vwap_breakout(lookback_df)
 
         if not signal.should_enter or signal.direction is None:

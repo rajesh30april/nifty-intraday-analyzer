@@ -99,6 +99,21 @@ class KiteManager:
         self._save_session()
         return data
 
+    def get_margins(self) -> dict | None:
+        """Get account capital/margins from Zerodha.
+
+        Returns equity & commodity segment details including:
+        - available cash, used margin, opening balance, etc.
+        """
+        if not self.is_authenticated:
+            return None
+        try:
+            margins = self.kite.margins()
+            return margins
+        except Exception as e:
+            print(f"Margins error: {e}")
+            return None
+
     def get_live_quote(self) -> dict | None:
         """Get current Nifty 50 quote via REST API."""
         if not self.is_authenticated:

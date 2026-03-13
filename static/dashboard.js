@@ -38,6 +38,36 @@ async function checkStatus() {
     } catch (e) { console.error(e); }
 }
 
+// ── Account Capital / Margins ────────────────────────────────────
+
+function _formatCurrency(val) {
+    if (val == null || isNaN(val)) return '--';
+    return '₹' + Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+async function loadMargins() {
+    const panel = document.getElementById('capital-panel');
+    try {
+        const resp = await fetch('/api/margins');
+        const data = await resp.json();
+        if (!data.success) {
+            panel.classList.add('hidden');
+            return;
+        }
+        const eq = data.equity;
+        document.getElementById('cap-opening').textContent = _formatCurrency(eq.opening_balance);
+        document.getElementById('cap-cash').textContent = _formatCurrency(eq.available_cash);
+        document.getElementById('cap-margin').textContent = _formatCurrency(eq.available_margin);
+        document.getElementById('cap-used').textContent = _formatCurrency(eq.used_margin);
+        document.getElementById('cap-collateral').textContent = _formatCurrency(eq.collateral);
+        panel.classList.remove('hidden');
+    } catch (e) {
+        console.error('Margins fetch failed:', e);
+        panel.classList.add('hidden');
+    }
+}
+
+
 function startLiveTickPolling() {
     if (liveTickInterval) clearInterval(liveTickInterval);
     liveTickInterval = setInterval(async () => {

@@ -122,6 +122,33 @@ async def status():
     }
 
 
+# ── Account Capital / Margins ──────────────────────────────────────
+
+@app.get("/api/margins")
+async def margins():
+    """Get Zerodha account capital and margin details."""
+    if not kite_manager.is_authenticated:
+        return {"success": False, "error": "Not authenticated with Zerodha"}
+
+    data = kite_manager.get_margins()
+    if not data:
+        return {"success": False, "error": "Failed to fetch margins"}
+
+    equity = data.get("equity", {})
+    return {
+        "success": True,
+        "equity": {
+            "available_cash": equity.get("available", {}).get("cash", 0),
+            "available_margin": equity.get("available", {}).get("live_balance", 0),
+            "used_margin": equity.get("utilised", {}).get("debits", 0),
+            "opening_balance": equity.get("available", {}).get("opening_balance", 0),
+            "collateral": equity.get("available", {}).get("collateral", 0),
+            "intraday_payin": equity.get("available", {}).get("intraday_payin", 0),
+        },
+        "raw": data,  # full response for debugging
+    }
+
+
 # ── Live Tick Endpoint ─────────────────────────────────────────────
 
 @app.get("/api/live-tick")
