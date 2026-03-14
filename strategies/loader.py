@@ -17,3 +17,5 @@ import strategies.opening_candle_fade  # noqa: F401 — Opening Candle Fade (Raj
 import strategies.gap_and_go           # noqa: F401 — Gap and Go
 import strategies.bb_squeeze           # noqa: F401 — Bollinger Band Squeeze
 import strategies.camarilla_pivots     # noqa: F401 — Camarilla Pivot Points
+import strategies.candlestick_patterns # noqa: F401 — Candlestick Patterns (Engulfing, Star, Hammer)
+import strategies.chart_patterns       # noqa: F401 — Chart Patterns (Flag, Double Top, Triangle)
