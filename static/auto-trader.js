@@ -129,9 +129,11 @@ async function startAutoTrader() {
         const resp = await fetch(`/api/auto-trader/start?strategy=${strategyId}`, { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
-            _setAtStatus('evaluating');
-            await fetch('/api/auto-trader/evaluate', { method: 'POST' });
-            await pollAutoTraderStatus();
+            // Don't call evaluate here — it fetches data and blocks.
+            // The 6-second poller will pick up the running state.
+            _setAtStatus('running');
+            _atIsRunning = true;
+            _atLogEvent('🟢', 'Auto-Trader started', `strategy: ${strategyId}`);
         } else {
             _setAtStatus('error', data.error || 'Failed to start');
         }
@@ -195,21 +197,7 @@ async function pollAutoTraderStatus() {
     try {
         const resp = await fetch('/api/auto-trader/status');
         const data = await resp.json();
-        if (!data.success) return;
-
-        // Update internal state
-        _atIsRunning  = !!data.is_running;
-        _atKillSwitch = !!data.kill_switch;
-
-        // If running, get a fresh evaluate snapshot for signal details
-        if (_atIsRunning) {
-            try {
-                const evResp = await fetch('/api/auto-trader/evaluate', { method: 'POST' });
-                const evData = await evResp.json();
-                if (evData.success) { renderAutoTrader(evData); return; }
-            } catch (_) {}
-        }
-        renderAutoTrader(data);
+        if (data.success) renderAutoTrader(data);
     } catch (e) { /* network blip — stay silent */ }
 }
 

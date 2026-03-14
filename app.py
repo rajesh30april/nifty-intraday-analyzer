@@ -1003,16 +1003,24 @@ async def auto_trader_kill():
 
 @app.post("/api/auto-trader/evaluate")
 async def auto_trader_evaluate():
-    """Manually trigger strategy evaluation with fresh data."""
+    """Trigger evaluation in a thread pool — never blocks the event loop."""
     if not trader_state.is_running:
         return {"success": False, "error": "Auto-trader not running"}
     try:
-        df = fetch_intraday_data(interval="5m", period="5d")
-        if df is None or df.empty:
-            return {"success": False, "error": "No data available"}
-        current_price = float(df["close"].iloc[-1])
-        evaluate_and_act(df, current_price)
-        return {"success": True, **get_trader_status()}
+        import asyncio
+        loop = asyncio.get_event_loop()
+
+        def _run():
+            df = fetch_intraday_data(interval="5m", period="5d")
+            if df is None or df.empty:
+                return None
+            evaluate_and_act(df, float(df["close"].iloc[-1]))
+            return get_trader_status()
+
+        result = await loop.run_in_executor(None, _run)
+        if result is None:
+            return {"success": False, "error": "No market data"}
+        return {"success": True, **result}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
