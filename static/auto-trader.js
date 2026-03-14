@@ -336,6 +336,24 @@ function renderAutoTrader(data) {
         const activeEl = document.getElementById('at-active');
         if (activeEl) { activeEl.textContent = 'None'; activeEl.className = 'text-xs font-bold text-gray-500'; }
     }
+
+    // ── CRASH RECOVERY BANNER ──────────────────────────────────
+    const recoveryBanner = document.getElementById('recovery-banner');
+    const recoveryMsg    = document.getElementById('recovery-msg');
+    if (recoveryBanner) {
+        if (data.recovery_mode) {
+            recoveryBanner.classList.remove('hidden');
+            if (recoveryMsg) recoveryMsg.textContent = data.recovery_message || '';
+            // Play alert beep once
+            if (!recoveryBanner._beeped) {
+                _atBeep(440, 200);
+                setTimeout(() => _atBeep(330, 300), 220);
+                recoveryBanner._beeped = true;
+            }
+        } else {
+            recoveryBanner.classList.add('hidden');
+        }
+    }
 }
 
 // ── Trade history ────────────────────────────────────────────────

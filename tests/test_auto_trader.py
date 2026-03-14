@@ -66,6 +66,11 @@ def _fresh_auto_trader():
 
     with patch.dict("sys.modules", {"kite_integration": MagicMock(kite_manager=mock_km)}):
         import auto_trader as at
+
+    # Reset singleton — module-level _recover_state() may have restored real
+    # state from project's .state_snapshot.json during import. Wipe it.
+    at.state = at.TraderState()
+
     return at, mock_km
 
 

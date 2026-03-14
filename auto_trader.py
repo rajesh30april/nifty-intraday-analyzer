@@ -37,7 +37,8 @@ DEFAULT_QUANTITY = int(os.getenv("DEFAULT_QUANTITY", "780"))  # 12 lots × 65 un
 SL_POINTS = float(os.getenv("SL_POINTS", "30"))  # Fixed SL in points
 TRAILING_SL_POINTS = float(os.getenv("TRAILING_SL_POINTS", "15"))  # Trail by 15pts
 EXIT_TIME = dt_time(15, 15)  # 3:15 PM IST — auto-exit all positions
-TRADE_LOG_FILE = Path(__file__).parent / "trade_log.json"
+TRADE_LOG_FILE     = Path(__file__).parent / "trade_log.json"
+STATE_SNAPSHOT_FILE = Path(__file__).parent / ".state_snapshot.json"
 
 
 class OrderStatus(str, Enum):
@@ -85,10 +86,195 @@ class TraderState:
     last_conditions: list[dict] = field(default_factory=list)  # strategy conditions
     kill_switch: bool = False  # Emergency stop
     selected_strategy: str = "smart_router"  # default strategy
+    recovery_mode: bool = False   # True if state was restored after a crash
+    recovery_message: str = ""    # Human-readable description of what was recovered
 
 
 # ── Singleton State ─────────────────────────────────────────────
 state = TraderState()
+
+
+# ── State Snapshot (crash recovery) ─────────────────────────────
+
+def _save_state_snapshot():
+    """Write a full state snapshot to disk after every significant change.
+
+    Called on: entry, exit, trailing SL update.
+    On restart, `_recover_state()` reads this to rebuild state.
+    """
+    active = state.active_trade
+    snapshot = {
+        "date":            datetime.now().strftime("%Y-%m-%d"),
+        "total_pnl":       state.total_pnl,
+        "orders_placed":   state.orders_placed,
+        "is_paper_mode":   state.is_paper_mode,
+        "selected_strategy": state.selected_strategy,
+        "active_trade":    {
+            "id":          active.id,
+            "timestamp":   active.timestamp,
+            "direction":   active.direction,
+            "instrument":  active.instrument,
+            "entry_price": active.entry_price,
+            "quantity":    active.quantity,
+            "stop_loss":   active.stop_loss,
+            "target":      active.target,
+            "order_id":    active.order_id,
+            "paper":       active.paper,
+            "status":      active.status,
+        } if active else None,
+        "trades_today": [
+            {
+                "id":          t.id,
+                "timestamp":   t.timestamp,
+                "direction":   t.direction,
+                "instrument":  t.instrument,
+                "entry_price": t.entry_price,
+                "quantity":    t.quantity,
+                "stop_loss":   t.stop_loss,
+                "target":      t.target,
+                "exit_price":  t.exit_price,
+                "exit_time":   t.exit_time,
+                "exit_reason": t.exit_reason,
+                "pnl":         t.pnl,
+                "status":      t.status,
+                "order_id":    t.order_id,
+                "paper":       t.paper,
+            }
+            for t in state.trades_today
+        ],
+    }
+    STATE_SNAPSHOT_FILE.write_text(json.dumps(snapshot, indent=2))
+
+
+def _recover_state(snapshot_file: Path | None = None):
+    """On startup, restore state from snapshot and cross-check Zerodha positions.
+
+    Recovery steps:
+    1. Load snapshot → only proceed if it's from TODAY.
+    2. Restore orders_placed, total_pnl, trades_today.
+    3. If active_trade in snapshot → verify against Zerodha's live positions.
+       a. Zerodha confirms position open → restore active_trade, resume managing it.
+       b. Zerodha shows position closed → mark trade as crashed/exited, log PnL.
+       c. Kite not authenticated → restore from snapshot (best-effort).
+    4. Set recovery_mode=True so the UI can show a warning banner.
+    """
+    f = snapshot_file or STATE_SNAPSHOT_FILE
+    if not f.exists():
+        return
+
+    try:
+        snap = json.loads(f.read_text())
+    except (json.JSONDecodeError, OSError):
+        return
+
+    # Only recover if snapshot is from TODAY
+    today = datetime.now().strftime("%Y-%m-%d")
+    if snap.get("date") != today:
+        print("📅 Snapshot is from a previous day — starting fresh")
+        f.unlink(missing_ok=True)
+        return
+
+    # ── Restore base counters ─────────────────────────────────
+    state.total_pnl       = snap.get("total_pnl", 0.0)
+    state.orders_placed   = snap.get("orders_placed", 0)
+    state.is_paper_mode   = snap.get("is_paper_mode", not LIVE_TRADING)
+    state.selected_strategy = snap.get("selected_strategy", "smart_router")
+
+    # ── Restore historical trades ─────────────────────────────
+    for t in snap.get("trades_today", []):
+        state.trades_today.append(Trade(
+            id=t["id"], timestamp=t["timestamp"],
+            direction=t["direction"], instrument=t["instrument"],
+            entry_price=t["entry_price"], quantity=t["quantity"],
+            stop_loss=t["stop_loss"], target=t["target"],
+            exit_price=t.get("exit_price"), exit_time=t.get("exit_time"),
+            exit_reason=t.get("exit_reason"), pnl=t.get("pnl", 0.0),
+            status=t.get("status", OrderStatus.EXITED),
+            order_id=t.get("order_id"), paper=t.get("paper", True),
+        ))
+
+    # ── Recover active trade if present ───────────────────────
+    at = snap.get("active_trade")
+    if not at:
+        state.recovery_mode    = True
+        state.recovery_message = (
+            f"✅ State restored: {len(state.trades_today)} trades today, "
+            f"PnL=₹{state.total_pnl:+,.0f}, no open position"
+        )
+        print(f"🔄 [RECOVERY] {state.recovery_message}")
+        return
+
+    # Check Zerodha for live position
+    zerodha_qty  = _get_zerodha_position_qty(at["instrument"])
+    paper_mode   = at.get("paper", True)
+
+    if zerodha_qty != 0 or paper_mode:
+        # Position still open in Zerodha (or paper mode → trust snapshot)
+        recovered_trade = Trade(
+            id=at["id"], timestamp=at["timestamp"],
+            direction=at["direction"], instrument=at["instrument"],
+            entry_price=at["entry_price"], quantity=at["quantity"],
+            stop_loss=at["stop_loss"], target=at["target"],
+            order_id=at.get("order_id"), paper=paper_mode,
+            status=OrderStatus.FILLED,
+        )
+        state.active_trade = recovered_trade
+        state.trades_today.append(recovered_trade)   # keep trades_today in sync
+        state.highest_price_since_entry = at["entry_price"]
+        state.lowest_price_since_entry  = at["entry_price"]
+        state.recovery_mode    = True
+        state.recovery_message = (
+            f"🚨 RECOVERED open {'PAPER' if paper_mode else 'LIVE'} trade: "
+            f"{at['direction'].upper()} {at['instrument']} "
+            f"entry=₹{at['entry_price']:,.0f} SL=₹{at['stop_loss']:,.0f}"
+        )
+        print(f"🔄 [RECOVERY] {state.recovery_message}")
+        print(f"   ⚠️  Auto-trader is NOT running — click START to resume managing it.")
+    else:
+        # Position already closed in Zerodha while app was down
+        # Mark the trade as exited with unknown PnL
+        ghost_trade = Trade(
+            id=at["id"], timestamp=at["timestamp"],
+            direction=at["direction"], instrument=at["instrument"],
+            entry_price=at["entry_price"], quantity=at["quantity"],
+            stop_loss=at["stop_loss"], target=at["target"],
+            order_id=at.get("order_id"), paper=paper_mode,
+            status=OrderStatus.EXITED,
+            exit_reason="App crashed — position closed by Zerodha/broker while app was down",
+            pnl=0.0,   # Can't calculate without exit price
+        )
+        state.trades_today.append(ghost_trade)
+        state.recovery_mode    = True
+        state.recovery_message = (
+            f"⚠️ Position was closed while app was down: "
+            f"{at['direction'].upper()} {at['instrument']}. "
+            f"Check Zerodha for actual P&L."
+        )
+        print(f"🔄 [RECOVERY] {state.recovery_message}")
+
+
+def _get_zerodha_position_qty(instrument: str) -> int:
+    """Query Zerodha for current net quantity of `instrument`.
+
+    Returns net quantity (positive = long, negative = short, 0 = closed/not found).
+    Returns 0 if Kite is not authenticated (paper mode safe fallback).
+    """
+    try:
+        if not kite_manager.is_authenticated:
+            return 0
+        positions = kite_manager.kite.positions()
+        tradingsymbol = instrument.replace("NFO:", "")
+        for pos in positions.get("net", []):
+            if pos.get("tradingsymbol") == tradingsymbol:
+                return int(pos.get("quantity", 0))
+        return 0
+    except Exception as e:
+        print(f"⚠️ Could not check Zerodha positions: {e}")
+        return 0   # Assume closed if can't verify
+
+
+# ── Run recovery immediately at module load ───────────────────────
+_recover_state()
 
 
 # ── Safety Checks ──────────────────────────────────────────────
@@ -304,6 +490,7 @@ def _exit_position(reason: str, current_price: float):
           f"| P&L: ₹{pnl:+.2f} | Reason: {reason}")
 
     _save_trade_log()
+    _save_state_snapshot()   # ← crash recovery: snapshot immediately on exit (no active_trade)
 
 
 # ── Core Logic: Evaluate & Act ────────────────────────────────
@@ -402,6 +589,7 @@ def _enter_trade(direction: Direction, price: float):
     print(f"🚀 [{mode}] ENTRY {direction.value.upper()} {DEFAULT_QUANTITY}x {symbol} "
           f"@ ₹{price} | SL: ₹{sl} | Target: ₹{target}")
     _save_trade_log()
+    _save_state_snapshot()   # ← crash recovery: snapshot immediately on entry
 
 
 def _manage_active_trade(current_price: float):
@@ -427,10 +615,12 @@ def _manage_active_trade(current_price: float):
         new_sl = state.highest_price_since_entry - TRAILING_SL_POINTS
         if new_sl > trade.stop_loss:
             trade.stop_loss = round(new_sl, 2)
+            _save_state_snapshot()   # SL moved — persist latest SL for crash recovery
     else:
         new_sl = state.lowest_price_since_entry + TRAILING_SL_POINTS
         if new_sl < trade.stop_loss:
             trade.stop_loss = round(new_sl, 2)
+            _save_state_snapshot()   # SL moved — persist latest SL for crash recovery
 
     # Check stop-loss hit
     if is_long and current_price <= trade.stop_loss:
@@ -506,6 +696,8 @@ def get_trader_status() -> dict:
         "sl_points": SL_POINTS,
         "trailing_sl_points": TRAILING_SL_POINTS,
         "selected_strategy": state.selected_strategy,
+        "recovery_mode":    state.recovery_mode,
+        "recovery_message": state.recovery_message,
     }
 
 

@@ -412,6 +412,26 @@
               <!-- Toast container -->
               <div id="at-toasts" class="fixed top-4 right-4 z-[999] flex flex-col gap-2 pointer-events-none" style="width:320px"></div>
 
+              <!-- ── Crash Recovery Banner (hidden by default) ── -->
+              <div id="recovery-banner" class="hidden mb-3 border-2 border-red-400 bg-red-50 rounded-xl p-4">
+                <div class="flex items-start gap-3">
+                  <span class="text-2xl">🚨</span>
+                  <div class="flex-1">
+                    <p class="text-red-800 font-bold text-sm">App Restarted — Open Trade Detected!</p>
+                    <p id="recovery-msg" class="text-red-700 text-xs mt-1"></p>
+                    <div class="mt-2 flex gap-2">
+                      <button onclick="atStart()" class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold">
+                        ▶ Resume Managing Trade
+                      </button>
+                      <a href="https://kite.zerodha.com/" target="_blank"
+                        class="bg-white border border-red-400 text-red-700 text-xs px-3 py-1.5 rounded-lg font-bold">
+                        Open Zerodha ↗
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <!-- ── Pre-Market Preflight ── -->
               <div class="bg-white border-2 border-blue-200 rounded-xl shadow-sm mb-3 overflow-hidden">
                 <div class="flex items-center justify-between px-4 py-2 bg-blue-700 text-white">
