@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nifty 50 — Pattern History (60 Days)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+  <style>
+    body { background: #f8fafc; }
+    .card-in { animation: fadeUp .35s ease both; }
+    @keyframes fadeUp {
+      from { opacity:0; transform:translateY(12px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .chip { display:inline-flex; align-items:center; gap:4px;
+            padding:2px 10px; border-radius:9999px; font-size:11px; font-weight:700; }
+    .conf-bar { height:6px; border-radius:3px; background:#e5e7eb; overflow:hidden; }
+    .conf-fill { height:100%; border-radius:3px; transition:width .4s; }
+    .filter-btn { transition: all .15s; }
+    .filter-btn.active { background:#0053e2; color:#fff; border-color:#0053e2; }
+    .sticky-bar { position:sticky; top:0; z-index:40;
+                  background:rgba(255,255,255,.95); backdrop-filter:blur(8px); }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- ── Header ── -->
+<header class="bg-[#0053e2] text-white px-6 py-4 shadow-lg">
+  <div class="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-xl font-black tracking-tight">📊 Nifty 50 — Pattern History</h1>
+      <p id="hdr-range" class="text-blue-200 text-xs mt-0.5">Loading…</p>
+    </div>
+    <div class="flex gap-3 flex-wrap text-sm">
+      <a href="/" class="bg-white/20 hover:bg-white/30 px-4 py-1.5 rounded-lg font-semibold transition">← Back to Analyzer</a>
+      <button onclick="loadPatterns()" class="bg-[#ffc220] text-gray-900 hover:bg-yellow-300 px-4 py-1.5 rounded-lg font-bold transition">🔄 Refresh</button>
+    </div>
+  </div>
+</header>
+
+<!-- ── Best TF Banner ── -->
+<div class="bg-green-50 border-b border-green-200 px-6 py-3">
+  <div class="max-w-7xl mx-auto flex items-start gap-3">
+    <span class="text-2xl">🏆</span>
+    <div>
+      <p class="text-green-800 font-bold text-sm">Best Timeframe for Intraday Nifty 50 Trading → <span class="text-green-700 underline">15-Minute</span></p>
+      <p class="text-green-700 text-xs mt-0.5">
+        <strong>5m</strong> = Great for scalping but generates noise. 
+        <strong>15m</strong> = Sweet spot — clean signals, enough candles per day, best pattern reliability ✅. 
+        <strong>1h</strong> = Excellent for context & swing setups but very few intraday patterns.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Sticky Filters ── -->
+<div class="sticky-bar border-b border-gray-200 px-6 py-3 shadow-sm">
+  <div class="max-w-7xl mx-auto flex flex-wrap gap-3 items-center">
+
+    <!-- Timeframe -->
+    <div class="flex gap-1">
+      <span class="text-xs font-semibold text-gray-500 self-center mr-1">TF:</span>
+      <button class="filter-btn active text-xs border border-gray-300 px-3 py-1 rounded-full" data-group="tf" data-val="all" onclick="setFilter('tf','all',this)">All</button>
+      <button class="filter-btn text-xs border border-gray-300 px-3 py-1 rounded-full" data-group="tf" data-val="5m" onclick="setFilter('tf','5m',this)">5m</button>
+      <button class="filter-btn text-xs border border-gray-300 px-3 py-1 rounded-full bg-green-50 border-green-400 text-green-700 font-bold" data-group="tf" data-val="15m" onclick="setFilter('tf','15m',this)">15m ✅</button>
+      <button class="filter-btn text-xs border border-gray-300 px-3 py-1 rounded-full" data-group="tf" data-val="1h" onclick="setFilter('tf','1h',this)">1h</button>
+    </div>
+
+    <div class="w-px h-5 bg-gray-200"></div>
+
+    <!-- Bias -->
+    <div class="flex gap-1">
+      <span class="text-xs font-semibold text-gray-500 self-center mr-1">Bias:</span>
+      <button class="filter-btn active text-xs border border-gray-300 px-3 py-1 rounded-full" data-group="bias" data-val="all" onclick="setFilter('bias','all',this)">All</button>
+      <button class="filter-btn text-xs border border-gray-300 px-3 py-1 rounded-full" data-group="bias" data-val="bullish" onclick="setFilter('bias','bullish',this)">🟢 Bullish</button>
+      <button class="filter-btn text-xs border border-gray-300 px-3 py-1 rounded-full" data-group="bias" data-val="bearish" onclick="setFilter('bias','bearish',this)">🔴 Bearish</button>
+    </div>
+
+    <div class="w-px h-5 bg-gray-200"></div>
+
+    <!-- Type -->
+    <div class="flex gap-1">
+      <span class="text-xs font-semibold text-gray-500 self-center mr-1">Type:</span>
+      <button class="filter-btn active text-xs border border-gray-300 px-3 py-1 rounded-full" data-group="type" data-val="all" onclick="setFilter('type','all',this)">All</button>
+      <button class="filter-btn text-xs border border-gray-300 px-3 py-1 rounded-full" data-group="type" data-val="reversal" onclick="setFilter('type','reversal',this)">↩ Reversal</button>
+      <button class="filter-btn text-xs border border-gray-300 px-3 py-1 rounded-full" data-group="type" data-val="continuation" onclick="setFilter('type','continuation',this)">→ Continuation</button>
+      <button class="filter-btn text-xs border border-gray-300 px-3 py-1 rounded-full" data-group="type" data-val="structure" onclick="setFilter('type','structure',this)">⟳ Structure</button>
+    </div>
+
+    <div class="ml-auto text-xs text-gray-400" id="visible-count"></div>
+  </div>
+</div>
+
+<main class="max-w-7xl mx-auto px-4 py-6">
+
+  <!-- Loading -->
+  <div id="loading" class="flex flex-col items-center justify-center py-24 gap-4">
+    <div class="w-12 h-12 border-4 border-[#0053e2] border-t-transparent rounded-full animate-spin"></div>
+    <p class="text-gray-500 font-semibold">Scanning 60 days across 5m · 15m · 1h…</p>
+    <p class="text-gray-400 text-xs">This may take 10-15 seconds</p>
+  </div>
+
+  <!-- Stats Row -->
+  <div id="stats-row" class="hidden grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+    <div class="bg-white rounded-xl p-4 shadow-sm border text-center">
+      <div id="stat-total" class="text-3xl font-black text-[#0053e2]">—</div>
+      <div class="text-xs text-gray-500 mt-1 font-semibold">Total Patterns</div>
+    </div>
+    <div class="bg-green-50 rounded-xl p-4 shadow-sm border border-green-200 text-center">
+      <div id="stat-bull" class="text-3xl font-black text-green-600">—</div>
+      <div class="text-xs text-gray-500 mt-1 font-semibold">🟢 Bullish</div>
+    </div>
+    <div class="bg-red-50 rounded-xl p-4 shadow-sm border border-red-200 text-center">
+      <div id="stat-bear" class="text-3xl font-black text-red-600">—</div>
+      <div class="text-xs text-gray-500 mt-1 font-semibold">🔴 Bearish</div>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm border text-center">
+      <div id="stat-days" class="text-3xl font-black text-gray-700">—</div>
+      <div class="text-xs text-gray-500 mt-1 font-semibold">Trading Days</div>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm border text-center">
+      <div id="stat-top" class="text-sm font-black text-gray-700 leading-tight">—</div>
+      <div class="text-xs text-gray-500 mt-1 font-semibold">Most Common</div>
+    </div>
+  </div>
+
+  <!-- Charts Row -->
+  <div id="charts-row" class="hidden grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white rounded-xl p-4 shadow-sm border">
+      <h3 class="text-xs font-bold text-gray-600 mb-3">📊 By Timeframe</h3>
+      <div style="height:160px"><canvas id="chart-tf"></canvas></div>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm border">
+      <h3 class="text-xs font-bold text-gray-600 mb-3">📋 By Type</h3>
+      <div style="height:160px"><canvas id="chart-type"></canvas></div>
+    </div>
+    <div class="bg-white rounded-xl p-4 shadow-sm border">
+      <h3 class="text-xs font-bold text-gray-600 mb-3">🔝 Top 6 Patterns</h3>
+      <div style="height:160px"><canvas id="chart-names"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Pattern Cards -->
+  <div id="patterns-grid" class="hidden space-y-2"></div>
+
+  <!-- Empty state -->
+  <div id="empty-state" class="hidden text-center py-16">
+    <div class="text-5xl mb-3">🔍</div>
+    <p class="text-gray-500 font-semibold">No patterns match your filters</p>
+    <p class="text-gray-400 text-sm mt-1">Try changing the timeframe or bias filter</p>
+  </div>
+
+</main>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let allPatterns = [];
+let scanMeta = {};
+let filters = { tf: 'all', bias: 'all', type: 'all' };
+let tfChart, typeChart, namesChart;
+
+// ── Load ─────────────────────────────────────────────────────────────────────
+async function loadPatterns() {
+  document.getElementById('loading').classList.remove('hidden');
+  document.getElementById('stats-row').classList.add('hidden');
+  document.getElementById('charts-row').classList.add('hidden');
+  document.getElementById('patterns-grid').classList.add('hidden');
+  document.getElementById('empty-state').classList.add('hidden');
+
+  try {
+    const resp = await fetch('/api/patterns-history');
+    const data = await resp.json();
+
+    if (!data.success) {
+      alert('Error: ' + (data.error || 'Scan failed'));
+      return;
+    }
+
+    allPatterns = data.patterns;
+    scanMeta   = data.meta;
+
+    document.getElementById('hdr-range').textContent =
+      `${scanMeta.date_range} · ${scanMeta.trading_days} trading days`;
+
+    renderStats(data);
+    renderCharts(data);
+    renderPatterns();
+
+    document.getElementById('stats-row').classList.remove('hidden');
+    document.getElementById('charts-row').classList.remove('hidden');
+  } catch (e) {
+    alert('Failed to load: ' + e.message);
+  } finally {
+    document.getElementById('loading').classList.add('hidden');
+  }
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function renderStats(data) {
+  document.getElementById('stat-total').textContent = data.total;
+  document.getElementById('stat-bull').textContent  = data.bullish_count;
+  document.getElementById('stat-bear').textContent  = data.bearish_count;
+  document.getElementById('stat-days').textContent  = scanMeta.trading_days;
+  const topName = Object.entries(data.by_name || {})[0];
+  document.getElementById('stat-top').textContent =
+    topName ? `${topName[0]} (${topName[1]}×)` : '—';
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+function renderCharts(data) {
+  const BLUE = ['#0053e2','#ffc220','#2a8703','#ea1100','#6366f1','#f59e0b'];
+
+  // By TF
+  const tfLabels = Object.keys(data.by_timeframe);
+  const tfVals   = Object.values(data.by_timeframe);
+  if (tfChart) tfChart.destroy();
+  tfChart = new Chart(document.getElementById('chart-tf'), {
+    type: 'doughnut',
+    data: { labels: tfLabels, datasets: [{ data: tfVals, backgroundColor: BLUE, borderWidth: 2 }] },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins: { legend: { position:'right', labels:{ boxWidth:12, font:{size:11} } } } }
+  });
+
+  // By type
+  const typeLabels = Object.keys(data.by_type);
+  const typeVals   = Object.values(data.by_type);
+  if (typeChart) typeChart.destroy();
+  typeChart = new Chart(document.getElementById('chart-type'), {
+    type: 'doughnut',
+    data: { labels: typeLabels, datasets: [{ data: typeVals, backgroundColor: BLUE, borderWidth: 2 }] },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins: { legend: { position:'right', labels:{ boxWidth:12, font:{size:11} } } } }
+  });
+
+  // Top 6 pattern names
+  const nameEntries = Object.entries(data.by_name || {}).slice(0, 6);
+  if (namesChart) namesChart.destroy();
+  namesChart = new Chart(document.getElementById('chart-names'), {
+    type: 'bar',
+    data: {
+      labels: nameEntries.map(([k]) => k.length > 18 ? k.slice(0,16)+'…' : k),
+      datasets: [{ data: nameEntries.map(([,v]) => v),
+        backgroundColor: '#0053e2', borderRadius: 4 }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      plugins: { legend:{ display:false } },
+      scales: { x:{ grid:{ display:false } }, y:{ grid:{ display:false } } }
+    }
+  });
+}
+
+// ── Filter ────────────────────────────────────────────────────────────────────
+function setFilter(group, val, btn) {
+  filters[group] = val;
+  // Update button styles in this group
+  document.querySelectorAll(`[data-group="${group}"]`).forEach(b => {
+    b.classList.remove('active');
+    // restore 15m special styling
+    if (b.dataset.val === '15m' && group === 'tf') {
+      b.className = 'filter-btn text-xs border border-green-400 px-3 py-1 rounded-full bg-green-50 text-green-700 font-bold';
+    }
+  });
+  btn.classList.add('active');
+  renderPatterns();
+}
+
+// ── Pattern Cards ─────────────────────────────────────────────────────────────
+function renderPatterns() {
+  const grid = document.getElementById('patterns-grid');
+  const empty = document.getElementById('empty-state');
+
+  const filtered = allPatterns.filter(p => {
+    if (filters.tf   !== 'all' && p.timeframe    !== filters.tf)   return false;
+    if (filters.bias !== 'all' && p.bias         !== filters.bias) return false;
+    if (filters.type !== 'all' && p.pattern_type !== filters.type) return false;
+    return true;
+  });
+
+  document.getElementById('visible-count').textContent =
+    `Showing ${filtered.length} of ${allPatterns.length} patterns`;
+
+  if (filtered.length === 0) {
+    grid.classList.add('hidden');
+    empty.classList.remove('hidden');
+    return;
+  }
+
+  empty.classList.add('hidden');
+  grid.classList.remove('hidden');
+
+  // Group by end_date
+  const byDate = {};
+  filtered.forEach(p => {
+    const d = p.date_label || 'Unknown';
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push(p);
+  });
+
+  grid.innerHTML = Object.entries(byDate).map(([date, pats]) => `
+    <div class="mb-4 card-in">
+      <div class="flex items-center gap-2 mb-2">
+        <div class="h-px flex-1 bg-gray-200"></div>
+        <span class="text-xs font-bold text-gray-400 px-2">${date}</span>
+        <div class="h-px flex-1 bg-gray-200"></div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        ${pats.map(p => patternCard(p)).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function patternCard(p) {
+  const biasColor = p.bias === 'bullish'
+    ? 'bg-green-50 border-green-200'
+    : p.bias === 'bearish'
+    ? 'bg-red-50 border-red-200'
+    : 'bg-gray-50 border-gray-200';
+
+  const biasChip = p.bias === 'bullish'
+    ? '<span class="chip bg-green-100 text-green-700">🟢 Bullish</span>'
+    : p.bias === 'bearish'
+    ? '<span class="chip bg-red-100 text-red-700">🔴 Bearish</span>'
+    : '<span class="chip bg-gray-100 text-gray-600">⚪ Neutral</span>';
+
+  const typeChip = p.pattern_type === 'reversal'
+    ? '<span class="chip bg-orange-100 text-orange-700">↩ Reversal</span>'
+    : p.pattern_type === 'continuation'
+    ? '<span class="chip bg-blue-100 text-blue-700">→ Continuation</span>'
+    : '<span class="chip bg-purple-100 text-purple-700">⟳ Structure</span>';
+
+  const tfColor = p.timeframe === '15m'
+    ? 'bg-green-100 text-green-800 font-black'
+    : 'bg-blue-100 text-blue-700';
+
+  const confPct  = Math.round(p.confidence * 100);
+  const confColor = confPct >= 75 ? '#2a8703' : confPct >= 50 ? '#0053e2' : '#f59e0b';
+
+  const timeStr = p.end_time
+    ? new Date(p.end_time).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'})
+    : '';
+
+  const levels = Object.entries(p.key_levels || {}).slice(0, 3)
+    .map(([k,v]) => `<span class="text-gray-500">${k}:</span> <span class="font-bold">${Number(v).toFixed(0)}</span>`)
+    .join('  ·  ');
+
+  return `
+  <div class="bg-white border ${biasColor.split(' ')[1]} rounded-xl p-4 shadow-sm hover:shadow-md transition">
+    <div class="flex items-start justify-between mb-2">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">${p.emoji}</span>
+        <div>
+          <div class="font-bold text-gray-800 text-sm leading-tight">${p.name}</div>
+          <div class="text-xs text-gray-400">${timeStr}</div>
+        </div>
+      </div>
+      <span class="chip ${tfColor} text-xs">${p.timeframe}</span>
+    </div>
+
+    <div class="flex gap-1 flex-wrap mb-3">
+      ${biasChip} ${typeChip}
+    </div>
+
+    <div class="mb-2">
+      <div class="flex justify-between text-xs text-gray-500 mb-1">
+        <span>Confidence</span><span class="font-bold" style="color:${confColor}">${confPct}%</span>
+      </div>
+      <div class="conf-bar">
+        <div class="conf-fill" style="width:${confPct}%; background:${confColor}"></div>
+      </div>
+    </div>
+
+    <p class="text-xs text-gray-500 leading-relaxed mb-2">${p.description}</p>
+
+    ${levels ? `<div class="text-xs border-t pt-2 mt-1">${levels}</div>` : ''}
+  </div>`;
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+loadPatterns();
+</script>
+</body>
+</html>

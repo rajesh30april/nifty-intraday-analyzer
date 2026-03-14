@@ -44,6 +44,7 @@ from auto_trader import (
     get_trader_status, start_auto_trader, stop_auto_trader,
     activate_kill_switch, state as trader_state, evaluate_and_act,
 )
+from pattern_scanner import scan_patterns, TIMEFRAME_META
 
 app = FastAPI(title="Nifty 50 Intraday Probability Analyzer")
 templates = Jinja2Templates(directory="templates")
@@ -79,6 +80,79 @@ async def index(request: Request):
         "request": request,
         "is_live": kite_manager.is_authenticated,
     })
+
+
+@app.get("/patterns", response_class=HTMLResponse)
+async def patterns_page(request: Request):
+    """Dedicated 60-day pattern history page."""
+    return templates.TemplateResponse("patterns.html", {"request": request})
+
+
+@app.get("/api/patterns-history")
+async def patterns_history(
+    period: str = "60d",
+    timeframes: str = "5m,15m,1h",
+):
+    """Scan last N days for chart patterns across multiple timeframes.
+
+    Args:
+        period: Yahoo Finance period string (e.g. '60d', '30d').
+        timeframes: Comma-separated list of timeframes to scan.
+    """
+    try:
+        tf_list = [t.strip() for t in timeframes.split(",") if t.strip()]
+        result = scan_patterns(timeframes=tf_list, period=period)
+
+        if result.error:
+            return safe_json_response({"success": False, "error": result.error})
+
+        patterns_data = [
+            {
+                "name":         p.name,
+                "pattern_type": p.pattern_type,
+                "bias":         p.bias,
+                "confidence":   p.confidence,
+                "timeframe":    p.timeframe,
+                "start_time":   p.start_time,
+                "end_time":     p.end_time,
+                "description":  p.description,
+                "key_levels":   p.key_levels,
+                "emoji":        p.emoji,
+                "duration_candles": p.duration_candles,
+                "date_label":   p.date_label,
+                "end_date":     p.end_date,
+            }
+            for p in result.patterns
+        ]
+
+        return safe_json_response({
+            "success":       True,
+            "total":         result.total,
+            "bullish_count": result.bullish_count,
+            "bearish_count": result.bearish_count,
+            "neutral_count": result.neutral_count,
+            "by_timeframe":  result.by_timeframe,
+            "by_type":       result.by_type,
+            "by_name":       result.by_name,
+            "patterns":      patterns_data,
+            "meta": {
+                "trading_days": result.trading_days,
+                "date_range":   result.date_range,
+                "period":       period,
+                "timeframes":   tf_list,
+                "tf_meta":      {
+                    k: {
+                        "label":          v["label"],
+                        "best_for":       v["best_for"],
+                        "signal_quality": v["signal_quality"],
+                        "recommended":    v["recommended"],
+                    }
+                    for k, v in TIMEFRAME_META.items()
+                },
+            },
+        })
+    except Exception as e:
+        return safe_json_response({"success": False, "error": str(e)})
 
 
 # ── Zerodha OAuth Flow ─────────────────────────────────────────────
