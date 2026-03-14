@@ -24,6 +24,12 @@ function switchPage(pageId) {
     if (pageId === 'patterns' && typeof onPatternsTabOpen === 'function') {
         setTimeout(onPatternsTabOpen, 50);
     }
+    // Start/stop auto-trader polling when switching in/out
+    if (pageId === 'auto-trader' && typeof onAutoTraderTabOpen === 'function') {
+        setTimeout(onAutoTraderTabOpen, 50);
+    } else if (typeof onAutoTraderTabClose === 'function') {
+        onAutoTraderTabClose();
+    }
     // Re-render charts if switching to charts page (canvas sizing)
     if (pageId === 'charts') {
         setTimeout(() => {
