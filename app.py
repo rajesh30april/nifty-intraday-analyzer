@@ -44,7 +44,7 @@ from auto_trader import (
     get_trader_status, start_auto_trader, stop_auto_trader,
     activate_kill_switch, state as trader_state, evaluate_and_act,
 )
-from pattern_scanner import scan_patterns, TIMEFRAME_META
+from pattern_scanner import scan_patterns, TIMEFRAME_META, PATTERN_EMOJIS
 
 app = FastAPI(title="Nifty 50 Intraday Probability Analyzer")
 templates = Jinja2Templates(directory="templates")
@@ -88,7 +88,61 @@ async def patterns_page(request: Request):
     return templates.TemplateResponse("patterns.html", {"request": request})
 
 
-@app.get("/api/patterns-history")
+@app.get("/api/day-chart")
+async def day_chart(date: str = ""):
+    """Return 5m candles + patterns for a single trading day."""
+    try:
+        df5 = fetch_intraday_data(period="60d", interval="5m")
+        if df5.empty:
+            return safe_json_response({"success": False, "error": "No data"})
+
+        # Filter to the requested date
+        target = pd.Timestamp(date).date() if date else df5.index[-1].date()
+        day_df = df5[df5.index.date == target]
+
+        if day_df.empty:
+            return safe_json_response({"success": False, "error": f"No data for {target}"})
+
+        candles = []
+        for ts, row in day_df.iterrows():
+            candles.append({
+                "time":  int(ts.timestamp()),
+                "open":  round(float(row["open"]),  2),
+                "high":  round(float(row["high"]),  2),
+                "low":   round(float(row["low"]),   2),
+                "close": round(float(row["close"]), 2),
+            })
+
+        # Detect patterns on this day's candles
+        from pattern_detector import detect_all_patterns
+        pat_result = detect_all_patterns(day_df, timeframe="5m")
+        patterns = [
+            {
+                "name":         p.name,
+                "pattern_type": p.pattern_type,
+                "bias":         p.bias,
+                "confidence":   round(p.confidence, 2),
+                "timeframe":    p.timeframe,
+                "start_time":   p.start_time,
+                "end_time":     p.end_time,
+                "description":  p.description,
+                "key_levels":   p.key_levels or {},
+                "emoji":        p.name and PATTERN_EMOJIS.get(p.name, "📊"),
+            }
+            for p in pat_result.get("patterns", [])
+        ]
+
+        return safe_json_response({
+            "success":  True,
+            "date":     str(target),
+            "candles":  candles,
+            "patterns": patterns,
+        })
+    except Exception as e:
+        return safe_json_response({"success": False, "error": str(e)})
+
+
+
 async def patterns_history(
     period: str = "60d",
     timeframes: str = "5m,15m,1h",
