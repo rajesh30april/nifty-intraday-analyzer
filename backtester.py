@@ -428,6 +428,7 @@ class ReplayFrame:
     regime: str
     # Trade state
     trade_state: str        # 'idle' | 'entry' | 'in_trade' | 'exit'
+    idle_reason: str        # 'max_trades' | 'no_signal' | 'time_filter' | 'in_trade' | ''
     entry_price: float
     stop_loss: float
     target: float
@@ -625,6 +626,21 @@ def replay_day(
                 stop_loss_lvl = entry_price + sl_points
                 target_lvl    = entry_price - sl_points * rr_ratio
 
+        # ── Classify why we're idle (transparent UX) ─────────
+        if trade_state == "idle":
+            if in_trade:
+                idle_reason = "in_trade"          # shouldn't happen, guard
+            elif trades_today >= max_trades:
+                idle_reason = "max_trades"
+            elif candle_time < ENTRY_START or candle_time >= EXIT_TIME:
+                idle_reason = "time_filter"
+            elif not sig_fires:
+                idle_reason = "no_signal"
+            else:
+                idle_reason = "no_signal"          # signal fired but something blocked
+        else:
+            idle_reason = ""
+
         frames.append(ReplayFrame(
             time=time_str,
             open=round(open_, 2),
@@ -638,6 +654,7 @@ def replay_day(
             confidence=round(confidence, 1),
             regime=regime_str,
             trade_state=trade_state,
+            idle_reason=idle_reason,
             entry_price=round(entry_price, 2) if in_trade or trade_state in ("entry", "exit") else 0.0,
             stop_loss=round(stop_loss_lvl, 2) if in_trade or trade_state in ("entry", "exit") else 0.0,
             target=round(target_lvl, 2) if in_trade or trade_state in ("entry", "exit") else 0.0,

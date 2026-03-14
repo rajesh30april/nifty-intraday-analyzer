@@ -147,14 +147,18 @@ function _appendLog(entry) {
             <span class="${col} font-bold">🚀 ${arrow}${entry.dir.toUpperCase()} ${entry.conf}%</span>
             <span class="text-gray-500 ml-auto">${entry.strategy}</span>`;
     } else {
-        // normal candle
-        const regFmt = { trending_up: '▲up', trending_down: '▼DN', sideways: '↔', volatile: '⚡' };
+        // normal candle — show strategy verdict clearly
+        const regFmt = { trending_up: '▲UP', trending_down: '▼DN', sideways: '↔ flat', volatile: '⚡vola' };
+        // If signal fires but we're just monitoring (no auto-trader), make it obvious
+        const verdictHtml = entry.signal
+            ? `<span class="text-yellow-500 font-bold">👁 SIGNAL(${entry.dir?.toUpperCase()}) ${entry.conf}% — monitoring only</span>`
+            : `<span class="text-gray-600">⏸ waiting  ${entry.strategy}</span>`;
         el.innerHTML = `
             <span class="text-gray-600 w-14 shrink-0">${entry.ts}</span>
             <span class="text-gray-500 w-12 shrink-0">${entry.candle}</span>
             <span class="text-gray-300 w-20 shrink-0">${entry.price.toLocaleString()}</span>
-            <span class="text-gray-600 w-10 shrink-0">${regFmt[entry.regime] || entry.regime}</span>
-            <span class="text-gray-500">⏸ ${entry.strategy}</span>`;
+            <span class="text-gray-600 w-16 shrink-0 text-[10px]">${regFmt[entry.regime] || entry.regime}</span>
+            ${verdictHtml}`;
     }
 
     log.appendChild(el);

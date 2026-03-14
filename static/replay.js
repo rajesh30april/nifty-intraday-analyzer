@@ -154,9 +154,28 @@ function replayPrev() {
 }
 
 // ── Render a single frame ─────────────────────────────────────
+let _lastIdleReason = '';
+
 function _renderFrame(idx) {
     const f = _replayFrames[idx];
     if (!f) return;
+
+    // Announce state changes in the candle card subtitle
+    if (f.trade_state === 'idle' && f.idle_reason !== _lastIdleReason) {
+        _lastIdleReason = f.idle_reason;
+        const msgs = {
+            max_trades:  '🚫 Daily trade limit reached — signals ignored for rest of day',
+            time_filter: '⏰ Outside trading hours',
+            no_signal:   '⏸ Waiting for signal',
+        };
+        const hint = document.getElementById('replay-hint');
+        if (hint && msgs[f.idle_reason]) {
+            hint.textContent = msgs[f.idle_reason];
+            hint.className = f.idle_reason === 'max_trades'
+                ? 'text-xs mt-2 text-orange-600 font-bold'
+                : 'text-xs mt-2 text-gray-500';
+        }
+    }
 
     // Time
     document.getElementById('rc-time').textContent = f.time;
@@ -185,11 +204,21 @@ function _renderFrame(idx) {
 
     // State badge
     const badge = document.getElementById('rc-state-badge');
+    const idleLabelMap = {
+        max_trades:  '🚫 MAX TRADES',
+        time_filter: '⏰ OFF HOURS',
+        no_signal:   '⏸ NO SIGNAL',
+        in_trade:    '📊 IN TRADE',
+        '':          '⏸ IDLE',
+    };
     const stateConfig = {
-        idle:     { label: 'IDLE',     cls: 'bg-gray-100 text-gray-600' },
-        entry:    { label: '🟢 ENTRY',  cls: 'bg-green-100 text-green-700' },
+        idle:     { label: idleLabelMap[f.idle_reason] || '⏸ IDLE', cls:
+                    f.idle_reason === 'max_trades'  ? 'bg-orange-100 text-orange-700'
+                  : f.idle_reason === 'time_filter' ? 'bg-gray-100 text-gray-500'
+                  : 'bg-gray-100 text-gray-600' },
+        entry:    { label: '🟢 ENTRY',    cls: 'bg-green-100 text-green-700' },
         in_trade: { label: '📊 IN TRADE', cls: 'bg-blue-100 text-blue-700' },
-        exit:     { label: '🔴 EXIT',   cls: 'bg-red-100 text-red-700' },
+        exit:     { label: '🔴 EXIT',     cls: 'bg-red-100 text-red-700' },
     };
     const sc = stateConfig[f.trade_state] || stateConfig.idle;
     badge.textContent = sc.label;
@@ -417,11 +446,17 @@ function _updateChartCursor(idx) {
 function _buildTable(frames) {
     const tbody = document.getElementById('replay-table-body');
     tbody.innerHTML = frames.map((f, i) => {
+        const idleLabel = {
+            max_trades:  '<span class="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-bold text-[10px]">🚫 MAX</span>',
+            time_filter: '<span class="text-gray-300 text-[10px]">⏰ off-hrs</span>',
+            no_signal:   '<span class="text-gray-400 text-[10px]">⏸ wait</span>',
+            '':          '<span class="text-gray-400 text-[10px]">idle</span>',
+        };
         const stateMap = {
-            idle:     '<span class="text-gray-400">idle</span>',
-            entry:    '<span class="bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">ENTRY</span>',
-            in_trade: '<span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">TRADE</span>',
-            exit:     '<span class="bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">EXIT</span>',
+            idle:     (r) => idleLabel[r.idle_reason] || idleLabel[''],
+            entry:    () => '<span class="bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">ENTRY</span>',
+            in_trade: () => '<span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">TRADE</span>',
+            exit:     () => '<span class="bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">EXIT</span>',
         };
         const sigHtml = f.signal_fires
             ? `<span class="text-${f.direction === 'long' ? 'green' : 'red'}-600 font-bold">${f.direction === 'long' ? '▲' : '▼'} ${f.confidence}%</span>`
@@ -437,7 +472,7 @@ function _buildTable(frames) {
                 <td class="px-2 py-1.5 font-mono">${f.close.toLocaleString()}</td>
                 <td class="px-2 py-1.5">${f.strategy_emoji} <span class="text-gray-600">${f.strategy_name.split(' ')[0]}</span></td>
                 <td class="px-2 py-1.5">${sigHtml}</td>
-                <td class="px-2 py-1.5">${stateMap[f.trade_state] || ''}</td>
+                <td class="px-2 py-1.5">${(stateMap[f.trade_state] || stateMap.idle)(f)}</td>
                 <td class="px-2 py-1.5 ${urColor} font-semibold">${f.unrealized_pts !== 0 ? (f.unrealized_pts > 0 ? '+' : '') + f.unrealized_pts : '—'}</td>
                 <td class="px-2 py-1.5 ${cumColor} font-bold">${f.cumul_pts >= 0 ? '+' : ''}${f.cumul_pts}</td>
             </tr>
