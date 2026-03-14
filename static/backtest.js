@@ -5,6 +5,107 @@
 let backtestEquityChart = null;
 let backtestDailyChart = null;
 let _backtestRunning = false;
+let _currentDataSource = 'yahoo';
+
+// Period options per data source
+const PERIOD_OPTIONS = {
+    yahoo:    [['5d','5 Days'],['30d','30 Days'],['60d','60 Days (max)']],
+    zerodha:  [['5d','5 Days'],['30d','30 Days'],['60d','60 Days (max)']],
+    truedata: [['5d','5 Days'],['30d','30 Days'],['60d','60 Days'],['90d','90 Days'],
+               ['6mo','6 Months'],['1y','1 Year'],['2y','2 Years'],['5y','5 Years']],
+};
+
+/**
+ * Select a data source and update UI accordingly.
+ */
+function selectDataSource(source) {
+    _currentDataSource = source;
+
+    // Update button styles
+    ['yahoo', 'zerodha', 'truedata'].forEach(s => {
+        const btn = document.getElementById(`ds-${s}`);
+        if (!btn) return;
+        if (s === source) {
+            btn.className = 'ds-btn active flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-[#0053e2] bg-blue-50 text-[#0053e2] text-xs font-bold transition';
+        } else {
+            btn.className = 'ds-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-200 bg-white text-gray-600 text-xs font-bold transition hover:border-gray-400';
+        }
+    });
+
+    // Show/hide credential panels
+    document.getElementById('truedata-creds').classList.toggle('hidden', source !== 'truedata');
+    document.getElementById('zerodha-warn').classList.toggle('hidden', source !== 'zerodha');
+
+    // Update period dropdown options
+    const periodEl = document.getElementById('bt-period');
+    const options = PERIOD_OPTIONS[source] || PERIOD_OPTIONS.yahoo;
+    periodEl.innerHTML = options.map(([val, label]) =>
+        `<option value="${val}"${val === '60d' ? ' selected' : ''}>${label}</option>`
+    ).join('');
+
+    // Check Zerodha login status
+    if (source === 'zerodha') {
+        fetch('/api/trader/status').then(r => r.json()).then(d => {
+            const badge = document.getElementById('ds-zerodha-badge');
+            if (d.is_authenticated) {
+                badge.textContent = 'LOGGED IN · 60d';
+                badge.className = 'bg-green-100 text-green-700 px-1.5 py-0.5 rounded text-[9px] font-bold';
+            } else {
+                badge.textContent = 'NOT LOGGED IN';
+                badge.className = 'bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-[9px] font-bold';
+            }
+        }).catch(() => {});
+    }
+
+    // Check TrueData credentials
+    if (source === 'truedata') {
+        fetch('/api/truedata/status').then(r => r.json()).then(d => {
+            const statusEl = document.getElementById('td-creds-status');
+            if (d.configured) {
+                statusEl.textContent = '✅ Credentials saved. Ready to fetch up to 5 years of data!';
+                statusEl.className = 'text-xs mt-1 text-green-600 font-semibold';
+            } else {
+                statusEl.textContent = 'Enter your TrueData credentials above to unlock 5-year history.';
+                statusEl.className = 'text-xs mt-1 text-orange-600';
+            }
+        }).catch(() => {});
+    }
+}
+
+/**
+ * Save TrueData credentials to backend.
+ */
+async function saveTrueDataCreds() {
+    const username = document.getElementById('td-username').value.trim();
+    const password = document.getElementById('td-password').value.trim();
+    const statusEl = document.getElementById('td-creds-status');
+
+    if (!username || !password) {
+        statusEl.textContent = '❌ Please enter both username and password';
+        statusEl.className = 'text-xs mt-1 text-red-600';
+        return;
+    }
+
+    statusEl.textContent = 'Saving...';
+    statusEl.className = 'text-xs mt-1 text-gray-500';
+
+    try {
+        const params = new URLSearchParams({ username, password });
+        const resp = await fetch(`/api/truedata/credentials?${params}`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            statusEl.textContent = '✅ Credentials saved! Ready to backtest with 5-year history.';
+            statusEl.className = 'text-xs mt-1 text-green-600 font-semibold';
+            document.getElementById('td-password').value = '';
+        } else {
+            statusEl.textContent = '❌ ' + (data.error || 'Failed to save');
+            statusEl.className = 'text-xs mt-1 text-red-600';
+        }
+    } catch (e) {
+        statusEl.textContent = '❌ Error: ' + e.message;
+        statusEl.className = 'text-xs mt-1 text-red-600';
+    }
+}
 
 /**
  * Run backtest with parameters from form inputs.
@@ -30,11 +131,21 @@ async function runBacktest() {
     const rrRatio = document.getElementById('bt-rr').value;
     const maxTrades = document.getElementById('bt-max-trades').value;
     const strategy = document.getElementById('bt-strategy').value;
+    const dataSource = _currentDataSource;
 
     const params = new URLSearchParams({
         period, sl_points: slPoints, trailing_sl: trailingSl,
         rr_ratio: rrRatio, max_trades: maxTrades, strategy,
+        data_source: dataSource,
     });
+
+    // Update loading message based on source
+    const loadingMsg = {
+        yahoo: 'Fetching from Yahoo Finance... 🌐',
+        zerodha: 'Fetching from Zerodha Kite... 🔷',
+        truedata: 'Fetching from TrueData (may take ~30s for large periods)... 🏆',
+    };
+    document.querySelector('#bt-loading p').textContent = loadingMsg[dataSource] || 'Running backtest... 🐶';
 
     try {
         const resp = await fetch(`/api/backtest?${params}`, { method: 'POST' });
@@ -99,7 +210,15 @@ function renderBacktestResults(data) {
     shEl.className = `font-bold ${sharpeColor}`;
 
     document.getElementById('bt-days').textContent = `${data.days_tested} trading days`;
-    document.getElementById('bt-source').textContent = data.data_source;
+    const sourceEl = document.getElementById('bt-source');
+    const sourceBadge = document.getElementById('bt-source-badge');
+    sourceEl.textContent = data.data_source;
+    const sourceBadgeColors = {
+        'Yahoo Finance':  'bg-blue-100 text-blue-700',
+        'Zerodha Kite':   'bg-purple-100 text-purple-700',
+        'TrueData':       'bg-orange-100 text-orange-700',
+    };
+    sourceBadge.className = `px-2 py-0.5 rounded font-bold text-xs ${sourceBadgeColors[data.data_source] || 'bg-gray-100 text-gray-600'}`;
 
     // ── Equity Curve Chart ──
     renderEquityCurve(data.equity_curve);

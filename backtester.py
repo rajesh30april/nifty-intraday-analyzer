@@ -74,6 +74,42 @@ class BacktestResult:
     daily_pnl: dict = field(default_factory=dict)  # date -> pnl
 
 
+def _fetch_data(data_source: str, interval: str, period: str) -> tuple[pd.DataFrame, str]:
+    """Fetch data from the specified source. Returns (df, source_label)."""
+    if data_source == "truedata":
+        from truedata_fetcher import fetch_historical_data, TrueDataCredentialError
+        df = fetch_historical_data(interval=interval, period=period)
+        return df, "TrueData"
+
+    elif data_source == "zerodha":
+        from kite_integration import kite_manager
+        if not kite_manager.is_authenticated:
+            raise ValueError("Zerodha not logged in. Please login via the Auto-Trader tab first.")
+        # Convert period to days
+        period_days = {
+            "5d": 5, "30d": 30, "60d": 60, "90d": 60,  # Zerodha max is 60 days
+            "6mo": 60, "1y": 60,
+        }
+        days = period_days.get(period, 30)
+        # Convert interval to Zerodha format
+        interval_map = {"1m": "minute", "3m": "3minute", "5m": "5minute",
+                        "15m": "15minute", "30m": "30minute", "1h": "60minute"}
+        kite_interval = interval_map.get(interval, "5minute")
+        raw = kite_manager.get_historical_data(interval=kite_interval, days=days)
+        if not raw:
+            raise ValueError("Zerodha returned no data")
+        df = pd.DataFrame(raw)
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.set_index("date")
+        df.columns = [c.lower() for c in df.columns]
+        df = df[[c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]]
+        return df, "Zerodha Kite"
+
+    else:  # default: yahoo
+        df = fetch_intraday_data(interval=interval, period=period)
+        return df, "Yahoo Finance"
+
+
 def run_backtest(
     period: str = "60d",
     interval: str = "5m",
@@ -83,22 +119,24 @@ def run_backtest(
     max_trades_per_day: int = 3,
     use_router: bool = True,
     strategy_id: str = "smart_router",
+    data_source: str = "yahoo",
 ) -> BacktestResult:
     """Run backtest on historical data.
 
     Args:
-        period: Yahoo lookback period ('5d', '30d', '60d').
+        period: Lookback period ('5d','30d','60d','6mo','1y','2y','5y').
         interval: Candle interval ('5m', '15m').
         sl_points: Stop-loss in points.
         trailing_sl: Trailing SL in points.
         rr_ratio: Risk-reward ratio.
         max_trades_per_day: Max trades allowed per day.
+        data_source: 'yahoo' | 'zerodha' | 'truedata'
 
     Returns:
         BacktestResult with all trades and stats.
     """
-    print(f"\n🔬 Fetching {period} of {interval} data from Yahoo Finance...")
-    df = fetch_intraday_data(interval=interval, period=period)
+    print(f"\n🔬 Fetching {period} of {interval} data from {data_source}...")
+    df, source_label = _fetch_data(data_source, interval, period)
 
     if df is None or df.empty:
         raise ValueError("No data fetched for backtesting")
@@ -108,7 +146,7 @@ def run_backtest(
     # Group by trading day
     trading_days = df.groupby(df.index.date)
     result = BacktestResult(
-        data_source="Yahoo Finance",
+        data_source=source_label,
         period=period,
         days_tested=len(trading_days),
     )

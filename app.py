@@ -886,6 +886,23 @@ async def list_strategies():
     return {"success": True, "strategies": to_json()}
 
 
+@app.get("/api/truedata/status")
+async def truedata_status():
+    """Check if TrueData credentials are configured."""
+    from truedata_fetcher import has_credentials
+    return {"success": True, "configured": has_credentials()}
+
+
+@app.post("/api/truedata/credentials")
+async def set_truedata_credentials(username: str, password: str):
+    """Save TrueData credentials for this session."""
+    from truedata_fetcher import set_credentials
+    if not username.strip() or not password.strip():
+        return {"success": False, "error": "Username and password are required"}
+    set_credentials(username.strip(), password.strip())
+    return {"success": True, "message": "TrueData credentials saved for this session"}
+
+
 @app.post("/api/backtest")
 async def run_backtest_api(
     period: str = "60d",
@@ -894,8 +911,9 @@ async def run_backtest_api(
     rr_ratio: float = 2.0,
     max_trades: int = 3,
     strategy: str = "smart_router",
+    data_source: str = "yahoo",
 ):
-    """Run a backtest with given parameters and strategy."""
+    """Run a backtest with given parameters, strategy, and data source."""
     from backtester import run_backtest, BacktestResult
     import dataclasses
 
@@ -908,6 +926,7 @@ async def run_backtest_api(
             rr_ratio=rr_ratio,
             max_trades_per_day=max_trades,
             strategy_id=strategy,
+            data_source=data_source,
         )
 
         # Build equity curve from cumulative P&L
