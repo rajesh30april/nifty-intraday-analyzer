@@ -33,6 +33,8 @@ def safe_json_response(data: dict) -> JSONResponse:
     content = json_lib.loads(json_lib.dumps(data, cls=NumpyEncoder))
     return JSONResponse(content=content)
 
+import asyncio
+
 from data_fetcher import fetch_intraday_data, get_todays_data
 from probability import calculate_probability
 from kite_integration import kite_manager
@@ -45,6 +47,11 @@ from auto_trader import (
     activate_kill_switch, state as trader_state, evaluate_and_act,
 )
 from pattern_scanner import scan_patterns, TIMEFRAME_META, PATTERN_EMOJIS
+
+
+async def _fetch(interval: str = "5m", period: str = "5d") -> pd.DataFrame:
+    """Non-blocking wrapper — runs yfinance fetch in a thread pool."""
+    return await asyncio.to_thread(fetch_intraday_data, interval=interval, period=period)
 
 app = FastAPI(title="Nifty 50 Intraday Probability Analyzer")
 templates = Jinja2Templates(directory="templates")
@@ -92,7 +99,7 @@ async def patterns_page(request: Request):
 async def day_chart(date: str = ""):
     """Return 5m candles + patterns for a single trading day."""
     try:
-        df5 = fetch_intraday_data(period="60d", interval="5m")
+        df5 = await asyncio.to_thread(fetch_intraday_data, period="60d", interval="5m")
         if df5.empty:
             return safe_json_response({"success": False, "error": "No data"})
 
@@ -115,7 +122,7 @@ async def day_chart(date: str = ""):
 
         # Detect patterns on this day's candles
         from pattern_detector import detect_all_patterns
-        pat_result = detect_all_patterns(day_df, timeframe="5m")
+        pat_result = await asyncio.to_thread(detect_all_patterns, day_df, timeframe="5m")
         patterns = [
             {
                 "name":         p.name,
@@ -152,7 +159,7 @@ async def patterns_history(
     """Scan last N days for chart patterns + return OHLCV candles for chart."""
     try:
         tf_list = [t.strip() for t in timeframes.split(",") if t.strip()]
-        result = scan_patterns(timeframes=tf_list, period=period)
+        result = await asyncio.to_thread(scan_patterns, timeframes=tf_list, period=period)
 
         if result.error:
             return safe_json_response({"success": False, "error": result.error})
@@ -179,7 +186,7 @@ async def patterns_history(
         # Fetch OHLCV candles for the price chart
         candles = []
         try:
-            df_raw = fetch_intraday_data(period=period, interval="5m")
+            df_raw = await asyncio.to_thread(fetch_intraday_data, period=period, interval="5m")
             if chart_tf == "15m":
                 df_chart = df_raw.resample("15min").agg(
                     {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
@@ -377,7 +384,7 @@ async def analyze(interval: str = "5m"):
 
         source = "zerodha_live"
 
-        result = calculate_probability(df)
+        result = await asyncio.to_thread(calculate_probability, df)
 
         # If live, overlay the latest tick price
         if source == "zerodha_live" and kite_manager.latest_tick:
@@ -425,26 +432,26 @@ async def analyze(interval: str = "5m"):
 
 # Shared data cache so sections can reuse fetched data
 _section_cache: dict = {"df_5m": None, "df_15m": None, "df_1m": None, "timestamp": 0}
-SECTION_CACHE_TTL = 15  # seconds — reuse data within 15s
+SECTION_CACHE_TTL = 15  # seconds
 
 
-def _get_cached_df(interval: str, period: str = "5d") -> pd.DataFrame | None:
-    """Get DataFrame from cache or fetch fresh from Zerodha."""
-    cache_key = f"df_{interval.replace('minute', 'm').replace('5m', '5m')}"
+async def _get_cached_df(interval: str, period: str = "5d") -> pd.DataFrame | None:
+    """Async — returns cached df or fetches in a thread pool (never blocks event loop)."""
+    cache_key = f"df_{interval}"
     now = _time.time()
 
-    # Return cached if fresh
     if (
         _section_cache.get(cache_key) is not None
         and (now - _section_cache["timestamp"]) < SECTION_CACHE_TTL
     ):
         return _section_cache[cache_key]
 
-    # Fetch fresh
+    # Fetch in thread so we never block the event loop
     if kite_manager.is_authenticated:
         kite_map = {"1m": "minute", "5m": "5minute", "15m": "15minute"}
-        kite_data = kite_manager.get_historical_data(
-            interval=kite_map.get(interval, "5minute"), days=5
+        kite_interval = kite_map.get(interval, "5minute")
+        kite_data = await asyncio.to_thread(
+            kite_manager.get_historical_data, interval=kite_interval, days=5
         )
         if kite_data:
             df = _kite_history_to_dataframe(kite_data)
@@ -452,8 +459,7 @@ def _get_cached_df(interval: str, period: str = "5d") -> pd.DataFrame | None:
             _section_cache["timestamp"] = now
             return df
 
-    # Fallback to Yahoo (for backtester)
-    df = fetch_intraday_data(interval=interval, period=period)
+    df = await asyncio.to_thread(fetch_intraday_data, interval=interval, period=period)
     _section_cache[cache_key] = df
     _section_cache["timestamp"] = now
     return df
@@ -509,7 +515,7 @@ async def section_probability():
         if not kite_manager.is_authenticated:
             return {"success": False, "error": "Not connected to Zerodha"}
 
-        mtf = run_mtf_analysis()
+        mtf = await asyncio.to_thread(run_mtf_analysis)
 
         # Cache 5m data for other sections
         if mtf.primary_df is not None:
@@ -567,7 +573,7 @@ async def section_chart(tf: str = "5m"):
 
         df = _section_cache.get(f"df_{tf}")
         if df is None or (hasattr(df, 'empty') and df.empty):
-            df = _get_cached_df(tf)
+            df = await _get_cached_df(tf)
         if df is None or df.empty:
             return {"success": False, "error": f"No {tf} data available"}
 
@@ -588,7 +594,7 @@ async def section_chart(tf: str = "5m"):
         sr_data = {}
         pat_candles = {}
         try:
-            pat_result = detect_all_patterns(df, timeframe=tf)
+            pat_result = await asyncio.to_thread(detect_all_patterns, df, timeframe=tf)
             patterns_data = [
                 {
                     "name": p.name, "type": p.pattern_type,
@@ -627,14 +633,14 @@ async def section_trade_signal():
 
         df = _section_cache.get("df_5m")
         if df is None or (hasattr(df, 'empty') and df.empty):
-            df = _get_cached_df("5m")
+            df = await _get_cached_df("5m")
         if df is None or df.empty:
             return {"success": False, "error": "No 5m data. Refresh Probability first."}
 
         # Get S/R levels from patterns
         sr_data = {}
         try:
-            pat_result = detect_all_patterns(df, timeframe="5m")
+            pat_result = await asyncio.to_thread(detect_all_patterns, df, timeframe="5m")
             sr_data = pat_result["support_resistance"]
         except Exception:
             pass
@@ -679,11 +685,11 @@ async def section_trend_health():
 
         df = _section_cache.get("df_5m")
         if df is None or (hasattr(df, 'empty') and df.empty):
-            df = _get_cached_df("5m")
+            df = await _get_cached_df("5m")
         if df is None or df.empty:
             return {"success": False, "error": "No 5m data. Refresh Probability first."}
 
-        result = analyze_trend_health(df)
+        result = await asyncio.to_thread(analyze_trend_health, df)
 
         return safe_json_response({
             "success": True,
@@ -717,8 +723,8 @@ async def section_trend_health():
 async def patterns(interval: str = "5m"):
     """Detect chart patterns in the current data."""
     try:
-        df = fetch_intraday_data(interval=interval, period="5d")
-        result = detect_all_patterns(df, timeframe=interval)
+        df = await asyncio.to_thread(fetch_intraday_data, interval=interval, period="5d")
+        result = await asyncio.to_thread(detect_all_patterns, df, timeframe=interval)
 
         patterns_data = [
             {
@@ -777,7 +783,7 @@ async def mtf_analyze(chart_tf: str = "5m"):
         return _mtf_cache["data"]
 
     try:
-        mtf = run_mtf_analysis()
+        mtf = await asyncio.to_thread(run_mtf_analysis)
 
         # Reuse the 5m DataFrame from MTF (no extra API call!)
         price_data = []
@@ -805,7 +811,7 @@ async def mtf_analyze(chart_tf: str = "5m"):
 
             # Detect chart patterns on BOTH 5m and 15m data
             def _extract_patterns(df, tf_label):
-                """Run pattern detection on a single timeframe."""
+                """Run pattern detection on a single timeframe (sync — called from async via to_thread)."""
                 try:
                     pat_result = detect_all_patterns(df, timeframe=tf_label)
                     return [
@@ -825,13 +831,13 @@ async def mtf_analyze(chart_tf: str = "5m"):
 
             # Run on 5m
             if df_5m is not None and not df_5m.empty:
-                pats_5m, sr_5m = _extract_patterns(df_5m, "5m")
+                pats_5m, sr_5m = await asyncio.to_thread(_extract_patterns, df_5m, "5m")
                 patterns_data.extend(pats_5m)
                 sr_data = sr_5m  # Use 5m S/R as primary
 
             # Run on 15m (more history = catches bigger patterns)
             if df_15m is not None and not df_15m.empty:
-                pats_15m, sr_15m = _extract_patterns(df_15m, "15m")
+                pats_15m, sr_15m = await asyncio.to_thread(_extract_patterns, df_15m, "15m")
                 patterns_data.extend(pats_15m)
 
                 # Merge 15m S/R levels into the data
