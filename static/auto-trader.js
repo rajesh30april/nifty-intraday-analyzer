@@ -23,7 +23,7 @@ async function startAutoTrader() {
     const strategyId = document.getElementById('at-strategy')?.value || 'smart_router';
     btn.disabled = true;
     btn.textContent = '⏳ Starting...';
-    btn.className = 'bg-yellow-600 px-4 py-2 rounded-lg font-bold text-sm animate-pulse';
+    btn.className = 'bg-yellow-600 px-3 py-1.5 rounded-lg font-bold text-xs animate-pulse';
     statusEl.textContent = '⏳ Starting...';
     statusEl.className = 'text-sm font-bold text-yellow-400 animate-pulse';
     try {
@@ -33,13 +33,19 @@ async function startAutoTrader() {
             statusEl.textContent = '⚙️ Evaluating...';
             await fetch('/api/auto-trader/evaluate', { method: 'POST' });
             await pollAutoTraderStatus();
+        } else {
+            statusEl.textContent = `❌ ${data.error || 'Failed to start'}`;
+            statusEl.className = 'text-sm font-bold text-red-400';
         }
     } catch (e) {
         console.error('Start failed:', e);
-        statusEl.textContent = '❌ Failed';
+        statusEl.textContent = '❌ Connection error';
         statusEl.className = 'text-sm font-bold text-red-400';
+    } finally {
+        // Always re-enable button so user isn't stuck
+        btn.disabled = false;
+        _updateAutoTraderButtons();
     }
-    _updateAutoTraderButtons();
 }
 
 async function stopAutoTrader() {

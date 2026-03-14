@@ -20,6 +20,10 @@ function switchPage(pageId) {
     document.querySelectorAll('.sidebar-item').forEach(item => {
         item.classList.toggle('active', item.dataset.page === pageId);
     });
+    // Trigger pattern history scan on first open
+    if (pageId === 'patterns' && typeof onPatternsTabOpen === 'function') {
+        setTimeout(onPatternsTabOpen, 50);
+    }
     // Re-render charts if switching to charts page (canvas sizing)
     if (pageId === 'charts') {
         setTimeout(() => {

@@ -143,6 +143,7 @@ async def day_chart(date: str = ""):
 
 
 
+@app.get("/api/patterns-history")
 async def patterns_history(
     period: str = "60d",
     timeframes: str = "5m,15m,1h",
