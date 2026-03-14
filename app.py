@@ -92,13 +92,9 @@ async def patterns_page(request: Request):
 async def patterns_history(
     period: str = "60d",
     timeframes: str = "5m,15m,1h",
+    chart_tf: str = "1h",
 ):
-    """Scan last N days for chart patterns across multiple timeframes.
-
-    Args:
-        period: Yahoo Finance period string (e.g. '60d', '30d').
-        timeframes: Comma-separated list of timeframes to scan.
-    """
+    """Scan last N days for chart patterns + return OHLCV candles for chart."""
     try:
         tf_list = [t.strip() for t in timeframes.split(",") if t.strip()]
         result = scan_patterns(timeframes=tf_list, period=period)
@@ -108,22 +104,53 @@ async def patterns_history(
 
         patterns_data = [
             {
-                "name":         p.name,
-                "pattern_type": p.pattern_type,
-                "bias":         p.bias,
-                "confidence":   p.confidence,
-                "timeframe":    p.timeframe,
-                "start_time":   p.start_time,
-                "end_time":     p.end_time,
-                "description":  p.description,
-                "key_levels":   p.key_levels,
-                "emoji":        p.emoji,
+                "name":             p.name,
+                "pattern_type":     p.pattern_type,
+                "bias":             p.bias,
+                "confidence":       p.confidence,
+                "timeframe":        p.timeframe,
+                "start_time":       p.start_time,
+                "end_time":         p.end_time,
+                "description":      p.description,
+                "key_levels":       p.key_levels,
+                "emoji":            p.emoji,
                 "duration_candles": p.duration_candles,
-                "date_label":   p.date_label,
-                "end_date":     p.end_date,
+                "date_label":       p.date_label,
+                "end_date":         p.end_date,
             }
             for p in result.patterns
         ]
+
+        # Fetch OHLCV candles for the price chart
+        candles = []
+        try:
+            df_raw = fetch_intraday_data(period=period, interval="5m")
+            if chart_tf == "15m":
+                df_chart = df_raw.resample("15min").agg(
+                    {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+                ).dropna(subset=["open", "close"])
+            elif chart_tf == "1h":
+                df_chart = df_raw.resample("1h").agg(
+                    {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+                ).dropna(subset=["open", "close"])
+            else:
+                df_chart = df_raw
+
+            import time as _time_mod
+            for ts, row in df_chart.iterrows():
+                try:
+                    unix = int(ts.timestamp())
+                    candles.append({
+                        "time":  unix,
+                        "open":  round(float(row["open"]),  2),
+                        "high":  round(float(row["high"]),  2),
+                        "low":   round(float(row["low"]),   2),
+                        "close": round(float(row["close"]), 2),
+                    })
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
         return safe_json_response({
             "success":       True,
@@ -135,12 +162,14 @@ async def patterns_history(
             "by_type":       result.by_type,
             "by_name":       result.by_name,
             "patterns":      patterns_data,
+            "candles":       candles,
+            "chart_tf":      chart_tf,
             "meta": {
                 "trading_days": result.trading_days,
                 "date_range":   result.date_range,
                 "period":       period,
                 "timeframes":   tf_list,
-                "tf_meta":      {
+                "tf_meta": {
                     k: {
                         "label":          v["label"],
                         "best_for":       v["best_for"],
