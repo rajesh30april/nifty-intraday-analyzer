@@ -412,6 +412,28 @@
               <!-- Toast container -->
               <div id="at-toasts" class="fixed top-4 right-4 z-[999] flex flex-col gap-2 pointer-events-none" style="width:320px"></div>
 
+              <!-- ── Pre-Market Preflight ── -->
+              <div class="bg-white border-2 border-blue-200 rounded-xl shadow-sm mb-3 overflow-hidden">
+                <div class="flex items-center justify-between px-4 py-2 bg-blue-700 text-white">
+                    <div>
+                        <span class="font-bold text-sm">🛫 Pre-Market System Check</span>
+                        <span class="text-blue-200 text-xs ml-2">Run this at 9:00 AM every morning</span>
+                    </div>
+                    <button onclick="runPreflight()" id="preflight-btn"
+                        class="bg-white text-blue-700 hover:bg-blue-50 px-4 py-1 rounded-lg text-sm font-bold transition">
+                        Run Check
+                    </button>
+                </div>
+                <div id="preflight-loading" class="hidden text-center py-4 text-gray-500 text-sm">
+                    <div class="inline-block animate-spin rounded-full h-5 w-5 border-2 border-blue-600 border-t-transparent mr-2"></div>Checking systems...
+                </div>
+                <div id="preflight-results" class="hidden p-4">
+                    <div id="preflight-summary" class="text-sm font-bold mb-3 px-3 py-2 rounded-lg"></div>
+                    <div id="preflight-checks" class="space-y-1.5"></div>
+                    <p class="text-[10px] text-gray-400 mt-3">⏱ Last checked: <span id="preflight-ts">—</span></p>
+                </div>
+              </div>
+
               <div class="bg-gray-900 text-white rounded-xl shadow-sm p-4 space-y-3">
 
                 <!-- Header row -->
@@ -964,6 +986,54 @@
                 await loadAnalysis();
             }
         });
+    </script>
+
+    <script>
+    /* ── Pre-Market Preflight ── */
+    async function runPreflight() {
+        document.getElementById('preflight-btn').disabled = true;
+        document.getElementById('preflight-loading').classList.remove('hidden');
+        document.getElementById('preflight-results').classList.add('hidden');
+        try {
+            const resp = await fetch('/api/auto-trader/preflight');
+            const data = await resp.json();
+            _renderPreflight(data);
+        } catch(e) {
+            alert('Preflight failed: ' + e.message);
+        } finally {
+            document.getElementById('preflight-btn').disabled = false;
+            document.getElementById('preflight-loading').classList.add('hidden');
+        }
+    }
+
+    function _renderPreflight(data) {
+        const res = document.getElementById('preflight-results');
+        res.classList.remove('hidden');
+
+        const sumEl = document.getElementById('preflight-summary');
+        sumEl.textContent = data.summary;
+        sumEl.className = `text-sm font-bold mb-3 px-3 py-2 rounded-lg ${
+            data.ready ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`;
+
+        const checksEl = document.getElementById('preflight-checks');
+        checksEl.innerHTML = data.checks.map(c => {
+            const icon  = c.passed ? '✅' : (c.critical ? '🔴' : '⚠️');
+            const bg    = c.passed ? 'bg-green-50 border-green-200'
+                        : c.critical ? 'bg-red-50 border-red-300'
+                        : 'bg-yellow-50 border-yellow-200';
+            const label = c.critical && !c.passed ? ' <span class="text-[10px] bg-red-200 text-red-800 px-1.5 rounded font-bold">CRITICAL</span>' : '';
+            return `
+            <div class="flex items-start gap-2 px-3 py-2 rounded-lg border ${bg}">
+                <span class="text-base leading-none mt-0.5">${icon}</span>
+                <div class="flex-1">
+                    <div class="text-xs font-bold text-gray-800">${c.name}${label}</div>
+                    <div class="text-[11px] text-gray-600 mt-0.5">${c.detail}</div>
+                </div>
+            </div>`;
+        }).join('');
+
+        document.getElementById('preflight-ts').textContent = new Date().toLocaleTimeString('en-IN');
+    }
     </script>
 </body>
 </html>

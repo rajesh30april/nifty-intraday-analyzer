@@ -128,49 +128,92 @@ CAPITAL = float(os.getenv("TRADING_CAPITAL", "96000"))
 LOT_SIZE = int(os.getenv("LOT_SIZE", "65"))
 
 
-def _get_option_symbol(nifty_price: float, direction: Direction) -> str:
-    """Smart strike selection — maximizes profit per rupee.
-
-    Logic:
-    1. ATM strike = round to nearest 50
-    2. For LONG (CE): pick 1 strike OTM (+50 pts) — cheaper, more lots
-    3. For SHORT (PE): pick 1 strike OTM (-50 pts) — cheaper, more lots
-    4. This gives ~0.40 delta with ~₹120 premium vs ₹200 ATM
-    5. With ₹96K: 12 lots (780 units) vs 7 lots (455 units) at ATM
-    """
-    atm_strike = round(nifty_price / 50) * 50
-
-    if direction == Direction.LONG:
-        # Buy CE — 1 strike OTM (above current price)
-        strike = atm_strike + 50
-        option_type = "CE"
-    else:
-        # Buy PE — 1 strike OTM (below current price)
-        strike = atm_strike - 50
-        option_type = "PE"
-
-    expiry = _get_nearest_expiry()
-    symbol = f"NFO:NIFTY{expiry}{strike}{option_type}"
-
-    print(f"\U0001f3af Strike Selection:")
-    print(f"   Nifty: ₹{nifty_price:.0f} | ATM: {atm_strike}")
-    print(f"   Picked: {strike} {option_type} (1 strike OTM)")
-    print(f"   Why: Cheaper premium (~₹120 vs ₹200 ATM) = more lots for ₹{CAPITAL:.0f}")
-    print(f"   Symbol: {symbol}")
-
-    return symbol
+# Cache instruments to avoid repeated API calls
+_nfo_instruments_cache: list[dict] | None = None
+_nfo_cache_date: str = ""
 
 
-def _get_nearest_expiry() -> str:
-    """Get nearest weekly expiry in YYMDD format."""
+def _get_nfo_instruments() -> list[dict]:
+    """Fetch NFO instruments list from Kite (cached once per day)."""
+    global _nfo_instruments_cache, _nfo_cache_date
+    today = datetime.now().strftime("%Y-%m-%d")
+    if _nfo_cache_date == today and _nfo_instruments_cache:
+        return _nfo_instruments_cache
+    try:
+        instruments = kite_manager.kite.instruments("NFO")
+        _nfo_instruments_cache = [i for i in instruments if i["name"] == "NIFTY"]
+        _nfo_cache_date = today
+        print(f"✅ NFO instruments loaded: {len(_nfo_instruments_cache)} NIFTY options")
+    except Exception as e:
+        print(f"⚠️ Could not fetch instruments: {e}")
+        _nfo_instruments_cache = []
+    return _nfo_instruments_cache or []
+
+
+def _get_nearest_expiry_date() -> datetime:
+    """Return nearest weekly expiry date (Thursday)."""
     from datetime import timedelta
     today = datetime.now()
-    # Nifty weekly expiry is Thursday
     days_until_thursday = (3 - today.weekday()) % 7
     if days_until_thursday == 0 and today.hour >= 15:
         days_until_thursday = 7
-    expiry_date = today + timedelta(days=days_until_thursday)
-    return expiry_date.strftime("%y%m%d")
+    return today + timedelta(days=days_until_thursday)
+
+
+def _get_option_symbol(nifty_price: float, direction: Direction) -> tuple[str, int]:
+    """Find the nearest OTM Nifty option tradingsymbol via Kite instruments.
+
+    Returns: (tradingsymbol, instrument_token) or raises RuntimeError if not found.
+
+    Uses the Kite instruments API — no guessing at symbol strings.
+    """
+    atm_strike = round(nifty_price / 50) * 50
+    option_type = "CE" if direction == Direction.LONG else "PE"
+    # 1 strike OTM for cheaper premium + more lots
+    strike = atm_strike + 50 if direction == Direction.LONG else atm_strike - 50
+
+    expiry_date = _get_nearest_expiry_date()
+    expiry_str  = expiry_date.strftime("%Y-%m-%d")   # Kite format: "2026-03-13"
+
+    instruments = _get_nfo_instruments()
+    if not instruments:
+        raise RuntimeError("NFO instruments not available — is Kite authenticated?")
+
+    # Find exact match
+    matches = [
+        i for i in instruments
+        if i["strike"] == float(strike)
+        and i["instrument_type"] == option_type
+        and str(i["expiry"]) == expiry_str
+    ]
+
+    if not matches:
+        # Fallback: try ATM strike
+        atm_matches = [
+            i for i in instruments
+            if i["strike"] == float(atm_strike)
+            and i["instrument_type"] == option_type
+            and str(i["expiry"]) == expiry_str
+        ]
+        if not atm_matches:
+            raise RuntimeError(
+                f"No {option_type} option found: strike={strike}, expiry={expiry_str}. "
+                f"Check if expiry date is correct ({expiry_date.strftime('%A %d %b %Y')})"
+            )
+        matches = atm_matches
+        strike  = atm_strike
+        print(f"⚠️ OTM not found, falling back to ATM {strike} {option_type}")
+
+    instrument = matches[0]
+    symbol     = instrument["tradingsymbol"]
+    token      = instrument["instrument_token"]
+
+    print(f"🎯 Strike Selection:")
+    print(f"   Nifty: {nifty_price:.0f} | ATM: {atm_strike} | Picked: {strike} {option_type}")
+    print(f"   Expiry: {expiry_str} | Symbol: {symbol} | Token: {token}")
+    print(f"   Why: OTM = cheaper premium = more lots per ₹{CAPITAL:.0f}")
+
+    return symbol, token
 
 
 def _place_order(symbol: str, direction: Direction,
@@ -178,8 +221,16 @@ def _place_order(symbol: str, direction: Direction,
     """Place order via Zerodha or simulate in paper mode."""
     if state.is_paper_mode:
         order_id = f"PAPER-{datetime.now().strftime('%H%M%S')}"
-        print(f"📝 [PAPER] {direction.value.upper()} {quantity}x {symbol} @ ₹{price}")
+        print(f"📝 [PAPER] {direction.value.upper()} {quantity}x {symbol} @ ₹{price:.2f}")
         return order_id
+
+    # ── Margin check before placing ───────────────────────────
+    try:
+        margins = kite_manager.kite.margins(segment="equity")
+        available = margins.get("net", 0)
+        print(f"💰 Available margin: ₹{available:,.0f}")
+    except Exception:
+        available = 0  # proceed, order will fail at exchange if insufficient
 
     # LIVE ORDER via Kite Connect
     try:
@@ -191,16 +242,17 @@ def _place_order(symbol: str, direction: Direction,
         order_id = kite_manager.kite.place_order(
             variety=kite_manager.kite.VARIETY_REGULAR,
             exchange="NFO",
-            tradingsymbol=symbol.replace("NFO:", ""),
+            tradingsymbol=symbol,          # already clean — no "NFO:" prefix
             transaction_type=transaction,
             quantity=quantity,
-            product=kite_manager.kite.PRODUCT_MIS,  # Intraday
+            product=kite_manager.kite.PRODUCT_MIS,   # Intraday MIS
             order_type=kite_manager.kite.ORDER_TYPE_MARKET,
         )
         print(f"✅ [LIVE] Order placed: {direction.value.upper()} {quantity}x {symbol} | ID: {order_id}")
         return str(order_id)
     except Exception as e:
         print(f"❌ [LIVE] Order failed: {e}")
+        state.last_signal_reason = f"❌ Order failed: {e}"
         return None
 
 
@@ -306,15 +358,21 @@ def evaluate_and_act(df, current_price: float):
 
 def _enter_trade(direction: Direction, price: float):
     """Open a new trade."""
-    symbol = _get_option_symbol(price, direction)
+    try:
+        symbol, _token = _get_option_symbol(price, direction)
+    except RuntimeError as e:
+        print(f"❌ Cannot enter trade: {e}")
+        state.last_signal_reason = f"❌ Instrument lookup failed: {e}"
+        return
 
-    # Calculate SL
+    # Calculate SL on Nifty spot (for management), actual P&L is on options
+    RR = float(os.getenv("RR_RATIO", "2.0"))
     if direction == Direction.LONG:
-        sl = price - SL_POINTS
-        target = price + SL_POINTS * 2  # 1:2 risk-reward
+        sl     = price - SL_POINTS
+        target = price + SL_POINTS * RR
     else:
-        sl = price + SL_POINTS
-        target = price - SL_POINTS * 2
+        sl     = price + SL_POINTS
+        target = price - SL_POINTS * RR
 
     order_id = _place_order(symbol, direction, DEFAULT_QUANTITY, price)
     if not order_id:

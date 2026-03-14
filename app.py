@@ -57,24 +57,43 @@ async def _fetch(interval: str = "5m", period: str = "5d") -> pd.DataFrame:
 # ── Background auto-trader loop ─────────────────────────────────
 from contextlib import asynccontextmanager
 
-EVAL_INTERVAL_SECONDS = 60  # evaluate every 60s regardless of user activity
+import math as _math
+
+
+def _seconds_to_next_candle_close(candle_minutes: int = 5) -> float:
+    """Return seconds until the next N-minute candle close boundary.
+    E.g. for 5m candles: closes at 09:20, 09:25, 09:30 ...
+    We evaluate 5 seconds AFTER close to let data propagate.
+    """
+    now = datetime.now()
+    current_minute = now.minute
+    current_second = now.second
+    # Next boundary minute
+    next_boundary = (_math.floor(current_minute / candle_minutes) + 1) * candle_minutes
+    secs_to_boundary = (next_boundary - current_minute) * 60 - current_second + 5
+    return max(secs_to_boundary, 10)  # at least 10s
 
 
 async def _auto_trader_loop():
-    """Server-side loop: runs evaluate_and_act every 60s.
-    Completely independent of browser / user interaction.
+    """Background loop: evaluates strategy at every 5-min candle close.
+
+    Syncs to clock boundaries (:00, :05, :10 ...) so evaluation always
+    happens on a CLOSED candle — never mid-candle garbage.
     """
-    print("🤖 Auto-trader background loop started (60s interval)")
+    print("🤖 Auto-trader loop started — synced to 5-min candle closes")
     while True:
-        await asyncio.sleep(EVAL_INTERVAL_SECONDS)
+        wait = _seconds_to_next_candle_close(5)
+        await asyncio.sleep(wait)
+
         if not trader_state.is_running or trader_state.kill_switch:
             continue
         try:
             df = await asyncio.to_thread(fetch_intraday_data, interval="5m", period="5d")
             if df is not None and not df.empty:
                 price = float(df["close"].iloc[-1])
+                candle_ts = df.index[-1].strftime("%H:%M")
                 await asyncio.to_thread(evaluate_and_act, df, price)
-                print(f"🤖 [AUTO-EVAL] ₹{price:.0f} | orders={trader_state.orders_placed}")
+                print(f"🤖 [CANDLE {candle_ts}] ₹{price:.0f} | trades={trader_state.orders_placed}")
         except Exception as e:
             print(f"⚠️ Auto-trader loop error: {e}")
 
@@ -1221,6 +1240,127 @@ async def mtf_analyze(chart_tf: str = "5m"):
 
 
 # ── Auto-Trader API ─────────────────────────────────────────────
+
+@app.get("/api/auto-trader/preflight")
+async def auto_trader_preflight():
+    """Pre-market system check — run this at 9:00 AM every morning.
+    Returns a checklist of everything needed for safe auto trading.
+    """
+    checks = []
+
+    def chk(name, passed, detail, critical=False):
+        checks.append({"name": name, "passed": passed,
+                       "detail": detail, "critical": critical})
+        return passed
+
+    # 1. Kite authentication
+    kite_ok = chk(
+        "Zerodha session",
+        kite_manager.is_authenticated,
+        "Access token valid" if kite_manager.is_authenticated
+            else "❌ Not logged in — open /login and complete OAuth",
+        critical=True,
+    )
+
+    # 2. Margin check
+    margin_ok = False
+    margin_detail = "Skipped (not authenticated)"
+    if kite_ok:
+        try:
+            margins = kite_manager.kite.margins()
+            equity  = margins.get("equity", {})
+            avail   = float(equity.get("available", {}).get("live_balance", 0))
+            margin_ok = avail >= 10000
+            margin_detail = f"₹{avail:,.0f} available {'✅' if margin_ok else '❌ (<₹10K, top up needed)'}"
+        except Exception as e:
+            margin_detail = f"Error: {e}"
+    chk("Available margin", margin_ok, margin_detail, critical=True)
+
+    # 3. NFO instruments available
+    instruments_ok = False
+    instruments_detail = "Skipped"
+    if kite_ok:
+        try:
+            from auto_trader import _get_nfo_instruments
+            instr = _get_nfo_instruments()
+            instruments_ok = len(instr) > 0
+            instruments_detail = f"{len(instr)} NIFTY options loaded" if instruments_ok else "❌ No instruments"
+        except Exception as e:
+            instruments_detail = f"Error: {e}"
+    chk("NFO instruments list", instruments_ok, instruments_detail, critical=True)
+
+    # 4. Market data (Yahoo Finance fallback)
+    data_ok = False
+    data_detail = "Checking..."
+    try:
+        df = fetch_intraday_data(interval="5m", period="2d")
+        last_candle = df.index[-1] if not df.empty else None
+        price       = float(df["close"].iloc[-1]) if not df.empty else 0
+        data_ok     = not df.empty
+        data_detail = f"Last candle: {last_candle.strftime('%Y-%m-%d %H:%M') if last_candle else 'N/A'} | Price: {price:,.2f}"
+    except Exception as e:
+      data_detail = f"❌ Data fetch failed: {e}"
+    chk("Market data (Yahoo)", data_ok, data_detail, critical=True)
+
+    # 5. SL/Risk config sanity
+    from auto_trader import SL_POINTS, TRAILING_SL_POINTS, MAX_LOSS_PER_DAY, DEFAULT_QUANTITY
+    sl_ok = SL_POINTS >= 15
+    chk(
+        "Stop loss config",
+        sl_ok,
+        f"SL={SL_POINTS}pts, Trail={TRAILING_SL_POINTS}pts, MaxLoss=₹{MAX_LOSS_PER_DAY}"
+        + ("" if sl_ok else " ⚠️ SL < 15pts is too tight for Nifty!"),
+        critical=False,
+    )
+
+    # 6. No existing open position (clean slate)
+    from auto_trader import state as at_state
+    no_orphan = at_state.active_trade is None
+    chk(
+        "No orphaned positions",
+        no_orphan,
+        "Clean slate — no active trade in system"
+            if no_orphan else
+            f"⚠️ Active trade detected: {at_state.active_trade.instrument if at_state.active_trade else 'unknown'}",
+        critical=False,
+    )
+    # Also check Zerodha positions
+    if kite_ok:
+        try:
+            positions = kite_manager.kite.positions()
+            net_pos   = [p for p in positions.get("net", []) if p.get("quantity", 0) != 0]
+            kite_clean = len(net_pos) == 0
+            chk(
+                "Zerodha open positions",
+                kite_clean,
+                "No open positions in Zerodha" if kite_clean
+                    else f"⚠️ {len(net_pos)} open position(s) in Zerodha account!",
+                critical=False,
+            )
+        except Exception as e:
+            chk("Zerodha open positions", False, f"Could not check: {e}")
+
+    # 7. Time check
+    from datetime import timezone, timedelta
+    now_ist = datetime.now(timezone(timedelta(hours=5, minutes=30)))
+    is_pre  = now_ist.hour < 9 or (now_ist.hour == 9 and now_ist.minute < 15)
+    chk(
+        "Market hours",
+        True,
+        f"IST: {now_ist.strftime('%H:%M:%S')} | "
+        + ("Pre-market ✅ good time to run preflight" if is_pre else
+           "Market open" if 9 <= now_ist.hour < 15 else "Market closed"),
+    )
+
+    all_critical_pass = all(c["passed"] for c in checks if c["critical"])
+    return {
+        "ready": all_critical_pass,
+        "checks": checks,
+        "summary": "✅ All systems go — safe to start auto trading!"
+                   if all_critical_pass else
+                   "❌ Fix critical issues before starting auto trading",
+    }
+
 
 @app.get("/api/auto-trader/status")
 async def auto_trader_status():
