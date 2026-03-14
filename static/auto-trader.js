@@ -1,10 +1,88 @@
 // ── Auto-Trader Controls & Renderer ──────────────────────────────
 
-// Single source of truth — never read the DOM to decide state
-let _atIsRunning   = false;
-let _atKillSwitch  = false;
-let _atPollTimer   = null;
-const AT_POLL_MS   = 6000;   // poll every 6 s when tab is open
+// Single source of truth
+let _atIsRunning  = false;
+let _atKillSwitch = false;
+let _atPollTimer  = null;
+let _atHadTrade   = false;   // tracks position state for entry/exit detection
+const AT_POLL_MS  = 6000;
+
+// ── Toast system ─────────────────────────────────────────────────
+function showAtToast(type, title, body) {
+    const container = document.getElementById('at-toasts');
+    if (!container) return;
+
+    const colors = {
+        entry:   { bg:'bg-green-700',  border:'border-green-400',  icon:'🟢' },
+        exit_win:{ bg:'bg-green-800',  border:'border-green-300',  icon:'💰' },
+        exit_loss:{bg:'bg-red-800',    border:'border-red-400',    icon:'🔴' },
+        exit_be: { bg:'bg-gray-700',   border:'border-gray-400',   icon:'⚪' },
+        info:    { bg:'bg-blue-800',   border:'border-blue-400',   icon:'ℹ️' },
+        warn:    { bg:'bg-yellow-700', border:'border-yellow-400', icon:'⚠️' },
+        error:   { bg:'bg-red-900',    border:'border-red-500',    icon:'❌' },
+    };
+    const c = colors[type] || colors.info;
+    const now = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+    const el = document.createElement('div');
+    el.className = `pointer-events-auto ${c.bg} border ${c.border} text-white rounded-xl px-4 py-3 shadow-2xl`;
+    el.style.cssText = 'animation:slideInRight .3s ease both';
+    el.innerHTML = `
+        <div class="flex items-start gap-3">
+            <span class="text-xl mt-0.5">${c.icon}</span>
+            <div class="flex-1 min-w-0">
+                <div class="font-black text-sm">${title}</div>
+                <div class="text-xs opacity-80 mt-0.5">${body}</div>
+                <div class="text-[10px] opacity-50 mt-1">${now}</div>
+            </div>
+            <button onclick="this.closest('div[class]').remove()" class="text-white/60 hover:text-white text-lg leading-none">&times;</button>
+        </div>`;
+
+    container.appendChild(el);
+
+    // Auto-dismiss after 6s
+    setTimeout(() => {
+        el.style.animation = 'slideOutRight .3s ease both';
+        setTimeout(() => el.remove(), 300);
+    }, 6000);
+
+    // Also log to event log
+    _atLogEvent(c.icon, title, body);
+}
+
+// ── Event log ────────────────────────────────────────────────────
+function _atLogEvent(icon, title, detail) {
+    const log = document.getElementById('at-event-log');
+    if (!log) return;
+    const now = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    const row = document.createElement('div');
+    row.className = 'flex items-start gap-2 py-1 border-b border-gray-800';
+    row.innerHTML = `<span class="text-gray-500 shrink-0">${now}</span>
+                     <span class="shrink-0">${icon}</span>
+                     <span class="text-gray-300"><b>${title}</b> ${detail}</span>`;
+    log.prepend(row);
+    // Keep last 30 events
+    while (log.children.length > 30) log.lastChild.remove();
+}
+
+function _atClearLog() {
+    const log = document.getElementById('at-event-log');
+    if (log) log.innerHTML = '';
+}
+
+// ── Beep on trade events ─────────────────────────────────────────
+function _atBeep(freq = 880, dur = 150, vol = 0.3) {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(vol, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur / 1000);
+        osc.start(); osc.stop(ctx.currentTime + dur / 1000);
+    } catch (_) {}
+}
 
 // ── Strategy dropdown ────────────────────────────────────────────
 async function populateAutoTraderStrategies() {
@@ -135,24 +213,47 @@ async function pollAutoTraderStatus() {
     } catch (e) { /* network blip — stay silent */ }
 }
 
-// ── Full render (called with latest server data) ─────────────────
+// ── Full render (called with latest server data) ──────────────────
 function renderAutoTrader(data) {
     _atIsRunning  = !!data.is_running;
     _atKillSwitch = !!data.kill_switch;
+    const hasTrade = !!data.active_trade;
 
-    // Mode badge
+    // ── Detect entry / exit events ─────────────────────────────
+    if (hasTrade && !_atHadTrade) {
+        const t = data.active_trade;
+        const dir = t.direction === 'long' ? '⬆ LONG' : '⬇ SHORT';
+        _atBeep(660, 120); setTimeout(() => _atBeep(880, 120), 130);
+        showAtToast('entry', `🟢 POSITION ENTERED`, `${dir} at ₹${t.entry_price} | SL ₹${t.stop_loss} | Tgt ₹${t.target || '--'}`);
+    } else if (!hasTrade && _atHadTrade) {
+        // Just closed — fetch history to get the last P&L
+        fetch('/api/auto-trader/history').then(r => r.json()).then(h => {
+            const last = (h.trades || []).slice(-1)[0];
+            if (!last) return;
+            const pnl = last.pnl;
+            if (pnl > 0) {
+                _atBeep(880, 100); setTimeout(() => _atBeep(1100, 150), 120);
+                showAtToast('exit_win', `💰 POSITION CLOSED — WIN`, `P&L ₹+${pnl.toFixed(0)} | ${last.exit_reason || ''}`);
+            } else if (pnl < 0) {
+                _atBeep(300, 200);
+                showAtToast('exit_loss', `🔴 POSITION CLOSED — LOSS`, `P&L ₹${pnl.toFixed(0)} | ${last.exit_reason || ''}`);
+            } else {
+                _atBeep(550, 100);
+                showAtToast('exit_be', `⚪ POSITION CLOSED — B/E`, `P&L ₹0 | ${last.exit_reason || ''}`);
+            }
+            renderTradeHistory(h);
+        }).catch(() => {});
+    }
+    _atHadTrade = hasTrade;
+
+    // ── Mode badge ───────────────────────────────────────────────
     const modeEl = document.getElementById('at-mode');
     if (modeEl) {
-        if (data.is_paper_mode) {
-            modeEl.textContent = '📝 PAPER';
-            modeEl.className   = 'bg-yellow-600 text-xs px-2 py-0.5 rounded font-bold';
-        } else {
-            modeEl.textContent = '🟢 LIVE';
-            modeEl.className   = 'bg-green-600 text-xs px-2 py-0.5 rounded font-bold';
-        }
+        modeEl.textContent = data.is_paper_mode ? '📝 PAPER' : '🟢 LIVE';
+        modeEl.className   = `${data.is_paper_mode ? 'bg-yellow-600' : 'bg-green-600'} text-xs px-2 py-0.5 rounded font-bold`;
     }
 
-    // Strategy select
+    // Strategy
     const stratSelect = document.getElementById('at-strategy');
     const stratLabel  = document.getElementById('at-strat-label');
     if (stratSelect) {
@@ -164,30 +265,25 @@ function renderAutoTrader(data) {
         if (opt) stratLabel.textContent = opt.textContent;
     }
 
-    // Status buttons — driven from server truth
-    if (_atKillSwitch)    _setAtStatus('killed');
+    // Status buttons
+    if (_atKillSwitch)     _setAtStatus('killed');
     else if (_atIsRunning) _setAtStatus('running');
     else                   _setAtStatus('idle');
 
-    // P&L
+    // P&L + counters
+    const setT = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     const pnlEl = document.getElementById('at-pnl');
     if (pnlEl) {
         pnlEl.textContent = `₹${data.total_pnl >= 0 ? '+' : ''}${data.total_pnl}`;
-        pnlEl.className   = `text-sm font-bold ${data.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+        pnlEl.className   = `text-xs font-bold ${data.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
     }
+    setT('at-orders',    `${data.orders_placed}/${data.max_orders}`);
+    setT('at-exit-time', data.exit_time);
 
-    const ordEl = document.getElementById('at-orders');
-    if (ordEl) ordEl.textContent = `${data.orders_placed}/${data.max_orders}`;
-
-    const exitEl = document.getElementById('at-exit-time');
-    if (exitEl) exitEl.textContent = data.exit_time;
-
-    // Last eval time
+    // Last eval
     if (data.last_evaluation) {
         const t = new Date(data.last_evaluation);
-        const evalEl = document.getElementById('at-last-eval');
-        if (evalEl) evalEl.textContent =
-            `Last eval: ${t.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+        setT('at-last-eval', `Last eval: ${t.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}`);
     }
 
     // Signal / conditions
@@ -197,39 +293,60 @@ function renderAutoTrader(data) {
         if (data.conditions?.length) {
             sigHTML += '<div class="mt-2 space-y-1">';
             data.conditions.forEach(c => {
-                const icon  = c.met ? '✅' : '❌';
-                const color = c.met ? 'text-green-400' : 'text-red-400';
-                sigHTML += `<div class="${color} text-xs">${icon} <strong>${c.name}</strong>: ${c.detail}</div>`;
+                sigHTML += `<div class="${c.met ? 'text-green-400' : 'text-red-400'} text-xs">
+                    ${c.met ? '✅' : '❌'} <strong>${c.name}</strong>: ${c.detail}</div>`;
             });
             sigHTML += '</div>';
         }
         sigEl.innerHTML = sigHTML;
     }
 
-    // Active trade panel
-    const tradeDetail = document.getElementById('at-trade-detail');
-    const activeLabel = document.getElementById('at-active');
-    if (data.active_trade) {
-        if (tradeDetail) tradeDetail.classList.remove('hidden');
-        const t = data.active_trade;
-        if (activeLabel) {
-            activeLabel.textContent = `${t.direction.toUpperCase()} ₹${t.entry_price}`;
-            activeLabel.className   = `text-sm font-bold ${t.direction === 'long' ? 'text-green-400' : 'text-red-400'}`;
+    // ── LIVE POSITION BANNER ───────────────────────────────────
+    const banner = document.getElementById('at-pos-banner');
+    const noPos  = document.getElementById('at-no-pos');
+
+    if (hasTrade) {
+        if (banner) banner.classList.remove('hidden');
+        if (noPos)  noPos.classList.add('hidden');
+
+        const t      = data.active_trade;
+        const isLong = t.direction === 'long';
+
+        // Direction badge
+        const dirBadge = document.getElementById('at-pos-dir-badge');
+        if (dirBadge) {
+            dirBadge.textContent  = isLong ? '⬆ LONG' : '⬇ SHORT';
+            dirBadge.className    = `px-3 py-1 rounded-full font-black text-sm ${
+                isLong ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`;
         }
-        const dirEl = document.getElementById('at-dir');
-        if (dirEl) { dirEl.textContent = t.direction === 'long' ? '⬆ LONG' : '⬇ SHORT'; dirEl.className = t.direction === 'long' ? 'text-green-400' : 'text-red-400'; }
-        const setT = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        // Active label in grid
+        const activeEl = document.getElementById('at-active');
+        if (activeEl) {
+            activeEl.textContent = isLong ? '⬆ LONG' : '⬇ SHORT';
+            activeEl.className   = `text-xs font-bold ${isLong ? 'text-green-400' : 'text-red-400'}`;
+        }
+
+        // Border color flips with direction
+        if (banner) {
+            banner.style.borderColor = isLong ? '#22c55e' : '#ef4444';
+            banner.style.background  = isLong ? 'rgba(21,128,61,.15)' : 'rgba(153,27,27,.15)';
+        }
+
         setT('at-entry', `₹${t.entry_price}`);
         setT('at-sl',    `₹${t.stop_loss}`);
         setT('at-tgt',   `₹${t.target || '--'}`);
+
         const upnlEl = document.getElementById('at-upnl');
         if (upnlEl) {
-            upnlEl.textContent = `₹${t.pnl_unrealized >= 0 ? '+' : ''}${t.pnl_unrealized}`;
-            upnlEl.className   = t.pnl_unrealized >= 0 ? 'text-green-400' : 'text-red-400';
+            const pnl = t.pnl_unrealized;
+            upnlEl.textContent = `₹${pnl >= 0 ? '+' : ''}${pnl}`;
+            upnlEl.className   = `text-sm font-black ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
         }
     } else {
-        if (tradeDetail) tradeDetail.classList.add('hidden');
-        if (activeLabel) { activeLabel.textContent = 'None'; activeLabel.className = 'text-sm font-bold text-gray-500'; }
+        if (banner) banner.classList.add('hidden');
+        if (noPos)  noPos.classList.remove('hidden');
+        const activeEl = document.getElementById('at-active');
+        if (activeEl) { activeEl.textContent = 'None'; activeEl.className = 'text-xs font-bold text-gray-500'; }
     }
 }
 

@@ -44,6 +44,9 @@
         .conf-fill { height:100%;border-radius:3px; }
         .chip { display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:700; }
         @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes pulseBorder { 0%,100%{border-color:#22c55e;box-shadow:0 0 0 0 rgba(34,197,94,.4)} 50%{border-color:#4ade80;box-shadow:0 0 0 6px rgba(34,197,94,0)} }
+        @keyframes slideInRight { from{opacity:0;transform:translateX(60px)} to{opacity:1;transform:translateX(0)} }
+        @keyframes slideOutRight { from{opacity:1;transform:translateX(0)} to{opacity:0;transform:translateX(60px)} }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -401,60 +404,110 @@
 
             <!-- ====== PAGE: Auto-Trader ====== -->
             <div id="page-auto-trader" class="page-section">
-                <div id="auto-trader-panel" class="bg-gray-900 text-white rounded-xl shadow-sm p-4">
-                    <div class="flex justify-between items-center mb-3">
-                        <div>
-                            <h3 class="text-sm font-bold">🤖 Auto-Trader</h3>
-                            <p class="text-xs text-gray-400">
-                                <span id="at-mode" class="bg-yellow-600 text-xs px-2 py-0.5 rounded font-bold">📝 PAPER</span>
-                                <span id="at-last-eval" class="ml-2">Not started</span>
-                            </p>
-                        </div>
-                        <div class="flex gap-2">
-                            <select id="at-strategy" class="bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs font-bold text-white" aria-label="Strategy">
-                                <option value="smart_router">🧠 Smart Router</option>
-                            </select>
-                            <button onclick="startAutoTrader()" id="at-start-btn" class="bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg font-bold text-xs transition">▶ Start</button>
-                            <button onclick="stopAutoTrader()" id="at-stop-btn" class="bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded-lg font-bold text-xs transition">⏹ Stop</button>
-                            <button onclick="killAutoTrader()" id="at-kill-btn" class="bg-red-700 hover:bg-red-600 px-2 py-1.5 rounded-lg font-bold text-xs transition">🚨</button>
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-6 gap-2 mb-3">
-                        <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Status</div><div id="at-status" class="text-xs font-bold text-yellow-400">⏸ Idle</div></div>
-                        <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Strategy</div><div id="at-strat-label" class="text-xs font-bold text-blue-400">🧠 Auto</div></div>
-                        <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Day P&L</div><div id="at-pnl" class="text-xs font-bold">₹0</div></div>
-                        <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Orders</div><div id="at-orders" class="text-xs font-bold">0/6</div></div>
-                        <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Active</div><div id="at-active" class="text-xs font-bold text-gray-500">None</div></div>
-                        <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Auto-Exit</div><div id="at-exit-time" class="text-xs font-bold">15:15</div></div>
-                    </div>
-                    <div id="at-trade-detail" class="hidden bg-gray-800 rounded-lg p-3 mb-3">
-                        <div class="grid grid-cols-5 gap-2 text-center text-xs">
-                            <div><span class="text-gray-400">Dir</span><br><strong id="at-dir">--</strong></div>
-                            <div><span class="text-gray-400">Entry</span><br><strong id="at-entry">--</strong></div>
-                            <div><span class="text-gray-400">SL</span><br><strong id="at-sl" class="text-red-400">--</strong></div>
-                            <div><span class="text-gray-400">Target</span><br><strong id="at-tgt" class="text-green-400">--</strong></div>
-                            <div><span class="text-gray-400">Unrealized</span><br><strong id="at-upnl">--</strong></div>
-                        </div>
-                    </div>
-                    <div id="at-signal" class="text-xs text-gray-500"></div>
 
-                    <!-- Trade History -->
-                    <div class="mt-4 border-t border-gray-700 pt-3">
-                        <div class="flex justify-between items-center mb-2">
-                            <h4 class="text-xs font-bold text-gray-400">📜 Trade History</h4>
-                            <button onclick="loadTradeHistory()" class="text-[10px] bg-gray-700 hover:bg-gray-600 px-2 py-0.5 rounded text-gray-300">↻ Refresh</button>
-                        </div>
-                        <div id="at-history-summary" class="grid grid-cols-4 gap-2 mb-2">
-                            <div class="bg-gray-800 rounded p-1.5 text-center"><div class="text-[10px] text-gray-500">Trades</div><div id="ath-count" class="text-xs font-bold">0</div></div>
-                            <div class="bg-gray-800 rounded p-1.5 text-center"><div class="text-[10px] text-gray-500">Total P&L</div><div id="ath-pnl" class="text-xs font-bold">₹0</div></div>
-                            <div class="bg-gray-800 rounded p-1.5 text-center"><div class="text-[10px] text-gray-500">Winners</div><div id="ath-wins" class="text-xs font-bold text-green-400">0</div></div>
-                            <div class="bg-gray-800 rounded p-1.5 text-center"><div class="text-[10px] text-gray-500">Losers</div><div id="ath-losses" class="text-xs font-bold text-red-400">0</div></div>
-                        </div>
-                        <div id="at-history-table" class="max-h-48 overflow-y-auto text-xs">
-                            <p class="text-gray-600 text-center py-3">No trades yet</p>
-                        </div>
-                    </div>
+              <!-- Toast container -->
+              <div id="at-toasts" class="fixed top-4 right-4 z-[999] flex flex-col gap-2 pointer-events-none" style="width:320px"></div>
+
+              <div class="bg-gray-900 text-white rounded-xl shadow-sm p-4 space-y-3">
+
+                <!-- Header row -->
+                <div class="flex justify-between items-center">
+                  <div>
+                    <h3 class="text-sm font-bold">🤖 Auto-Trader</h3>
+                    <p class="text-xs text-gray-400">
+                      <span id="at-mode" class="bg-yellow-600 text-xs px-2 py-0.5 rounded font-bold">📝 PAPER</span>
+                      <span id="at-last-eval" class="ml-2">Not started</span>
+                    </p>
+                  </div>
+                  <div class="flex gap-2">
+                    <select id="at-strategy" class="bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs font-bold text-white" aria-label="Strategy">
+                      <option value="smart_router">🧠 Smart Router</option>
+                    </select>
+                    <button onclick="startAutoTrader()" id="at-start-btn" class="bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg font-bold text-xs transition">▶ Start</button>
+                    <button onclick="stopAutoTrader()"  id="at-stop-btn"  class="bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded-lg font-bold text-xs transition">⏹ Stop</button>
+                    <button onclick="killAutoTrader()"  id="at-kill-btn"  class="bg-red-700 hover:bg-red-600 px-2 py-1.5 rounded-lg font-bold text-xs transition">🚨</button>
+                  </div>
                 </div>
+
+                <!-- Status grid -->
+                <div class="grid grid-cols-6 gap-2">
+                  <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Status</div><div id="at-status" class="text-xs font-bold text-yellow-400">⏸ Idle</div></div>
+                  <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Strategy</div><div id="at-strat-label" class="text-xs font-bold text-blue-400">🧠 Auto</div></div>
+                  <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Day P&L</div><div id="at-pnl" class="text-xs font-bold">₹0</div></div>
+                  <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Orders</div><div id="at-orders" class="text-xs font-bold">0/10</div></div>
+                  <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Active</div><div id="at-active" class="text-xs font-bold text-gray-500">None</div></div>
+                  <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Auto-Exit</div><div id="at-exit-time" class="text-xs font-bold">15:15</div></div>
+                </div>
+
+                <!-- ═══ LIVE POSITION BANNER ════════════════════════════ -->
+                <div id="at-pos-banner" class="hidden rounded-xl border-2 border-green-500 bg-green-900/40 p-3" style="animation:pulseBorder 1.5s ease-in-out infinite">
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2">
+                      <span class="relative flex h-3 w-3">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                      </span>
+                      <span class="text-green-400 font-black text-sm">POSITION OPEN</span>
+                    </div>
+                    <span id="at-pos-dir-badge" class="px-3 py-1 rounded-full font-black text-sm">--</span>
+                  </div>
+                  <div class="grid grid-cols-4 gap-2 text-center">
+                    <div class="bg-gray-800/60 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">Entry Price</div>
+                      <div id="at-entry" class="text-sm font-black text-white">--</div>
+                    </div>
+                    <div class="bg-gray-800/60 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">Stop Loss</div>
+                      <div id="at-sl" class="text-sm font-black text-red-400">--</div>
+                    </div>
+                    <div class="bg-gray-800/60 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">Target</div>
+                      <div id="at-tgt" class="text-sm font-black text-green-400">--</div>
+                    </div>
+                    <div class="bg-gray-800/60 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">Unrealized P&L</div>
+                      <div id="at-upnl" class="text-sm font-black">--</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- No position placeholder -->
+                <div id="at-no-pos" class="rounded-xl border border-gray-700 border-dashed p-4 text-center">
+                  <div class="text-2xl mb-1">⏳</div>
+                  <div class="text-xs text-gray-500 font-semibold">No open position</div>
+                  <div class="text-[10px] text-gray-600">Waiting for entry signal…</div>
+                </div>
+
+                <!-- Signal / conditions -->
+                <div id="at-signal" class="text-xs text-gray-500"></div>
+
+                <!-- Event log -->
+                <div class="border-t border-gray-700 pt-3">
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">📡 Event Log</span>
+                    <button onclick="_atClearLog()" class="text-[9px] text-gray-600 hover:text-gray-400">Clear</button>
+                  </div>
+                  <div id="at-event-log" class="space-y-1 max-h-28 overflow-y-auto text-[11px]"></div>
+                </div>
+
+                <!-- Trade History -->
+                <div class="border-t border-gray-700 pt-3">
+                  <div class="flex justify-between items-center mb-2">
+                    <h4 class="text-xs font-bold text-gray-400">📜 Trade History</h4>
+                    <button onclick="loadTradeHistory()" class="text-[10px] bg-gray-700 hover:bg-gray-600 px-2 py-0.5 rounded text-gray-300">↻ Refresh</button>
+                  </div>
+                  <div class="grid grid-cols-4 gap-2 mb-2">
+                    <div class="bg-gray-800 rounded p-1.5 text-center"><div class="text-[10px] text-gray-500">Trades</div><div id="ath-count" class="text-xs font-bold">0</div></div>
+                    <div class="bg-gray-800 rounded p-1.5 text-center"><div class="text-[10px] text-gray-500">Total P&L</div><div id="ath-pnl" class="text-xs font-bold">₹0</div></div>
+                    <div class="bg-gray-800 rounded p-1.5 text-center"><div class="text-[10px] text-gray-500">Winners</div><div id="ath-wins" class="text-xs font-bold text-green-400">0</div></div>
+                    <div class="bg-gray-800 rounded p-1.5 text-center"><div class="text-[10px] text-gray-500">Losers</div><div id="ath-losses" class="text-xs font-bold text-red-400">0</div></div>
+                  </div>
+                  <div id="at-history-table" class="max-h-48 overflow-y-auto text-xs">
+                    <p class="text-gray-600 text-center py-3">No trades yet</p>
+                  </div>
+                </div>
+
+              </div>
             </div><!-- /page-auto-trader -->
 
             <!-- ====== PAGE: Backtester ====== -->
@@ -690,7 +743,7 @@
     <script src="/static/progress.js?v=3"></script>
     <script src="/static/dashboard.js?v=3"></script>
     <script src="/static/charts.js?v=3"></script>
-    <script src="/static/auto-trader.js?v=4"></script>
+    <script src="/static/auto-trader.js?v=5"></script>
     <script src="/static/backtest.js?v=3"></script>
     <script src="/static/learn.js?v=3"></script>
     <script src="/static/pattern-history.js?v=1"></script>
