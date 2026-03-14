@@ -9,3 +9,7 @@ __pycache__/
 *.csv
 *.xlsx
 .DS_Store
+
+# Runtime state — contains live trade data, never commit
+.state_snapshot.json
+trade_log.json
