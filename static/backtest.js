@@ -226,6 +226,11 @@ function renderBacktestResults(data) {
     // ── Daily P&L Bar Chart ──
     renderDailyPnl(data.daily_pnl);
 
+    // ── Populate Day Replay date picker ──
+    if (typeof replayPopulateDates === 'function') {
+        replayPopulateDates(data.daily_pnl);
+    }
+
     // ── Trade Log Table ──
     document.getElementById('bt-trade-count').textContent = data.total_trades;
     renderTradeLog(data.trades);
@@ -335,6 +340,16 @@ function renderDailyPnl(dailyPnl) {
                     grid: { color: '#f0f0f0' },
                     ticks: { callback: v => (v >= 0 ? '+' : '') + v },
                 },
+            },
+            onClick(event, elements) {
+                if (!elements.length) return;
+                const dateStr = dates[elements[0].index];
+                if (dateStr && typeof replaySelectDate === 'function') {
+                    replaySelectDate(dateStr);
+                    // Scroll to replay panel
+                    const replayPanel = document.getElementById('replay-date');
+                    if (replayPanel) replayPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
             },
         },
     });

@@ -466,6 +466,49 @@ async def analyze(interval: str = "5m"):
         return {"success": False, "error": str(e)}
 
 
+@app.post("/api/backtest/replay")
+async def replay_day_api(
+    date: str = "",
+    period: str = "60d",
+    sl_points: float = 30.0,
+    trailing_sl: float = 15.0,
+    rr_ratio: float = 2.0,
+    max_trades: int = 3,
+    strategy: str = "smart_router",
+    data_source: str = "yahoo",
+):
+    """Replay a single trading day candle-by-candle for the Day Replay UI."""
+    from backtester import replay_day
+    try:
+        result = replay_day(
+            date_str=date,
+            period=period,
+            strategy_id=strategy,
+            sl_points=sl_points,
+            trailing_sl=trailing_sl,
+            rr_ratio=rr_ratio,
+            max_trades=max_trades,
+            data_source=data_source,
+        )
+        return {"success": True, **result}
+    except Exception as e:
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/backtest/available-dates")
+async def get_available_dates(period: str = "60d", data_source: str = "yahoo"):
+    """Return all available trading dates for the date picker."""
+    from data_fetcher import fetch_intraday_data
+    try:
+        df = fetch_intraday_data(interval="5m", period=period)
+        df.index = pd.DatetimeIndex(df.index)
+        dates = sorted({str(ts.date()) for ts in df.index}, reverse=True)
+        return {"success": True, "dates": dates}
+    except Exception as e:
+        return {"success": False, "error": str(e), "dates": []}
+
+
 # ── Split API Endpoints (per-section refresh) ─────────────────────
 
 # Shared data cache so sections can reuse fetched data

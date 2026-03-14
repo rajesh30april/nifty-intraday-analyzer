@@ -409,6 +409,263 @@ def _calculate_stats(result: BacktestResult):
     }
 
 
+# ── Day Replay ────────────────────────────────────────────────
+
+@dataclass
+class ReplayFrame:
+    """State of a single candle during day replay."""
+    time: str
+    open: float
+    high: float
+    low: float
+    close: float
+    # Strategy evaluation
+    strategy_name: str
+    strategy_emoji: str
+    signal_fires: bool
+    direction: str          # 'long' | 'short' | ''
+    confidence: float
+    regime: str
+    # Trade state
+    trade_state: str        # 'idle' | 'entry' | 'in_trade' | 'exit'
+    entry_price: float
+    stop_loss: float
+    target: float
+    unrealized_pts: float
+    cumul_pts: float
+    exit_reason: str
+
+
+def replay_day(
+    date_str: str,
+    period: str = "60d",
+    strategy_id: str = "smart_router",
+    sl_points: float = DEFAULT_SL_POINTS,
+    trailing_sl: float = DEFAULT_TRAILING_SL,
+    rr_ratio: float = DEFAULT_RR_RATIO,
+    max_trades: int = 3,
+    data_source: str = "yahoo",
+) -> dict:
+    """Replay a single trading day candle-by-candle.
+
+    Returns a dict with:
+        frames: list[ReplayFrame]  — one per 5-min candle
+        trades: list[BacktestTrade]
+        summary: dict
+        available_dates: list[str]
+    """
+    full_df, source_label = _fetch_data(data_source, "5m", period)
+    full_df.index = pd.DatetimeIndex(full_df.index)
+
+    # All available trading dates
+    available_dates = sorted({str(ts.date()) for ts in full_df.index})
+
+    target_date = pd.Timestamp(date_str).date()
+    day_df = full_df[full_df.index.date == target_date]
+
+    if day_df.empty:
+        return {
+            "error": f"No data found for {date_str}. Available: {available_dates[-5:]}",
+            "available_dates": available_dates,
+        }
+
+    frames: list[ReplayFrame] = []
+    trades: list[BacktestTrade] = []
+    cumul_pts = 0.0
+
+    # Trade tracking
+    in_trade = False
+    entry_price = 0.0
+    stop_loss_lvl = 0.0
+    target_lvl = 0.0
+    direction = ""
+    entry_time = ""
+    highest = 0.0
+    lowest = float("inf")
+    trades_today = 0
+    conditions_met: list[str] = []
+
+    for i in range(len(day_df)):
+        candle_time = day_df.index[i].time()
+        candle = day_df.iloc[i]
+        price = float(candle["close"])
+        high  = float(candle["high"])
+        low   = float(candle["low"])
+        open_ = float(candle["open"])
+
+        time_str  = day_df.index[i].strftime("%H:%M")
+        trade_state = "idle"
+        exit_reason = ""
+        unrealized  = 0.0
+
+        # ── Evaluate strategy for this candle ─────────────────
+        current_ts  = day_df.index[i]
+        lookback_df = full_df[full_df.index <= current_ts]
+
+        strat_info = get_strategy(strategy_id)
+        regime_str = "unknown"
+        strat_name = strategy_id
+        strat_emoji = "🧠"
+        confidence  = 0.0
+        sig_fires   = False
+        sig_dir     = ""
+
+        try:
+            if strat_info:
+                sig = strat_info.evaluate(lookback_df)
+                strat_name  = strat_info.name
+                strat_emoji = strat_info.emoji
+                confidence  = sig.confidence
+                sig_fires   = sig.should_enter
+                sig_dir     = sig.direction.value if sig.direction else ""
+
+            # Regime from meta router (best effort)
+            if strategy_id == "smart_router":
+                from strategy_meta_router import evaluate_all
+                meta = evaluate_all(lookback_df)
+                regime_str  = meta.regime
+                strat_name  = meta.selected_strategy or strat_name
+                strat_emoji = meta.selected_emoji or strat_emoji
+                confidence  = meta.signal.confidence
+                sig_fires   = meta.signal.should_enter
+                sig_dir     = meta.signal.direction.value if meta.signal.direction else ""
+            else:
+                from market_regime import detect_regime
+                regime_str = detect_regime(lookback_df).value
+        except Exception:
+            pass
+
+        # ── Trade management ──────────────────────────────────
+        if in_trade:
+            trade_state = "in_trade"
+
+            if direction == "long":
+                highest = max(highest, high)
+                new_sl  = highest - trailing_sl
+                if new_sl > stop_loss_lvl:
+                    stop_loss_lvl = new_sl
+                unrealized = price - entry_price
+
+                exited = False
+                if candle_time >= EXIT_TIME:
+                    exit_p = price; rsn = "Time Exit"; exited = True
+                elif low <= stop_loss_lvl:
+                    exit_p = stop_loss_lvl
+                    rsn = "Trailing SL" if stop_loss_lvl > entry_price - sl_points else "SL"
+                    exited = True
+                elif high >= target_lvl:
+                    exit_p = target_lvl; rsn = "Target"; exited = True
+
+                if exited:
+                    pnl = round(exit_p - entry_price, 2)
+                    trades.append(_make_trade(
+                        date_str, direction, entry_time, time_str,
+                        entry_price, exit_p, stop_loss_lvl, target_lvl,
+                        pnl, rsn, conditions_met,
+                    ))
+                    cumul_pts  += pnl
+                    unrealized  = pnl
+                    trade_state = "exit"
+                    exit_reason = rsn
+                    in_trade    = False
+
+            else:  # short
+                lowest  = min(lowest, low)
+                new_sl  = lowest + trailing_sl
+                if new_sl < stop_loss_lvl:
+                    stop_loss_lvl = new_sl
+                unrealized = entry_price - price
+
+                exited = False
+                if candle_time >= EXIT_TIME:
+                    exit_p = price; rsn = "Time Exit"; exited = True
+                elif high >= stop_loss_lvl:
+                    exit_p = stop_loss_lvl
+                    rsn = "Trailing SL" if stop_loss_lvl < entry_price + sl_points else "SL"
+                    exited = True
+                elif low <= target_lvl:
+                    exit_p = target_lvl; rsn = "Target"; exited = True
+
+                if exited:
+                    pnl = round(entry_price - exit_p, 2)
+                    trades.append(_make_trade(
+                        date_str, direction, entry_time, time_str,
+                        entry_price, exit_p, stop_loss_lvl, target_lvl,
+                        pnl, rsn, conditions_met,
+                    ))
+                    cumul_pts  += pnl
+                    unrealized  = pnl
+                    trade_state = "exit"
+                    exit_reason = rsn
+                    in_trade    = False
+
+        # ── Entry check ───────────────────────────────────────
+        elif (
+            not in_trade
+            and trades_today < max_trades
+            and candle_time >= ENTRY_START
+            and candle_time < EXIT_TIME
+            and sig_fires and sig_dir
+        ):
+            in_trade      = True
+            trade_state   = "entry"
+            trades_today += 1
+            direction     = sig_dir
+            entry_price   = price
+            entry_time    = time_str
+            highest       = high
+            lowest        = low
+            conditions_met = []
+            unrealized    = 0.0
+
+            if direction == "long":
+                stop_loss_lvl = entry_price - sl_points
+                target_lvl    = entry_price + sl_points * rr_ratio
+            else:
+                stop_loss_lvl = entry_price + sl_points
+                target_lvl    = entry_price - sl_points * rr_ratio
+
+        frames.append(ReplayFrame(
+            time=time_str,
+            open=round(open_, 2),
+            high=round(high, 2),
+            low=round(low, 2),
+            close=round(price, 2),
+            strategy_name=strat_name,
+            strategy_emoji=strat_emoji,
+            signal_fires=sig_fires,
+            direction=sig_dir,
+            confidence=round(confidence, 1),
+            regime=regime_str,
+            trade_state=trade_state,
+            entry_price=round(entry_price, 2) if in_trade or trade_state in ("entry", "exit") else 0.0,
+            stop_loss=round(stop_loss_lvl, 2) if in_trade or trade_state in ("entry", "exit") else 0.0,
+            target=round(target_lvl, 2) if in_trade or trade_state in ("entry", "exit") else 0.0,
+            unrealized_pts=round(unrealized, 2),
+            cumul_pts=round(cumul_pts, 2),
+            exit_reason=exit_reason,
+        ))
+
+    # Summary
+    wins   = [t.pnl_points for t in trades if t.pnl_points > 0]
+    losses = [t.pnl_points for t in trades if t.pnl_points <= 0]
+    return {
+        "date": date_str,
+        "available_dates": available_dates,
+        "frames": [vars(f) for f in frames],
+        "trades": [vars(t) if not hasattr(t, '__dataclass_fields__') else
+                   {k: getattr(t, k) for k in t.__dataclass_fields__} for t in trades],
+        "summary": {
+            "total_trades": len(trades),
+            "winners": len(wins),
+            "losers": len(losses),
+            "total_pnl_pts": round(sum(t.pnl_points for t in trades), 2),
+            "total_pnl_rupees": round(sum(t.pnl_points for t in trades) * QUANTITY, 2),
+        },
+        "source": source_label,
+    }
+
+
 def print_backtest_report(result: BacktestResult):
     """Print a clean backtest report to console."""
     print("\n" + "=" * 60)
