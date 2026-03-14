@@ -466,6 +466,193 @@ async def analyze(interval: str = "5m"):
         return {"success": False, "error": str(e)}
 
 
+# ── Live Monitor ──────────────────────────────────────────────────
+
+import asyncio
+from datetime import datetime, timezone, timedelta
+from fastapi.responses import StreamingResponse
+
+IST = timezone(timedelta(hours=5, minutes=30))
+MARKET_OPEN  = (9,  15)
+MARKET_CLOSE = (15, 30)
+
+
+def _is_market_hours() -> bool:
+    now = datetime.now(IST)
+    t   = (now.hour, now.minute)
+    return now.weekday() < 5 and MARKET_OPEN <= t <= MARKET_CLOSE
+
+
+def _evaluate_current(strategy_id: str = "smart_router") -> dict:
+    """Fetch latest candles and evaluate the strategy. Returns a state dict."""
+    import strategies.loader  # noqa
+    from data_fetcher import fetch_intraday_data
+    from strategies.registry import get as get_strat
+    from market_regime import detect_regime
+
+    now_ist = datetime.now(IST)
+    try:
+        df = fetch_intraday_data(interval="5m", period="5d")
+        df.index = pd.DatetimeIndex(df.index)
+        if df.empty:
+            return {"error": "No data"}
+
+        latest = df.index[-1]
+        price  = float(df["close"].iloc[-1])
+
+        strat  = get_strat(strategy_id)
+        sig_fires, sig_dir, confidence = False, "", 0.0
+        strat_name, strat_emoji = strategy_id, "🧠"
+        regime_str = "unknown"
+
+        if strategy_id == "smart_router":
+            from strategy_meta_router import evaluate_all
+            meta = evaluate_all(df)
+            sig_fires   = meta.signal.should_enter
+            sig_dir     = meta.signal.direction.value if meta.signal.direction else ""
+            confidence  = meta.signal.confidence
+            strat_name  = meta.selected_strategy or "smart_router"
+            strat_emoji = meta.selected_emoji or "🧠"
+            regime_str  = meta.regime
+        elif strat:
+            sig = strat.evaluate(df)
+            sig_fires   = sig.should_enter
+            sig_dir     = sig.direction.value if sig.direction else ""
+            confidence  = sig.confidence
+            strat_name  = strat.name
+            strat_emoji = strat.emoji
+            regime_str  = detect_regime(df).value
+
+        return {
+            "ts":           now_ist.strftime("%H:%M:%S"),
+            "candle_time":  latest.strftime("%H:%M"),
+            "price":        price,
+            "open":         float(df["open"].iloc[-1]),
+            "high":         float(df["high"].iloc[-1]),
+            "low":          float(df["low"].iloc[-1]),
+            "strategy":     strat_name,
+            "emoji":        strat_emoji,
+            "signal":       sig_fires,
+            "direction":    sig_dir,
+            "confidence":   round(confidence, 1),
+            "regime":       regime_str,
+            "market_open":  _is_market_hours(),
+            "error":        None,
+        }
+    except Exception as e:
+        return {"ts": now_ist.strftime("%H:%M:%S"), "error": str(e)}
+
+
+@app.get("/api/live-monitor/tick")
+async def live_monitor_tick(strategy: str = "smart_router"):
+    """Single poll — returns current strategy evaluation."""
+    return _evaluate_current(strategy)
+
+
+@app.get("/api/live-monitor/stream")
+async def live_monitor_stream(strategy: str = "smart_router"):
+    """SSE stream — pushes a new event every 30 seconds."""
+    import json as _json
+
+    async def generator():
+        # Send immediate first event
+        data = _evaluate_current(strategy)
+        yield f"data: {_json.dumps(data)}\n\n"
+
+        while True:
+            await asyncio.sleep(30)
+            data = _evaluate_current(strategy)
+            yield f"data: {_json.dumps(data)}\n\n"
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":   "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection":       "keep-alive",
+        },
+    )
+
+
+@app.get("/api/trade-candles")
+async def trade_candles(
+    date: str,
+    entry_time: str,
+    exit_time: str,
+    entry_price: float,
+    stop_loss: float,
+    target: float,
+    direction: str,
+    sl_points: float = 30.0,
+    trailing_sl: float = 15.0,
+):
+    """Return candle-by-candle detail for a single trade (entry → exit).
+    Used by the expandable trade rows in the backtester UI.
+    """
+    from data_fetcher import fetch_intraday_data
+    try:
+        df = fetch_intraday_data(interval="5m", period="60d")
+        df.index = pd.DatetimeIndex(df.index)
+        target_date = pd.Timestamp(date).date()
+        day_df = df[df.index.date == target_date]
+
+        # Filter to entry_time → exit_time window (inclusive)
+        entry_ts = pd.Timestamp(f"{date} {entry_time}", tz="Asia/Kolkata")
+        exit_ts  = pd.Timestamp(f"{date} {exit_time}",  tz="Asia/Kolkata")
+        window   = day_df[(day_df.index >= entry_ts) & (day_df.index <= exit_ts)]
+
+        if window.empty:
+            return {"success": False, "error": "No candles in window"}
+
+        # Walk through the window and track trailing SL
+        candles  = []
+        sl_level = stop_loss
+        highest  = float(window["high"].iloc[0])
+        lowest   = float(window["low"].iloc[0])
+
+        for i, (ts, row) in enumerate(window.iterrows()):
+            c     = float(row["close"])
+            h     = float(row["high"])
+            lo    = float(row["low"])
+            o     = float(row["open"])
+            t_str = ts.strftime("%H:%M")
+
+            # Update trailing SL
+            if direction == "long":
+                highest = max(highest, h)
+                new_sl  = highest - trailing_sl
+                if new_sl > sl_level:
+                    sl_level = new_sl
+                unreal = round(c - entry_price, 2)
+            else:
+                lowest  = min(lowest, lo)
+                new_sl  = lowest + trailing_sl
+                if new_sl < sl_level:
+                    sl_level = new_sl
+                unreal = round(entry_price - c, 2)
+
+            # Determine state for this candle
+            state = "exit" if t_str == exit_time else ("entry" if i == 0 else "in_trade")
+
+            candles.append({
+                "time":       t_str,
+                "open":       round(o, 2),
+                "high":       round(h, 2),
+                "low":        round(lo, 2),
+                "close":      round(c, 2),
+                "sl":         round(sl_level, 2),
+                "target":     round(target, 2),
+                "unrealized": unreal,
+                "state":      state,
+            })
+
+        return {"success": True, "candles": candles, "direction": direction}
+    except Exception as e:
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
 @app.post("/api/backtest/replay")
 async def replay_day_api(
     date: str = "",

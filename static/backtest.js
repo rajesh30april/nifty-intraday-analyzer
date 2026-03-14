@@ -359,37 +359,8 @@ function renderDailyPnl(dailyPnl) {
  * Render trade log table.
  */
 function renderTradeLog(trades) {
-    const tbody = document.getElementById('bt-trades-body');
-    if (!trades.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-400">No trades</td></tr>';
-        return;
+    // Delegate to live-monitor.js which adds expand buttons + inline detail panels
+    if (typeof renderTradeLogWithExpand === 'function') {
+        renderTradeLogWithExpand(trades);
     }
-
-    tbody.innerHTML = trades.map(t => {
-        const isWin = t.pnl_points >= 0;
-        const rowBg = isWin ? 'bg-green-50' : 'bg-red-50';
-        const pnlColor = isWin ? 'text-green-700' : 'text-red-700';
-        const dirBadge = t.direction === 'long'
-            ? '<span class="bg-green-100 text-green-800 px-2 py-0.5 rounded text-xs font-bold">LONG</span>'
-            : '<span class="bg-red-100 text-red-800 px-2 py-0.5 rounded text-xs font-bold">SHORT</span>';
-
-        return `
-            <tr class="${rowBg} border-b border-gray-100 hover:bg-gray-100 transition">
-                <td class="px-3 py-2 text-xs">${t.date}</td>
-                <td class="px-3 py-2 text-xs">${t.entry_time}-${t.exit_time}</td>
-                <td class="px-3 py-2">${dirBadge}</td>
-                <td class="px-3 py-2 text-xs font-mono">${t.entry_price}</td>
-                <td class="px-3 py-2 text-xs font-mono">${t.exit_price}</td>
-                <td class="px-3 py-2 text-xs">
-                    <span class="bg-gray-200 px-2 py-0.5 rounded">${t.exit_reason}</span>
-                </td>
-                <td class="px-3 py-2 text-xs font-bold ${pnlColor}">
-                    ${isWin ? '+' : ''}${t.pnl_points} pts
-                </td>
-                <td class="px-3 py-2 text-xs font-bold ${pnlColor}">
-                    ₹${isWin ? '+' : ''}${t.pnl_rupees.toLocaleString()}
-                </td>
-            </tr>
-        `;
-    }).join('');
 }

@@ -113,6 +113,10 @@
                     <span>🤖</span><span>Auto-Trader</span>
                     <span id="sidebar-at-badge" class="badge bg-gray-200 text-gray-500">⏸</span>
                 </div>
+                <div class="sidebar-item" data-page="live-monitor" onclick="switchPage('live-monitor')">
+                    <span>📡</span><span>Live Monitor</span>
+                    <span id="lm-sidebar-dot" class="ml-auto w-2 h-2 rounded-full bg-gray-300"></span>
+                </div>
                 <div class="sidebar-item" data-page="backtester" onclick="switchPage('backtester')">
                     <span>🔬</span><span>Backtester</span>
                 </div>
@@ -603,13 +607,65 @@
                         <div><h4 class="text-xs font-bold text-gray-700 mb-1">📊 Daily P&L</h4><div style="height: 200px;"><canvas id="bt-daily-chart"></canvas></div></div>
                         <div>
                             <h4 class="text-xs font-bold text-gray-700 mb-1">📝 Trades (<span id="bt-trade-count">0</span>)</h4>
-                            <div class="max-h-80 overflow-y-auto border rounded-lg">
+                            <div class="max-h-96 overflow-y-auto border rounded-lg">
                                 <table class="w-full text-left text-xs" aria-label="Trades">
-                                    <thead class="bg-gray-100 sticky top-0"><tr><th class="px-2 py-1.5">Date</th><th class="px-2 py-1.5">Time</th><th class="px-2 py-1.5">Dir</th><th class="px-2 py-1.5">Entry</th><th class="px-2 py-1.5">Exit</th><th class="px-2 py-1.5">Reason</th><th class="px-2 py-1.5">P&L</th><th class="px-2 py-1.5">₹</th></tr></thead>
-                                    <tbody id="bt-trades-body"><tr><td colspan="8" class="text-center py-4 text-gray-400">Run a backtest</td></tr></tbody>
+                                    <thead class="bg-gray-100 sticky top-0"><tr>
+                                        <th class="px-2 py-1.5"></th>
+                                        <th class="px-2 py-1.5">Date</th>
+                                        <th class="px-2 py-1.5">Time</th>
+                                        <th class="px-2 py-1.5">Dir</th>
+                                        <th class="px-2 py-1.5">Entry</th>
+                                        <th class="px-2 py-1.5">Exit</th>
+                                        <th class="px-2 py-1.5">Reason</th>
+                                        <th class="px-2 py-1.5">P&amp;L</th>
+                                        <th class="px-2 py-1.5">₹</th>
+                                    </tr></thead>
+                                    <tbody id="bt-trades-body"><tr><td colspan="9" class="text-center py-4 text-gray-400">Run a backtest</td></tr></tbody>
                                 </table>
                             </div>
                         </div>
+
+                        <!-- ── Live Log ── -->
+                        <div class="border rounded-xl overflow-hidden">
+                            <div class="flex items-center justify-between px-3 py-2 bg-gray-900 text-white">
+                                <div class="flex items-center gap-2">
+                                    <span id="lm-dot" class="w-2 h-2 rounded-full bg-gray-500"></span>
+                                    <span class="text-xs font-bold">📡 Live Monitor</span>
+                                    <span id="lm-status" class="text-[10px] text-gray-400">Disconnected</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <select id="lm-strategy" class="bg-gray-800 text-white text-xs px-2 py-1 rounded border border-gray-600">
+                                        <option value="smart_router">🧠 Smart Router</option>
+                                        <option value="orb">🌅 ORB</option>
+                                        <option value="gap_and_go">🟥 Gap &amp; Go</option>
+                                        <option value="bb_squeeze">🌀 BB Squeeze</option>
+                                        <option value="camarilla">🎯 Camarilla</option>
+                                    </select>
+                                    <button onclick="lmConnect()" id="lm-connect-btn"
+                                        class="text-xs px-3 py-1 rounded font-bold bg-green-700 hover:bg-green-600 text-white transition">
+                                        Connect
+                                    </button>
+                                    <button onclick="lmClear()" class="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition">Clear</button>
+                                </div>
+                            </div>
+                            <!-- Current signal banner -->
+                            <div id="lm-signal-bar" class="hidden px-3 py-2 border-b text-xs font-bold flex items-center justify-between">
+                                <span id="lm-signal-text">--</span>
+                                <span id="lm-candle-time" class="text-gray-500 font-normal"></span>
+                            </div>
+                            <!-- Regime + price strip -->
+                            <div id="lm-meta-strip" class="hidden grid grid-cols-4 gap-0 border-b text-center text-xs">
+                                <div class="py-2 border-r"><div class="text-[9px] text-gray-400">PRICE</div><div id="lm-price" class="font-black">--</div></div>
+                                <div class="py-2 border-r"><div class="text-[9px] text-gray-400">REGIME</div><div id="lm-regime" class="font-bold text-indigo-600">--</div></div>
+                                <div class="py-2 border-r"><div class="text-[9px] text-gray-400">STRATEGY</div><div id="lm-strat" class="font-bold">--</div></div>
+                                <div class="py-2"><div class="text-[9px] text-gray-400">CONFIDENCE</div><div id="lm-conf" class="font-bold">--%</div></div>
+                            </div>
+                            <!-- Scrollable log -->
+                            <div id="lm-log" class="h-64 overflow-y-auto bg-gray-950 font-mono text-[11px] p-2 space-y-0.5">
+                                <div class="text-gray-600">── Waiting for connection ──</div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             <!-- ====== DAY REPLAY PANEL ====== -->
@@ -887,7 +943,8 @@
     <script src="/static/dashboard.js?v=3"></script>
     <script src="/static/charts.js?v=3"></script>
     <script src="/static/auto-trader.js?v=5"></script>
-    <script src="/static/backtest.js?v=4"></script>
+    <script src="/static/live-monitor.js?v=1"></script>
+<script src="/static/backtest.js?v=5"></script>
 <script src="/static/replay.js?v=1"></script>
     <script src="/static/learn.js?v=3"></script>
     <script src="/static/pattern-history.js?v=1"></script>
