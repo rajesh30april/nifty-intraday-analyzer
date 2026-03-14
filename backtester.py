@@ -192,8 +192,9 @@ def _backtest_day(
     lowest = float("inf")
     conditions_met = []
 
-    # Walk through each candle
-    for i in range(30, len(df)):  # need 30 candles for indicators
+    # Walk through each candle — start from 1 (skip the open candle itself)
+    # Signal evaluation uses full_df lookback so no warmup skip needed here
+    for i in range(1, len(df)):
         candle_time = df.index[i].time()
         candle = df.iloc[i]
         price = float(candle["close"])
