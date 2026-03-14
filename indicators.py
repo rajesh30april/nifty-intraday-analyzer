@@ -180,6 +180,113 @@ def opening_range(
     }
 
 
+def bollinger_bands(
+    close: pd.Series,
+    period: int = 20,
+    std_dev: float = 2.0,
+) -> pd.DataFrame:
+    """Bollinger Bands: SMA ± std_dev × σ."""
+    mid = close.rolling(period).mean()
+    std = close.rolling(period).std()
+    upper = mid + std_dev * std
+    lower = mid - std_dev * std
+    width = (upper - lower) / mid.replace(0, np.nan) * 100  # % width
+    return pd.DataFrame({"mid": mid, "upper": upper, "lower": lower, "width": width})
+
+
+def keltner_channels(
+    high: pd.Series, low: pd.Series, close: pd.Series,
+    period: int = 20, multiplier: float = 1.5,
+) -> pd.DataFrame:
+    """Keltner Channels: EMA ± multiplier × ATR."""
+    mid = ema(close, period)
+    atr_v = atr(high, low, close, period)
+    upper = mid + multiplier * atr_v
+    lower = mid - multiplier * atr_v
+    return pd.DataFrame({"mid": mid, "upper": upper, "lower": lower})
+
+
+def bb_squeeze(
+    high: pd.Series, low: pd.Series, close: pd.Series,
+    bb_period: int = 20, bb_std: float = 2.0,
+    kc_period: int = 20, kc_mult: float = 1.5,
+) -> pd.DataFrame:
+    """TTM Squeeze — Bollinger Bands vs Keltner Channels.
+
+    squeeze_on=True  → BB inside KC  → low volatility, energy building
+    squeeze_on=False → BB outside KC → breakout, energy releasing
+    momentum column  → positive = bullish, negative = bearish
+    """
+    bb = bollinger_bands(close, bb_period, bb_std)
+    kc = keltner_channels(high, low, close, kc_period, kc_mult)
+
+    squeeze_on = (bb["upper"] < kc["upper"]) & (bb["lower"] > kc["lower"])
+
+    # Momentum: linear regression of (close - midpoint of BB & KC)
+    delta = close - (bb["mid"] + kc["mid"]) / 2
+    momentum = delta.rolling(bb_period).apply(
+        lambda x: np.polyfit(range(len(x)), x, 1)[0], raw=True
+    )
+
+    return pd.DataFrame({
+        "squeeze_on":  squeeze_on,
+        "momentum":    momentum,
+        "bb_upper":    bb["upper"],
+        "bb_lower":    bb["lower"],
+        "kc_upper":    kc["upper"],
+        "kc_lower":    kc["lower"],
+        "bb_width":    bb["width"],
+    })
+
+
+def camarilla_pivots(prev_high: float, prev_low: float, prev_close: float) -> dict:
+    """Camarilla Pivot Points from previous day H/L/C.
+
+    Classic Camarilla rules:
+    - Price approaches H3 → short, target L3
+    - Price breaks above H4 → strong long
+    - Price approaches L3 → long, target H3
+    - Price breaks below L4 → strong short
+    """
+    rng = prev_high - prev_low
+    return {
+        "H4": round(prev_close + rng * 1.1 / 2, 2),
+        "H3": round(prev_close + rng * 1.1 / 4, 2),
+        "H2": round(prev_close + rng * 1.1 / 6, 2),
+        "H1": round(prev_close + rng * 1.1 / 12, 2),
+        "L1": round(prev_close - rng * 1.1 / 12, 2),
+        "L2": round(prev_close - rng * 1.1 / 6, 2),
+        "L3": round(prev_close - rng * 1.1 / 4, 2),
+        "L4": round(prev_close - rng * 1.1 / 2, 2),
+    }
+
+
+def central_pivot_range(prev_high: float, prev_low: float, prev_close: float) -> dict:
+    """Central Pivot Range (CPR) — widely used in Indian markets.
+
+    Width interpretation:
+      Narrow CPR (< 0.2% of price) → sideways, use reversal strategies
+      Wide CPR   (> 0.5% of price) → trending, trade with trend
+    """
+    pivot = (prev_high + prev_low + prev_close) / 3
+    bc    = (prev_high + prev_low) / 2          # Bottom Central
+    tc    = (pivot - bc) + pivot                 # Top Central
+    r1    = 2 * pivot - prev_low
+    r2    = pivot + (prev_high - prev_low)
+    s1    = 2 * pivot - prev_high
+    s2    = pivot - (prev_high - prev_low)
+    return {
+        "pivot": round(pivot, 2),
+        "tc":    round(tc, 2),
+        "bc":    round(bc, 2),
+        "r1":    round(r1, 2),
+        "r2":    round(r2, 2),
+        "s1":    round(s1, 2),
+        "s2":    round(s2, 2),
+        "width": round(abs(tc - bc), 2),
+    }
+
+
 def volume_analysis(volume: pd.Series) -> dict:
     """Analyze volume patterns. Returns N/A for index data with zero volume."""
     if volume.sum() == 0:

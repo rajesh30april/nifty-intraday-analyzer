@@ -36,7 +36,7 @@ _REGIME_FIT: dict[str, dict[str, float]] = {
                                   "reversal": 0.6, "adaptive": 1.0, "scalping": 1.0},
     MarketRegime.SIDEWAYS:      {"reversal": 1.4, "scalping": 1.3, "trend": 0.6,
                                   "breakout": 0.7, "momentum": 0.8, "adaptive": 1.0},
-    MarketRegime.VOLATILE:      {"reversal": 1.3, "breakout": 1.2, "trend": 0.9,
+    MarketRegime.VOLATILE:      {"reversal": 1.3, "breakout": 1.4, "trend": 0.9,
                                   "momentum": 1.1, "adaptive": 1.0, "scalping": 0.8},
 }
 
@@ -53,6 +53,24 @@ _TIME_BONUS: dict[str, list[tuple[dt_time, dt_time, float]]] = {
         (dt_time(9, 15), dt_time(9, 29), 0.0),   # too early
         (dt_time(9, 30), dt_time(10, 30), 1.3),  # sweet spot
         (dt_time(10, 30), dt_time(15, 30), 1.0), # still valid
+    ],
+    # Gap and Go is an early-session play — best at 9:15–10:30
+    "gap_and_go": [
+        (dt_time(9, 15), dt_time(9, 20), 2.0),   # 9:15 candle = prime entry
+        (dt_time(9, 20), dt_time(10, 30), 1.5),  # still good
+        (dt_time(10, 30), dt_time(15, 30), 0.0), # too late for gap play
+    ],
+    # BB Squeeze fires whenever compression releases — neutral all day
+    # but skip the chaotic first 15 min
+    "bb_squeeze": [
+        (dt_time(9, 15), dt_time(9, 30), 0.0),   # too early, no squeeze history
+        (dt_time(9, 30), dt_time(15, 30), 1.0),  # any time after 9:30
+    ],
+    # Camarilla levels are valid all day but best mid-session
+    "camarilla": [
+        (dt_time(9, 15), dt_time(9, 30), 0.7),   # early — levels not tested yet
+        (dt_time(9, 30), dt_time(14, 0), 1.2),   # mid-session sweet spot
+        (dt_time(14, 0), dt_time(15, 30), 1.0),  # still valid
     ],
 }
 

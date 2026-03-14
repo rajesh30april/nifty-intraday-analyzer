@@ -14,3 +14,6 @@ import strategies.macd_momentum    # noqa: F401 — MACD Momentum
 import strategies.smart_router     # noqa: F401 — Smart Router (Auto)
 import strategies.scalping          # noqa: F401 — Scalping strategies (EMA/VWAP/Momentum)
 import strategies.opening_candle_fade  # noqa: F401 — Opening Candle Fade (Rajesh's strategy)
+import strategies.gap_and_go           # noqa: F401 — Gap and Go
+import strategies.bb_squeeze           # noqa: F401 — Bollinger Band Squeeze
+import strategies.camarilla_pivots     # noqa: F401 — Camarilla Pivot Points
