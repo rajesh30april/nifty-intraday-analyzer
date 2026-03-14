@@ -1,17 +1,19 @@
 """Smart Router — Auto-selects the best strategy based on market regime.
 
-This is the default strategy that uses the existing router logic.
+Now powered by the Meta Router which evaluates ALL registered strategies
+before each trade and picks the highest-scoring one.
 """
 
 import pandas as pd
 from strategy import StrategySignal
-from strategy_router import route_strategy
 from strategies.registry import register, StrategyInfo
 
 
 def evaluate_smart_router(df: pd.DataFrame) -> StrategySignal:
-    """Auto-detect regime and pick the best strategy."""
-    result = route_strategy(df)
+    """Evaluate all strategies and return the best signal."""
+    # Late import to avoid circular deps
+    from strategy_meta_router import evaluate_all
+    result = evaluate_all(df)
     return result.signal
 
 
@@ -20,42 +22,44 @@ register(StrategyInfo(
     name="Smart Router (Auto)",
     emoji="🧠",
     description=(
-        "Automatically detects the market regime (trending/sideways/volatile) "
-        "and picks the best strategy. Uses Trend Follow in trends and "
-        "Price Rejection in sideways markets."
+        "Evaluates EVERY registered strategy before each candle and "
+        "picks the highest-scoring one using: confidence × regime fit × time bonus. "
+        "OCF gets priority at 9:20, ORB after 9:30, trend strategies in trending markets."
     ),
     category="adaptive",
     difficulty="beginner",
     market_condition="All market conditions — adapts automatically.",
     evaluate=evaluate_smart_router,
     entry_rules=[
-        "Detects market regime using ADX and ATR",
-        "Trending (ADX>25): Uses Trend Follow (EMA pullback)",
-        "Sideways (ADX<20): Uses Price Rejection at key levels",
-        "Volatile: Runs both, picks highest confidence",
+        "Step 1: Detect regime (ADX, ATR, EMA slope)",
+        "Step 2: Run EVERY strategy and get confidence score",
+        "Step 3: Multiply by regime fit (trending → trend bonus, sideways → reversal bonus)",
+        "Step 4: Multiply by time bonus (OCF at 9:20, ORB at 9:30+)",
+        "Step 5: Pick highest composite score that has all conditions met",
     ],
     exit_rules=[
-        "Inherits exit rules from the selected strategy",
-        "Stop-loss and target set by the active strategy",
+        "Stop-loss and target set by the selected strategy",
+        "Trailing SL managed by the backtester",
     ],
     risk_tips=[
-        "The router adds a regime check but can sometimes misclassify",
-        "In transition periods (ADX 20-25), signals may be less reliable",
-        "Good as a baseline before trying individual strategies",
+        "OCF fires only at 9:20 — first 5 minutes after open",
+        "On strong trend days, trend strategies dominate",
+        "On choppy days, reversal strategies take over",
+        "If no strategy has all conditions met — no trade taken",
     ],
     pros=[
-        "No need to manually switch strategies",
-        "Adapts to changing market conditions",
-        "Reduces wrong-strategy-wrong-market risk",
+        "Evaluates ALL strategies, not just 2",
+        "Transparent scoring — you can see WHY each strategy was picked",
+        "OCF, ORB, VWAP, Trend, Reversal all compete fairly",
+        "Regime-aware + time-aware",
     ],
     cons=[
-        "Black box — harder to know which strategy triggered",
-        "May switch strategies mid-day causing confusion",
-        "Not optimized for any single regime",
+        "Slightly slower (evaluates all strategies each candle)",
+        "Strategy scores depend on regime detection quality",
     ],
     example_scenario=(
-        "Market opens trending (ADX=35, EMA-9 > EMA-21). Router picks Trend Follow. "
-        "At noon, market becomes range-bound (ADX drops to 18). Router switches "
-        "to Price Rejection. All handled automatically."
+        "9:20 AM. 9:15 candle was big (30pts). OCF scores 80 (conf=40 × regime=1.3 × time=2.0). "
+        "Trend Follow scores 45. ORB scores 0 (too early). "
+        "→ Meta Router picks OCF. Trade SHORT."
     ),
 ))
