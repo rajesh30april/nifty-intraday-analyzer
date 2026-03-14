@@ -53,7 +53,45 @@ async def _fetch(interval: str = "5m", period: str = "5d") -> pd.DataFrame:
     """Non-blocking wrapper — runs yfinance fetch in a thread pool."""
     return await asyncio.to_thread(fetch_intraday_data, interval=interval, period=period)
 
-app = FastAPI(title="Nifty 50 Intraday Probability Analyzer")
+
+# ── Background auto-trader loop ─────────────────────────────────
+from contextlib import asynccontextmanager
+
+EVAL_INTERVAL_SECONDS = 60  # evaluate every 60s regardless of user activity
+
+
+async def _auto_trader_loop():
+    """Server-side loop: runs evaluate_and_act every 60s.
+    Completely independent of browser / user interaction.
+    """
+    print("🤖 Auto-trader background loop started (60s interval)")
+    while True:
+        await asyncio.sleep(EVAL_INTERVAL_SECONDS)
+        if not trader_state.is_running or trader_state.kill_switch:
+            continue
+        try:
+            df = await asyncio.to_thread(fetch_intraday_data, interval="5m", period="5d")
+            if df is not None and not df.empty:
+                price = float(df["close"].iloc[-1])
+                await asyncio.to_thread(evaluate_and_act, df, price)
+                print(f"🤖 [AUTO-EVAL] ₹{price:.0f} | orders={trader_state.orders_placed}")
+        except Exception as e:
+            print(f"⚠️ Auto-trader loop error: {e}")
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    """Startup: launch background task. Shutdown: cancel it."""
+    task = asyncio.create_task(_auto_trader_loop())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+app = FastAPI(title="Nifty 50 Intraday Probability Analyzer", lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -73,7 +111,7 @@ class NoCacheHTMLMiddleware(BaseHTTPMiddleware):
 app.add_middleware(NoCacheHTMLMiddleware)
 
 
-# ── Simple response cache (avoid hammering Yahoo Finance) ─────────
+# ── Simple response cache (avoid hammering Yahoo Finance) ────────
 _mtf_cache: dict = {"data": None, "timestamp": 0}
 MTF_CACHE_TTL = 30  # seconds
 
