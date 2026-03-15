@@ -1647,17 +1647,53 @@ async def premium_estimate(spot: float = 23500.0, offset: int = 0):
     import math
     from datetime import date, timedelta
 
-    # ── India VIX — fetched directly from NSE (cached 5 min) ───────
-    # Source: NSE official allIndices API (same data NSE website shows).
-    # Falls back to 15.0 when market is closed or NSE is unreachable.
-    _now = _time.time()
+    # ── India VIX — priority: Kite ltp() → NSE API → last-known-good → 15.0
+    # Kite is preferred (works through corporate proxy, no cookie dance).
+    # NSE direct is fallback when Kite is not yet authenticated.
+    # _last_vix survives across 5-min cache TTL refreshes.
+    _now  = _time.time()
     cache = getattr(premium_estimate, "_cache", {})
-    if _now - cache.get("ts", 0) > 300:   # 5-minute TTL
-        vix_val = _fetch_india_vix_from_nse()
-        cache = {"ts": _now, "vix": vix_val}
-        premium_estimate._cache = cache
-    iv = cache["vix"] / 100.0   # e.g. 22.65 VIX → 0.2265 annualised vol
+    vix_source = cache.get("vix_source", "fallback")
 
+    if _now - cache.get("ts", 0) > 300:   # 5-minute TTL
+        vix_val = None
+
+        # ── Path 1: Kite ltp() — most reliable, works behind proxy ──
+        try:
+            from kite_integration import kite_manager as _km
+            vix_val = _km.get_india_vix()     # returns float or None
+            if vix_val:
+                vix_source = "kite"
+        except Exception:
+            pass
+
+        # ── Path 2: NSE web API (no-proxy) ──────────────────────────
+        if not vix_val:
+            nse_val = _fetch_india_vix_from_nse(fallback=0)
+            if nse_val > 0:
+                vix_val    = nse_val
+                vix_source = "nse"
+
+        # ── Path 3: Sticky last-known-good ───────────────────────────
+        if not vix_val:
+            prev = getattr(premium_estimate, "_last_vix", None)
+            if prev:
+                vix_val    = prev
+                vix_source = "cached"
+
+        # ── Path 4: Hard fallback ─────────────────────────────────────
+        if not vix_val:
+            vix_val    = 15.0
+            vix_source = "fallback"
+
+        # Persist last good real value (not the hard fallback)
+        if vix_source in ("kite", "nse"):
+            premium_estimate._last_vix = vix_val
+
+        cache = {"ts": _now, "vix": vix_val, "vix_source": vix_source}
+        premium_estimate._cache = cache
+
+    iv         = cache["vix"] / 100.0   # e.g. 14.23 VIX → 0.1423 annualised vol
     # ── Days to nearest Nifty 50 weekly expiry (Tuesday) ───────────
     # NSE moved Nifty 50 weekly expiry Thu → Tue in Oct 2024.
     # weekday(): Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
@@ -1742,6 +1778,7 @@ async def premium_estimate(spot: float = 23500.0, offset: int = 0):
     return {
         "spot":          spot,
         "iv_pct":        round(cache["vix"], 2),
+        "vix_source":    vix_source,
         "dte":           dte,
         "offset":        offset,
         "atm_strike":    int(atm_strike),

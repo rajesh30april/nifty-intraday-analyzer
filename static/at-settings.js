@@ -147,7 +147,7 @@ let _premiumEstCacheTs = 0;
 const PREMIUM_EST_TTL_MS = 5 * 60 * 1000;   // 5 minutes
 
 /** Render the capital-mode estimate using a given premium (₹/unit). */
-function _renderCapitalEstimate(capital, estPremium, vixPct, dte, offset, source, ceLtp, peLtp, ceSym, peSym) {
+function _renderCapitalEstimate(capital, estPremium, vixPct, dte, offset, source, ceLtp, peLtp, ceSym, peSym, vixSource) {
     const lots       = Math.max(1, Math.floor(capital / (estPremium * LOT_SIZE)));
     const units      = lots * LOT_SIZE;
     const approxCost = lots * estPremium * LOT_SIZE;
@@ -178,11 +178,22 @@ function _renderCapitalEstimate(capital, estPremium, vixPct, dte, offset, source
     }
 
     // Footer source tag
+    // vixSource: 'kite' | 'nse' | 'cached' | 'fallback' | null (initial)
+    // Persist vixPct to localStorage so next initial render isn't blank
+    if (vixPct && vixSource && vixSource !== 'fallback') {
+        try { localStorage.setItem('_lastVixPct', String(vixPct)); } catch (_) {}
+    }
+    const vixBadge = {
+        kite:     '🟢 Kite live',
+        nse:      '📡 NSE live',
+        cached:   '🕐 cached',
+        fallback: '📐 estimated',
+    }[vixSource] || '📐 estimated';
     const footerTag = isLive
         ? `<span class="text-green-700 text-[9px]">🟢 Live Kite price (ltp API) — exact count</span>`
         : vixPct
-            ? `<span class="text-gray-400 text-[9px]">📊 B-S estimate | VIX ${vixPct}% | ${dte}d to expiry — log in to Kite for real price</span>`
-            : `<span class="text-orange-500 text-[9px]">⚠️ VIX unavailable — rough fallback (log in to Kite for real price)</span>`;
+            ? `<span class="text-gray-400 text-[9px]">📊 B-S | VIX ${vixPct}% <span class="text-gray-300">(${vixBadge})</span> | ${dte}d to expiry</span>`
+            : `<span class="text-gray-400 text-[9px]">📐 loading estimate…</span>`;
 
     if (detailEl) detailEl.innerHTML =
         `₹${capital.toLocaleString('en-IN')} ÷ (${premiumTag} ${offsetLabel} × ${LOT_SIZE} units) ` +
@@ -211,9 +222,12 @@ async function _updateCapitalEstimate() {
     }
     _lastKnownSpot = niftyPrice;   // cache for synchronous callers
 
-    // Show a quick fallback first while API loads
-    const fallbackPremium = Math.round(niftyPrice * 0.0022);
-    _renderCapitalEstimate(capital, fallbackPremium, null, null, offset, 'fallback');
+    // Show a quick fallback while API loads — seed VIX from localStorage
+    // so the initial render never shows the orange "unavailable" flash.
+    const fallbackPremium  = Math.round(niftyPrice * 0.0022);
+    let   seedVix = null;
+    try { seedVix = parseFloat(localStorage.getItem('_lastVixPct')) || null; } catch (_) {}
+    _renderCapitalEstimate(capital, fallbackPremium, seedVix, null, offset, 'fallback', null, null, null, null, seedVix ? 'cached' : null);
 
     // ── Cache check — MUST include offset, not just spot ─────────────
     // Bug fix: old code keyed only on spot → switching ATM→2-OTM served
@@ -230,7 +244,7 @@ async function _updateCapitalEstimate() {
           && c.offset === offset) {               // ← THE FIX
         _renderCapitalEstimate(
             capital, c.est_premium, c.iv_pct, c.dte,
-            offset, c.source, c.ce_ltp, c.pe_ltp, c.ce_symbol, c.pe_symbol
+            offset, c.source, c.ce_ltp, c.pe_ltp, c.ce_symbol, c.pe_symbol, c.vix_source
         );
         return;
     }
@@ -243,7 +257,7 @@ async function _updateCapitalEstimate() {
         _premiumEstCacheTs = now;
         _renderCapitalEstimate(
             capital, data.est_premium, data.iv_pct, data.dte,
-            offset, data.source, data.ce_ltp, data.pe_ltp, data.ce_symbol, data.pe_symbol
+            offset, data.source, data.ce_ltp, data.pe_ltp, data.ce_symbol, data.pe_symbol, data.vix_source
         );
     } catch (_) {
         // Keep fallback already shown

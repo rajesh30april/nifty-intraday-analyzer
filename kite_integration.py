@@ -159,6 +159,28 @@ class KiteManager:
             print(f"⚠️ Batch LTP fetch failed: {e}")
             return {}
 
+    def get_india_vix(self) -> float | None:
+        """Fetch live India VIX via Kite ltp() — most reliable source.
+
+        Kite lists India VIX as a tradable NSE index: symbol 'INDIA VIX'.
+        Returns the VIX float (e.g. 14.23), or None if unauthenticated / error.
+        This is preferred over the NSE web scrape because:
+          - Uses the existing authenticated Kite session (no extra login).
+          - Works behind corporate proxies (goes through Kite's servers).
+          - Zero cookie handshake overhead.
+        """
+        if not self.is_authenticated:
+            return None
+        try:
+            raw = self.kite.ltp(["NSE:INDIA VIX"])
+            val = raw.get("NSE:INDIA VIX", {}).get("last_price")
+            if isinstance(val, (int, float)) and val > 0:
+                print(f"[VIX] Kite fetch OK: {val}")
+                return float(val)
+        except Exception as exc:
+            print(f"[VIX] Kite fetch failed: {exc}")
+        return None
+
     def get_historical_data(
         self,
         interval: str = "5minute",
