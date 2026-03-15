@@ -125,6 +125,28 @@ class KiteManager:
             print(f"Quote error: {e}")
             return None
 
+    def get_option_ltp(self, tradingsymbol: str) -> float | None:
+        """Fetch the Last Traded Price of an NFO option.
+
+        Returns the LTP or None if unauthenticated / API error.
+        Used at entry time so capital-mode lot sizing uses the
+        REAL option price, not a 0.35% rough estimate.
+        """
+        if not self.is_authenticated:
+            return None
+        key = f"NFO:{tradingsymbol}"
+        try:
+            quotes = self.kite.quote([key])
+            data   = quotes.get(key, {})
+            ltp    = data.get("last_price")
+            if ltp and ltp > 0:
+                print(f"📊 Live LTP for {tradingsymbol}: ₹{ltp}")
+                return float(ltp)
+            return None
+        except Exception as e:
+            print(f"⚠️ Option LTP fetch failed ({tradingsymbol}): {e}")
+            return None
+
     def get_historical_data(
         self,
         interval: str = "5minute",

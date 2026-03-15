@@ -568,12 +568,22 @@
                         <div class="text-[11px] text-gray-400 pb-2 leading-5">
                           <span class="text-gray-500">≈ </span>
                           <span id="at-capital-qty-est" class="text-[#ffc220] font-bold">--</span>
-                          <span class="text-gray-500"> lots at entry</span><br>
+                          <span class="text-gray-500"> lots</span>
+                          <span class="text-gray-600 text-[9px]"> (preview)</span><br>
                           <span id="at-capital-units-est" class="text-white font-bold">--</span>
                           <span class="text-gray-500"> units (lots × 75)</span>
                         </div>
                       </div>
-                      <p class="text-[10px] text-gray-600 mt-1">💡 App estimates the live option premium at entry and buys as many lots as your capital allows. More accurate than guessing lots in advance.</p>
+                      <!-- Math breakdown -->
+                      <div id="at-capital-detail" class="text-[10px] text-gray-500 mt-1 font-mono">--</div>
+                      <!-- How it works -->
+                      <div class="mt-2 bg-gray-900 border border-gray-700 rounded-lg p-2 space-y-1">
+                        <p class="text-[10px] text-gray-400 font-bold">🎯 How the app picks strike &amp; lots at entry:</p>
+                        <p class="text-[10px] text-gray-500">1. <span class="text-white">Strike:</span> ATM = nearest 50-point level to Nifty. App picks <span class="text-[#ffc220]">1-OTM</span> (ATM + 50 for CE, ATM − 50 for PE) — cheaper premium = more lots.</p>
+                        <p class="text-[10px] text-gray-500">2. <span class="text-white">Real premium:</span> Fetches <span class="text-green-400">live LTP</span> of the chosen option from Zerodha at the moment of entry — not a formula guess.</p>
+                        <p class="text-[10px] text-gray-500">3. <span class="text-white">Lots:</span> <code class="text-[#ffc220]">floor(₹capital ÷ (LTP × 75))</code> — uses every rupee efficiently.</p>
+                        <p class="text-[10px] text-gray-600">Preview above uses ~0.22% of Nifty as OTM estimate. Actual lots may differ based on real premium at entry time.</p>
+                      </div>
                     </div>
 
                     <div>

@@ -730,24 +730,41 @@ def evaluate_and_act(df, current_price: float):
 # Override via LOT_SIZE env var if needed.
 
 
-def _resolve_quantity(nifty_price: float) -> int:
-    """Return qty to trade based on qty_mode.
+def _estimate_premium_fallback(nifty_price: float) -> float:
+    """Rough ATM premium estimate used ONLY when live LTP is unavailable.
 
-    manual  → return state.manual_qty as-is
-    capital → estimate option premium, calc how many lots ₹capital buys
-               qty = floor(capital / (est_premium × LOT_SIZE)) × LOT_SIZE
+    Formula: 0.35% of Nifty spot ≈ ATM option premium.
+    OTM (1 strike away) is typically 0.20–0.25%, so this is conservative
+    — you'll trade slightly fewer lots than possible. Safe to use in paper
+    mode or when Kite quote API is down.
+    """
+    return round(nifty_price * 0.0035, 1)
+
+
+def _resolve_quantity(nifty_price: float, real_premium: float | None = None) -> int:
+    """Return qty (units) to trade based on qty_mode.
+
+    manual  → return state.manual_qty directly
+    capital → use real_premium if available (fetched via Kite quote just
+               before entry), else fall back to 0.35% spot estimate.
+               qty = floor(capital / (premium × LOT_SIZE)) × LOT_SIZE
     """
     if state.qty_mode == "manual":
         return state.manual_qty
 
-    # Capital mode: estimate ATM option premium ≈ 0.35% of Nifty spot
-    # (rough but good enough — actual premium lookup needs live option chain)
-    est_premium = round(nifty_price * 0.0035, 1)  # e.g. 23500 × 0.35% ≈ ₹82
-    cost_per_lot = est_premium * LOT_SIZE
+    # Use real LTP when available — MUCH more accurate than formula
+    if real_premium and real_premium > 0:
+        premium = real_premium
+        source  = f"live LTP ₹{premium:.1f}"
+    else:
+        premium = _estimate_premium_fallback(nifty_price)
+        source  = f"estimated ₹{premium:.1f} (0.35% of spot — Kite unavailable)"
+
+    cost_per_lot = premium * LOT_SIZE
     lots = max(1, int(state.capital / cost_per_lot))
     qty  = lots * LOT_SIZE
     print(f"📐 Capital mode: ₹{state.capital:,.0f} ÷ "
-          f"(₹{est_premium} × {LOT_SIZE}) = {lots} lots → {qty} units")
+          f"(₹{cost_per_lot:.0f}/lot via {source}) = {lots} lots → {qty} units")
     return qty
 
 
@@ -760,11 +777,16 @@ def _enter_trade(direction: Direction, price: float):
         state.last_signal_reason = f"❌ Instrument lookup failed: {e}"
         return
 
+    # ── Fetch real option LTP for accurate capital-mode lot sizing ──
+    # We know the exact symbol now — get its actual live price.
+    # Falls back to 0.35%-of-spot estimate if Kite is unavailable.
+    real_ltp = kite_manager.get_option_ltp(symbol.replace("NFO:", ""))
+
     # ── Resolve trade settings from runtime state (overrideable from UI) ──
     sl_pts  = state.sl_points
     trail   = state.trailing_sl_points
     rr      = state.rr_ratio
-    qty     = _resolve_quantity(price)
+    qty     = _resolve_quantity(price, real_premium=real_ltp)
 
     if direction == Direction.LONG:
         sl     = price - sl_pts

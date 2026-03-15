@@ -86,15 +86,25 @@ function _updateCapitalEstimate() {
     const capital    = parseFloat(document.getElementById('at-capital')?.value || '96000');
     const niftyEl    = document.getElementById('lm-price');   // live Nifty price widget
     const niftyPrice = parseFloat(niftyEl?.textContent?.replace(/[^0-9.]/g, '')) || 23500;
-    // ATM option premium ≈ 0.35% of Nifty spot (rough, recalculated live at entry)
-    const estPremium = Math.round(niftyPrice * 0.0035);
-    const lots       = Math.max(1, Math.floor(capital / (estPremium * LOT_SIZE)));
-    const units      = lots * LOT_SIZE;
+
+    // We pick 1-OTM strike at entry (cheaper than ATM).
+    // OTM premium ≈ 0.20–0.25% of spot. Use 0.22% as mid estimate.
+    // At entry, the app fetches the REAL live LTP via Kite — this is just
+    // a preview so you know roughly how many lots to expect.
+    const estPremiumOTM = Math.round(niftyPrice * 0.0022);   // OTM estimate
+    const estPremiumATM = Math.round(niftyPrice * 0.0035);   // ATM for reference
+    const lots          = Math.max(1, Math.floor(capital / (estPremiumOTM * LOT_SIZE)));
+    const units         = lots * LOT_SIZE;
+    const approxCost    = lots * estPremiumOTM * LOT_SIZE;
 
     const lotsEl  = document.getElementById('at-capital-qty-est');
     const unitsEl = document.getElementById('at-capital-units-est');
-    if (lotsEl)  lotsEl.textContent  = lots;
-    if (unitsEl) unitsEl.textContent = units;
+    const detailEl= document.getElementById('at-capital-detail');
+    if (lotsEl)   lotsEl.textContent  = lots;
+    if (unitsEl)  unitsEl.textContent = units;
+    if (detailEl) detailEl.innerHTML  =
+        `₹${capital.toLocaleString('en-IN')} ÷ (≈₹${estPremiumOTM} OTM premium × ${LOT_SIZE} units) ` +
+        `<span class="text-gray-600">= ${lots} lots | spends ~₹${approxCost.toLocaleString('en-IN')}</span>`;
 }
 
 // ── Apply settings to server ─────────────────────────────────────
