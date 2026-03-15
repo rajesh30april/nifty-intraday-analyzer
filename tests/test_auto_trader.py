@@ -161,7 +161,7 @@ class TestStopLoss:
 
         assert at.state.active_trade is None, "Trade should have been exited"
         last_trade = at.state.trades_today[-1]
-        assert last_trade.exit_reason is not None and "Stop-loss" in last_trade.exit_reason
+        assert last_trade.exit_reason is not None and "SL hit" in last_trade.exit_reason
         assert last_trade.pnl < 0, "P&L must be negative on SL hit"
 
     def test_short_sl_exit_when_price_rises(self):
@@ -324,7 +324,7 @@ class TestSafetyChecks:
         at.state.orders_placed = at.MAX_ORDERS_PER_DAY
         safe, reason = at._check_safety()
         assert not safe
-        assert "max orders" in reason.lower()
+        assert "max trades" in reason.lower()
 
     def test_max_loss_blocks_new_trades(self):
         at, _ = _fresh_auto_trader()
@@ -344,14 +344,28 @@ class TestSafetyChecks:
         assert at.state.orders_placed == orders_before, "No new order while trade is active"
 
     def test_no_trade_in_first_3_minutes(self):
+        """_check_safety must block trades in the first 3 mins after open.
+
+        Patches _now_time() — the thin wrapper introduced specifically to make
+        this check testable without fighting C-extension datetime mocking.
+        """
+        from datetime import time as dt_time
         at, _ = _fresh_auto_trader()
-        mock_now = datetime(2026, 3, 16, 9, 16, 30)  # 1.5 mins after open
-        with patch("auto_trader.datetime") as mock_dt:
-            mock_dt.now.return_value = mock_now
-            mock_dt.side_effect      = lambda *a, **kw: datetime(*a, **kw)
-            safe, reason = at._check_safety()
-        assert not safe
-        assert "early" in reason.lower() or "settle" in reason.lower()
+
+        early_time = dt_time(9, 16, 30)   # 1.5 min after open — before 9:18
+
+        original_exit = at.EXIT_TIME
+        at.EXIT_TIME  = dt_time(23, 59)   # ensure exit-time guard never fires
+        try:
+            with patch.object(at, "_now_time", return_value=early_time):
+                safe, reason = at._check_safety()
+        finally:
+            at.EXIT_TIME = original_exit
+
+        assert not safe, f"Should block at 09:16 but got safe=True, reason='{reason}'"
+        assert "early" in reason.lower() or "settle" in reason.lower(), (
+            f"Expected early/settle message, got: '{reason}'"
+        )
 
 
 class TestPnLAccuracy:
@@ -408,8 +422,23 @@ class TestPnLAccuracy:
 class TestInstrumentLookup:
     """Options symbol lookup from Kite instruments."""
 
-    def test_long_picks_otm_ce(self):
+    def test_long_picks_atm_ce_by_default(self):
+        """Default strike_offset=0 → ATM CE for LONG."""
         at, _ = _fresh_auto_trader()
+        assert at.state.strike_offset == 0, "Default must be ATM (offset=0)"
+        instruments = mock_instruments(BASE_PRICE)
+        with patch.object(at, "_get_nfo_instruments", return_value=instruments):
+            from strategy import Direction
+            symbol, token = at._get_option_symbol(BASE_PRICE, Direction.LONG)
+
+        atm = round(BASE_PRICE / 50) * 50
+        assert str(atm) in symbol, f"Expected ATM strike {atm} in symbol '{symbol}'"
+        assert symbol.endswith("CE")
+
+    def test_long_picks_otm_ce_when_offset_1(self):
+        """strike_offset=1 → 1-OTM CE for LONG."""
+        at, _ = _fresh_auto_trader()
+        at.state.strike_offset = 1
         instruments = mock_instruments(BASE_PRICE)
         with patch.object(at, "_get_nfo_instruments", return_value=instruments):
             from strategy import Direction
@@ -417,11 +446,25 @@ class TestInstrumentLookup:
 
         atm    = round(BASE_PRICE / 50) * 50
         otm_ce = atm + 50
-        assert str(otm_ce) in symbol, f"Expected OTM CE strike {otm_ce} in symbol '{symbol}'"
+        assert str(otm_ce) in symbol, f"Expected 1-OTM CE strike {otm_ce} in '{symbol}'"
         assert symbol.endswith("CE")
 
-    def test_short_picks_otm_pe(self):
+    def test_short_picks_atm_pe_by_default(self):
+        """Default strike_offset=0 → ATM PE for SHORT."""
         at, _ = _fresh_auto_trader()
+        instruments = mock_instruments(BASE_PRICE)
+        with patch.object(at, "_get_nfo_instruments", return_value=instruments):
+            from strategy import Direction
+            symbol, token = at._get_option_symbol(BASE_PRICE, Direction.SHORT)
+
+        atm = round(BASE_PRICE / 50) * 50
+        assert str(atm) in symbol
+        assert symbol.endswith("PE")
+
+    def test_short_picks_otm_pe_when_offset_1(self):
+        """strike_offset=1 → 1-OTM PE for SHORT."""
+        at, _ = _fresh_auto_trader()
+        at.state.strike_offset = 1
         instruments = mock_instruments(BASE_PRICE)
         with patch.object(at, "_get_nfo_instruments", return_value=instruments):
             from strategy import Direction
@@ -464,10 +507,108 @@ class TestInstrumentLookup:
                 at._get_option_symbol(BASE_PRICE, Direction.LONG)
 
 
+class TestMaxTradesPerDay:
+    """Runtime-configurable max trades per day (1-15)."""
+
+    def test_default_is_module_constant(self):
+        at, _ = _fresh_auto_trader()
+        assert at.state.max_trades_per_day == at.MAX_ORDERS_PER_DAY
+
+    def test_safety_blocks_after_hitting_limit(self):
+        at, _ = _fresh_auto_trader()
+        at.state.max_trades_per_day = 3
+        at.state.orders_placed      = 3   # already hit the limit
+        safe, reason = at._check_safety()
+        assert not safe
+        assert "max trades" in reason.lower()
+        assert "3/3" in reason
+
+    def test_below_limit_is_allowed(self):
+        at, _ = _fresh_auto_trader()
+        at.state.max_trades_per_day = 5
+        at.state.orders_placed      = 4   # one more allowed
+        safe, reason = at._check_safety()
+        # Should not fail on trade count (may fail on time — that\'s fine, not our concern here)
+        if not safe:
+            assert "max trades" not in reason.lower()
+
+    def test_configure_clamps_to_1_15(self):
+        at, _ = _fresh_auto_trader()
+        at.configure_auto_trader(max_trades_per_day=0)
+        assert at.state.max_trades_per_day == 1, "Min should clamp to 1"
+        at.configure_auto_trader(max_trades_per_day=99)
+        assert at.state.max_trades_per_day == 15, "Max should clamp to 15"
+
+    def test_configure_sets_valid_value(self):
+        at, _ = _fresh_auto_trader()
+        at.configure_auto_trader(max_trades_per_day=8)
+        assert at.state.max_trades_per_day == 8
+
+    def test_persisted_in_snapshot(self):
+        """max_trades_per_day must survive a restart (state is set, then
+        configure returns it so we know it went into the snapshot dict)."""
+        at, _ = _fresh_auto_trader()
+        result = at.configure_auto_trader(max_trades_per_day=11)
+        assert result["max_trades_per_day"] == 11
+        # Also confirm the live state changed
+        assert at.state.max_trades_per_day == 11
+
+
+class TestStrikeOffsetConfig:
+    """strike_offset 0=ATM / 1=1-OTM / 2=2-OTM."""
+
+    def test_default_is_atm(self):
+        at, _ = _fresh_auto_trader()
+        assert at.state.strike_offset == 0
+
+    def test_configure_changes_offset(self):
+        at, _ = _fresh_auto_trader()
+        at.configure_auto_trader(strike_offset=2)
+        assert at.state.strike_offset == 2
+
+    def test_configure_clamps_offset(self):
+        at, _ = _fresh_auto_trader()
+        at.configure_auto_trader(strike_offset=5)
+        assert at.state.strike_offset == 2, "Max allowed offset is 2"
+        at.configure_auto_trader(strike_offset=-1)
+        assert at.state.strike_offset == 0, "Min allowed offset is 0"
+
+    def test_atm_offset_0_long(self):
+        at, _ = _fresh_auto_trader()
+        at.state.strike_offset = 0
+        instruments = mock_instruments(BASE_PRICE)
+        with patch.object(at, "_get_nfo_instruments", return_value=instruments):
+            from strategy import Direction
+            symbol, _ = at._get_option_symbol(BASE_PRICE, Direction.LONG)
+        atm = round(BASE_PRICE / 50) * 50
+        assert str(atm) in symbol and symbol.endswith("CE")
+
+    def test_1otm_offset_1_long(self):
+        at, _ = _fresh_auto_trader()
+        at.state.strike_offset = 1
+        instruments = mock_instruments(BASE_PRICE)
+        with patch.object(at, "_get_nfo_instruments", return_value=instruments):
+            from strategy import Direction
+            symbol, _ = at._get_option_symbol(BASE_PRICE, Direction.LONG)
+        otm = round(BASE_PRICE / 50) * 50 + 50
+        assert str(otm) in symbol and symbol.endswith("CE")
+
+    def test_2otm_offset_2_long(self):
+        at, _ = _fresh_auto_trader()
+        at.state.strike_offset = 2
+        instruments = mock_instruments(BASE_PRICE)
+        with patch.object(at, "_get_nfo_instruments", return_value=instruments):
+            from strategy import Direction
+            symbol, _ = at._get_option_symbol(BASE_PRICE, Direction.LONG)
+        otm2 = round(BASE_PRICE / 50) * 50 + 100
+        assert str(otm2) in symbol and symbol.endswith("CE")
+
+
 class TestLiveOrderPlacement:
     """Live order path (mocked Zerodha API)."""
 
     def test_live_order_calls_kite(self):
+        """Entry places a MARKET order + a SL-M backstop order (2 calls total)."""
         at, mock_km = _fresh_auto_trader()
         at.state.is_paper_mode = False   # LIVE mode!
 
@@ -475,11 +616,16 @@ class TestLiveOrderPlacement:
             from strategy import Direction
             at._enter_trade(Direction.LONG, BASE_PRICE)
 
-        mock_km.kite.place_order.assert_called_once()
-        call_kwargs = mock_km.kite.place_order.call_args.kwargs
-        assert call_kwargs["transaction_type"] == "BUY"
-        assert call_kwargs["product"]          == "MIS"
-        assert call_kwargs["order_type"]       == "MARKET"
+        # Two orders: 1) entry MARKET, 2) SL-M backstop
+        assert mock_km.kite.place_order.call_count == 2, (
+            f"Expected 2 orders (entry + SL backstop), got "
+            f"{mock_km.kite.place_order.call_count}"
+        )
+        # First call must be the entry order
+        first_call = mock_km.kite.place_order.call_args_list[0].kwargs
+        assert first_call["transaction_type"] == "BUY"
+        assert first_call["product"]          == "MIS"
+        assert first_call["order_type"]       == "MARKET"
 
     def test_failed_live_order_does_not_create_trade(self):
         at, mock_km = _fresh_auto_trader()

@@ -320,6 +320,11 @@ _recover_state()
 
 # ── Safety Checks ──────────────────────────────────────────────
 
+def _now_time() -> dt_time:
+    """Return current wall-clock time. Thin wrapper so tests can patch it."""
+    return datetime.now().time()
+
+
 def _check_safety() -> tuple[bool, str]:
     """Check all safety limits before placing an order."""
     if state.kill_switch:
@@ -331,7 +336,7 @@ def _check_safety() -> tuple[bool, str]:
     if state.total_pnl <= -MAX_LOSS_PER_DAY:
         return False, f"Max daily loss hit (₹{MAX_LOSS_PER_DAY})"
 
-    now = datetime.now().time()
+    now = _now_time()
     if now >= EXIT_TIME:
         return False, f"Past exit time ({EXIT_TIME.strftime('%H:%M')})"
 
