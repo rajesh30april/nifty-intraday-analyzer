@@ -337,7 +337,8 @@ function renderAutoTrader(data) {
     const stratLabel  = document.getElementById('at-strat-label');
     if (stratSelect) {
         stratSelect.disabled = _atIsRunning;
-        if (_atIsRunning && data.selected_strategy) stratSelect.value = data.selected_strategy;
+        // Always sync dropdown from server — not just when running
+        if (data.selected_strategy) stratSelect.value = data.selected_strategy;
     }
     if (stratLabel && stratSelect) {
         const opt = stratSelect.options[stratSelect.selectedIndex];
