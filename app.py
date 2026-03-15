@@ -9,7 +9,7 @@ import json as json_lib
 import time as _time
 
 import numpy as np
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -44,7 +44,8 @@ from pattern_detector import detect_all_patterns
 from trend_health import analyze_trend_health
 from auto_trader import (
     get_trader_status, start_auto_trader, stop_auto_trader,
-    activate_kill_switch, state as trader_state, evaluate_and_act,
+    activate_kill_switch, configure_auto_trader,
+    state as trader_state, evaluate_and_act,
 )
 from pattern_scanner import scan_patterns, TIMEFRAME_META, PATTERN_EMOJIS
 
@@ -1415,6 +1416,24 @@ async def auto_trader_status():
 async def auto_trader_start(strategy: str = "smart_router"):
     """Start the auto-trader with a selected strategy."""
     result = start_auto_trader(strategy_id=strategy)
+    return {"success": True, **result}
+
+
+@app.post("/api/auto-trader/configure")
+async def auto_trader_configure(
+    sl_points:          float | None = Query(None),
+    trailing_sl_points: float | None = Query(None),
+    rr_ratio:           float | None = Query(None),
+    qty_mode:           str   | None = Query(None),
+    manual_qty:         int   | None = Query(None),
+    capital:            float | None = Query(None),
+):
+    """Update runtime trade settings (SL, trail, R:R, qty) without restarting."""
+    result = configure_auto_trader(
+        sl_points=sl_points, trailing_sl_points=trailing_sl_points,
+        rr_ratio=rr_ratio, qty_mode=qty_mode,
+        manual_qty=manual_qty, capital=capital,
+    )
     return {"success": True, **result}
 
 

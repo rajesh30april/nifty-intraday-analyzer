@@ -4,8 +4,10 @@
 let _atIsRunning       = false;
 let _atKillSwitch      = false;
 let _atPollTimer       = null;
-let _atHadTrade        = false;   // tracks position state for entry/exit detection
+let _atHadTrade        = false;
+let _atQtyMode         = 'manual';   // 'manual' | 'capital'
 const AT_POLL_MS       = 6000;
+const LOT_SIZE         = 75;         // Nifty F&O lot size
 
 // ── Event log dedup trackers ──────────────────────────────────────
 let _atLastCondKey     = null;   // JSON key of which conditions were met last render
@@ -552,6 +554,9 @@ function renderAutoTrader(data) {
     // ── CRASH RECOVERY BANNER ──────────────────────────────────
     // ── CRASH RECOVERY BANNER — rendered per recovery_type ──────
     _renderRecoveryBanner(data);
+
+    // ── Sync settings panel inputs from server state ─────────────
+    if (typeof syncAtSettingsFromStatus === 'function') syncAtSettingsFromStatus(data);
 }
 
 // ── Trade history ────────────────────────────────────────────────

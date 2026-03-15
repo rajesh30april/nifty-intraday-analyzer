@@ -33,9 +33,10 @@ load_dotenv()
 LIVE_TRADING = os.getenv("LIVE_TRADING", "false").lower() == "true"
 MAX_LOSS_PER_DAY = float(os.getenv("MAX_LOSS_PER_DAY", "5000"))  # ₹5000
 MAX_ORDERS_PER_DAY = int(os.getenv("MAX_ORDERS_PER_DAY", "6"))
-DEFAULT_QUANTITY = int(os.getenv("DEFAULT_QUANTITY", "780"))  # 12 lots × 65 units
-SL_POINTS = float(os.getenv("SL_POINTS", "30"))  # Fixed SL in points
-TRAILING_SL_POINTS = float(os.getenv("TRAILING_SL_POINTS", "15"))  # Trail by 15pts
+DEFAULT_QUANTITY   = int(os.getenv("DEFAULT_QUANTITY",   "780"))   # 12 lots × 65 units
+SL_POINTS          = float(os.getenv("SL_POINTS",          "30"))   # Fixed SL in points
+TRAILING_SL_POINTS = float(os.getenv("TRAILING_SL_POINTS", "15"))   # Trail by 15pts
+DEFAULT_CAPITAL    = float(os.getenv("TRADING_CAPITAL",  "96000"))  # ₹ available
 EXIT_TIME = dt_time(15, 15)  # 3:15 PM IST — auto-exit all positions
 TRADE_LOG_FILE     = Path(__file__).parent / "trade_log.json"
 STATE_SNAPSHOT_FILE = Path(__file__).parent / ".state_snapshot.json"
@@ -84,10 +85,17 @@ class TraderState:
     lowest_price_since_entry: float = float("inf")
     last_evaluation: str = ""
     last_signal_reason: str = ""
-    last_conditions: list[dict] = field(default_factory=list)  # strategy conditions
-    kill_switch: bool = False  # Emergency stop
-    selected_strategy: str = "smart_router"  # default strategy
-    last_block_reason: str | None = None       # why last signal was blocked
+    last_conditions: list[dict] = field(default_factory=list)
+    kill_switch: bool = False
+    selected_strategy: str = "smart_router"
+    last_block_reason: str | None = None
+    # ── Runtime-configurable trade settings (overrideable from UI) ──
+    sl_points:          float = SL_POINTS           # Nifty SL in points
+    trailing_sl_points: float = TRAILING_SL_POINTS  # trailing SL step
+    rr_ratio:           float = 2.0                 # risk:reward
+    capital:            float = DEFAULT_CAPITAL      # ₹ available for qty calc
+    qty_mode:           str   = "manual"            # 'manual' | 'capital'
+    manual_qty:         int   = DEFAULT_QUANTITY    # used when qty_mode=manual
     recovery_mode: bool = False    # True if state was restored after a crash
     recovery_message: str = ""     # Human-readable description of what was recovered
     recovery_type: str = ""        # 'open' = trade still live | 'closed' = already exited | 'clean' = no trade
@@ -646,6 +654,30 @@ def evaluate_and_act(df, current_price: float):
     _enter_trade(signal.direction, current_price)
 
 
+LOT_SIZE = 75   # Nifty F&O lot size (as of 2024)
+
+
+def _resolve_quantity(nifty_price: float) -> int:
+    """Return qty to trade based on qty_mode.
+
+    manual  → return state.manual_qty as-is
+    capital → estimate option premium, calc how many lots ₹capital buys
+               qty = floor(capital / (est_premium × LOT_SIZE)) × LOT_SIZE
+    """
+    if state.qty_mode == "manual":
+        return state.manual_qty
+
+    # Capital mode: estimate ATM option premium ≈ 0.35% of Nifty spot
+    # (rough but good enough — actual premium lookup needs live option chain)
+    est_premium = round(nifty_price * 0.0035, 1)  # e.g. 23500 × 0.35% ≈ ₹82
+    cost_per_lot = est_premium * LOT_SIZE
+    lots = max(1, int(state.capital / cost_per_lot))
+    qty  = lots * LOT_SIZE
+    print(f"📐 Capital mode: ₹{state.capital:,.0f} ÷ "
+          f"(₹{est_premium} × {LOT_SIZE}) = {lots} lots → {qty} units")
+    return qty
+
+
 def _enter_trade(direction: Direction, price: float):
     """Open a new trade."""
     try:
@@ -655,16 +687,20 @@ def _enter_trade(direction: Direction, price: float):
         state.last_signal_reason = f"❌ Instrument lookup failed: {e}"
         return
 
-    # Calculate SL on Nifty spot (for management), actual P&L is on options
-    RR = float(os.getenv("RR_RATIO", "2.0"))
-    if direction == Direction.LONG:
-        sl     = price - SL_POINTS
-        target = price + SL_POINTS * RR
-    else:
-        sl     = price + SL_POINTS
-        target = price - SL_POINTS * RR
+    # ── Resolve trade settings from runtime state (overrideable from UI) ──
+    sl_pts  = state.sl_points
+    trail   = state.trailing_sl_points
+    rr      = state.rr_ratio
+    qty     = _resolve_quantity(price)
 
-    order_id = _place_order(symbol, direction, DEFAULT_QUANTITY, price)
+    if direction == Direction.LONG:
+        sl     = price - sl_pts
+        target = price + sl_pts * rr
+    else:
+        sl     = price + sl_pts
+        target = price - sl_pts * rr
+
+    order_id = _place_order(symbol, direction, qty, price)
     if not order_id:
         return
 
@@ -674,7 +710,7 @@ def _enter_trade(direction: Direction, price: float):
         direction=direction.value,
         instrument=symbol,
         entry_price=price,
-        quantity=DEFAULT_QUANTITY,
+        quantity=qty,
         stop_loss=sl,
         target=target,
         status=OrderStatus.FILLED,
@@ -689,15 +725,15 @@ def _enter_trade(direction: Direction, price: float):
     state.lowest_price_since_entry = price
 
     mode = "📝 PAPER" if trade.paper else "🟢 LIVE"
-    print(f"🚀 [{mode}] ENTRY {direction.value.upper()} {DEFAULT_QUANTITY}x {symbol} "
-          f"@ ₹{price} | SL: ₹{sl} | Target: ₹{target}")
+    print(f"🚀 [{mode}] ENTRY {direction.value.upper()} {qty}x {symbol} "
+          f"@ ₹{price} | SL: ₹{sl:.0f} (−{sl_pts}pts) | Target: ₹{target:.0f} (R:R 1:{rr})")
 
     # ── Place SL-M backstop at exchange immediately after entry ───
     # Crash protection: if app dies, exchange still holds this order.
     # We estimate the option trigger WITHOUT an API call (delta approximation)
     # so the tick thread is never blocked.
     # Tick guard handles all active / trailing SL management.
-    sl_trigger = _estimate_option_sl_trigger(direction.value, SL_POINTS)
+    sl_trigger = _estimate_option_sl_trigger(direction.value, state.sl_points)
     sl_order_id = _place_sl_order(trade, sl_trigger)
     trade.sl_order_id = sl_order_id
 
@@ -728,12 +764,12 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
 
     # Trailing stop-loss — updated in-app only (zero API calls in tick thread)
     if is_long:
-        new_sl = state.highest_price_since_entry - TRAILING_SL_POINTS
+        new_sl = state.highest_price_since_entry - state.trailing_sl_points
         if new_sl > trade.stop_loss:
             trade.stop_loss = round(new_sl, 2)
             _save_state_snapshot()   # persist new SL for crash recovery
     else:
-        new_sl = state.lowest_price_since_entry + TRAILING_SL_POINTS
+        new_sl = state.lowest_price_since_entry + state.trailing_sl_points
         if new_sl < trade.stop_loss:
             trade.stop_loss = round(new_sl, 2)
             _save_state_snapshot()   # persist new SL for crash recovery
@@ -858,6 +894,39 @@ def get_trader_status() -> dict:
         "recovery_mode":    state.recovery_mode,
         "recovery_type":    state.recovery_type,
         "recovery_message": state.recovery_message,
+        # ── Runtime trade settings ──
+        "sl_points":          state.sl_points,
+        "trailing_sl_points": state.trailing_sl_points,
+        "rr_ratio":           state.rr_ratio,
+        "qty_mode":           state.qty_mode,
+        "manual_qty":         state.manual_qty,
+        "capital":            state.capital,
+    }
+
+
+def configure_auto_trader(
+    sl_points:          float | None = None,
+    trailing_sl_points: float | None = None,
+    rr_ratio:           float | None = None,
+    qty_mode:           str   | None = None,   # 'manual' | 'capital'
+    manual_qty:         int   | None = None,
+    capital:            float | None = None,
+) -> dict:
+    """Update runtime trade settings without restarting."""
+    if sl_points          is not None: state.sl_points          = sl_points
+    if trailing_sl_points is not None: state.trailing_sl_points = trailing_sl_points
+    if rr_ratio           is not None: state.rr_ratio           = rr_ratio
+    if qty_mode           is not None: state.qty_mode           = qty_mode
+    if manual_qty         is not None: state.manual_qty         = manual_qty
+    if capital            is not None: state.capital            = capital
+    _save_state_snapshot()
+    return {
+        "sl_points":          state.sl_points,
+        "trailing_sl_points": state.trailing_sl_points,
+        "rr_ratio":           state.rr_ratio,
+        "qty_mode":           state.qty_mode,
+        "manual_qty":         state.manual_qty,
+        "capital":            state.capital,
     }
 
 
@@ -866,7 +935,6 @@ def start_auto_trader(strategy_id: str | None = None):
     if state.is_running:
         return {"status": "already_running"}
 
-    # Set selected strategy
     if strategy_id:
         state.selected_strategy = strategy_id
 
@@ -877,7 +945,7 @@ def start_auto_trader(strategy_id: str | None = None):
     print(f"\n🚀 Auto-Trader STARTED [{mode} MODE]")
     print(f"   Strategy: {strat_name}")
     print(f"   Max loss: ₹{MAX_LOSS_PER_DAY} | Max orders: {MAX_ORDERS_PER_DAY}")
-    print(f"   SL: {SL_POINTS}pts | Trail: {TRAILING_SL_POINTS}pts")
+    print(f"   SL: {state.sl_points}pts | Trail: {state.trailing_sl_points}pts | R:R 1:{state.rr_ratio}")
     print(f"   Auto-exit: {EXIT_TIME.strftime('%H:%M')} IST\n")
     return {"status": "started", "mode": mode, "strategy": strat_name}
 
