@@ -106,12 +106,16 @@ def evaluate_pdhl_breakout(df: pd.DataFrame) -> StrategySignal:
     if vol_col_exists:
         curr_vol = float(curr["volume"])
         avg_vol  = float(df["volume"].rolling(14).mean().iloc[-1])
-        vol_ok   = avg_vol > 0 and curr_vol >= avg_vol * VOLUME_RATIO_MIN
-        vol_ratio = curr_vol / avg_vol if avg_vol > 0 else 0
-        vol_detail = (
-            f"Vol={curr_vol:,.0f} | Avg={avg_vol:,.0f} | "
-            f"Ratio={vol_ratio:.2f}× — {'✅ surge' if vol_ok else '❌ weak volume'}"
-        )
+        if avg_vol == 0:
+            # Index data (e.g. Zerodha Nifty index) has no volume — skip check
+            vol_ok, vol_detail = True, "Vol N/A (index data — condition skipped)"
+        else:
+            vol_ratio  = curr_vol / avg_vol
+            vol_ok     = vol_ratio >= VOLUME_RATIO_MIN
+            vol_detail = (
+                f"Vol={curr_vol:,.0f} | Avg={avg_vol:,.0f} | "
+                f"Ratio={vol_ratio:.2f}× — {'✅ surge' if vol_ok else '❌ weak volume'}"
+            )
     else:
         vol_ok     = True   # index data — skip
         vol_detail = "Volume N/A (index data) — skipped"

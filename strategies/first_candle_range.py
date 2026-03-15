@@ -147,12 +147,16 @@ def evaluate_fcr(df: pd.DataFrame) -> StrategySignal:
     if "volume" in df.columns:
         curr_vol  = float(curr["volume"])
         avg_vol   = float(df["volume"].rolling(14).mean().iloc[-1])
-        vol_ratio = curr_vol / avg_vol if avg_vol > 0 else 0
-        vol_ok    = vol_ratio >= VOLUME_RATIO_MIN
-        vol_detail = (
-            f"Vol={curr_vol:,.0f} | Avg={avg_vol:,.0f} | "
-            f"{vol_ratio:.2f}× — {'✅ surge' if vol_ok else '❌ weak'}"
-        )
+        if avg_vol == 0:
+            # Index data (e.g. Zerodha Nifty index) has no volume — skip check
+            vol_ok, vol_detail = True, "Vol N/A (index data — condition skipped)"
+        else:
+            vol_ratio  = curr_vol / avg_vol
+            vol_ok     = vol_ratio >= VOLUME_RATIO_MIN
+            vol_detail = (
+                f"Vol={curr_vol:,.0f} | Avg={avg_vol:,.0f} | "
+                f"{vol_ratio:.2f}× — {'✅ surge' if vol_ok else '❌ weak'}"
+            )
     else:
         vol_ok     = True
         vol_detail = "Volume N/A (index) — skipped"
