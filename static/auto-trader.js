@@ -57,13 +57,17 @@ function showAtToast(type, title, body) {
 }
 
 // ── Event log ────────────────────────────────────────────────────
-function _atLogEvent(icon, title, detail) {
+// ts: optional ISO timestamp from server — use it so log shows actual
+//     candle-close time, not the random poll-detection time.
+function _atLogEvent(icon, title, detail, ts) {
     const log = document.getElementById('at-event-log');
     if (!log) return;
-    const now = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    const timeStr = ts
+        ? new Date(ts).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' })
+        : new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
     const row = document.createElement('div');
     row.className = 'flex items-start gap-2 py-1 border-b border-gray-800';
-    row.innerHTML = `<span class="text-gray-500 shrink-0">${now}</span>
+    row.innerHTML = `<span class="text-gray-500 shrink-0">${timeStr}</span>
                      <span class="shrink-0">${icon}</span>
                      <span class="text-gray-300"><b>${title}</b> ${detail}</span>`;
     log.prepend(row);
@@ -115,7 +119,8 @@ function _atMaybeLog(data) {
                        : '📊';
             // Only show first 120 chars of signal to keep log readable
             const shortSig = signal.length > 120 ? signal.slice(0, 117) + '…' : signal;
-            _atLogEvent(icon, `Eval (${metCount}/${totalCond} conds met)`, shortSig);
+            // Pass server evalTime so log shows candle-close time, not poll time
+            _atLogEvent(icon, `Eval (${metCount}/${totalCond} conds met)`, shortSig, evalTime);
             _atLastSignalTime = nowSec;
             _atLastSignalText = signal;
         }
