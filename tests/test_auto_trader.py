@@ -155,7 +155,9 @@ class TestStopLoss:
     """Stop-loss exit logic."""
 
     def test_long_sl_exit_when_price_drops(self):
-        at, _ = _fresh_auto_trader()
+        # SL hit on a CE buy → CE dropped → exit_ltp < entry_ltp → negative P&L
+        at, mock_km = _fresh_auto_trader()
+        mock_km.get_option_ltp.side_effect = [150.0, 120.0]   # entry=150, exit=120
         _force_enter(at, "long", BASE_PRICE)
 
         sl_price = at.state.active_trade.stop_loss - 1   # just below SL
@@ -167,7 +169,9 @@ class TestStopLoss:
         assert last_trade.pnl < 0, "P&L must be negative on SL hit"
 
     def test_short_sl_exit_when_price_rises(self):
-        at, _ = _fresh_auto_trader()
+        # SL hit on a PE buy → PE dropped (Nifty rose) → exit_ltp < entry_ltp → negative
+        at, mock_km = _fresh_auto_trader()
+        mock_km.get_option_ltp.side_effect = [150.0, 118.0]   # entry=150, exit=118
         _force_enter(at, "short", BASE_PRICE)
 
         sl_price = at.state.active_trade.stop_loss + 1   # just above SL
@@ -188,7 +192,9 @@ class TestTargetExit:
     """Target hit exits."""
 
     def test_long_target_exit(self):
-        at, _ = _fresh_auto_trader()
+        # Target hit on CE buy → CE rose → exit_ltp > entry_ltp → positive P&L
+        at, mock_km = _fresh_auto_trader()
+        mock_km.get_option_ltp.side_effect = [150.0, 195.0]   # entry=150, exit=195
         _force_enter(at, "long", BASE_PRICE)
 
         target = at.state.active_trade.target
@@ -199,7 +205,9 @@ class TestTargetExit:
         assert "Target" in at.state.trades_today[-1].exit_reason
 
     def test_short_target_exit(self):
-        at, _ = _fresh_auto_trader()
+        # Target hit on PE buy → PE rose (Nifty fell) → exit_ltp > entry_ltp → positive
+        at, mock_km = _fresh_auto_trader()
+        mock_km.get_option_ltp.side_effect = [150.0, 192.0]   # entry=150, exit=192
         _force_enter(at, "short", BASE_PRICE)
 
         target = at.state.active_trade.target
@@ -257,7 +265,9 @@ class TestTrailingSL:
         assert at.state.active_trade.stop_loss == locked_sl, "SL must not move backwards"
 
     def test_trailing_sl_exits_after_rally_then_fall(self):
-        at, _ = _fresh_auto_trader()
+        # Rally → locked SL → pullback hits SL → option still above entry → profit
+        at, mock_km = _fresh_auto_trader()
+        mock_km.get_option_ltp.side_effect = [150.0, 175.0]   # entry=150, exit=175 (profit)
         _force_enter(at, "long", BASE_PRICE)
         TRAIL = at.TRAILING_SL_POINTS
 
@@ -371,48 +381,72 @@ class TestSafetyChecks:
 
 
 class TestPnLAccuracy:
-    """P&L calculations must be exact."""
+    """P&L calculations use OPTION premium change × units (not Nifty pts × units).
+
+    We mock get_option_ltp to return entry_ltp on the first call (at entry)
+    and exit_ltp on the second call (at exit).
+    P&L = (exit_ltp - entry_ltp) × quantity.
+    """
 
     def test_long_pnl_on_target(self):
-        at, _ = _fresh_auto_trader()
-        qty    = at.DEFAULT_QUANTITY
-        SL     = at.SL_POINTS
-        RR     = float(at.os.getenv("RR_RATIO", "2.0"))
-        entry  = BASE_PRICE
-        target = entry + SL * RR
+        """Target hit → CE premium rises → positive P&L."""
+        at, mock_km = _fresh_auto_trader()
+        qty         = at.DEFAULT_QUANTITY
+        SL          = at.SL_POINTS
+        RR          = float(at.os.getenv("RR_RATIO", "2.0"))
+        entry       = BASE_PRICE
+        target      = entry + SL * RR
+        ENTRY_LTP   = 150.0
+        EXIT_LTP    = 195.0   # option moved up ~45 pts (Nifty +60 pts, delta≈0.5→+30, IV up)
+
+        # Return ENTRY_LTP on first call, EXIT_LTP on second call
+        mock_km.get_option_ltp.side_effect = [ENTRY_LTP, EXIT_LTP]
 
         _force_enter(at, "long", entry)
         at._manage_active_trade(target + 0.5)
 
         trade = at.state.trades_today[-1]
-        expected_pnl = round((trade.exit_price - entry) * qty, 2)
+        expected_pnl = round((EXIT_LTP - ENTRY_LTP) * qty, 2)
         assert abs(trade.pnl - expected_pnl) < 0.01
+        assert trade.pnl > 0, "Target hit should be profitable"
+        assert trade.entry_premium == ENTRY_LTP
+        assert trade.exit_premium  == EXIT_LTP
 
     def test_short_pnl_on_sl(self):
-        at, _ = _fresh_auto_trader()
-        qty   = at.DEFAULT_QUANTITY
-        SL    = at.SL_POINTS
-        entry = BASE_PRICE
+        """SL hit on a PE buy → PE premium drops → negative P&L."""
+        at, mock_km = _fresh_auto_trader()
+        qty         = at.DEFAULT_QUANTITY
+        SL          = at.SL_POINTS
+        entry       = BASE_PRICE
+        ENTRY_LTP   = 150.0
+        EXIT_LTP    = 119.0   # PE lost value (Nifty went up, PE dropped)
+
+        mock_km.get_option_ltp.side_effect = [ENTRY_LTP, EXIT_LTP]
 
         _force_enter(at, "short", entry)
-        sl_price = entry + SL + 1   # SL hit
+        sl_price = entry + SL + 1   # SL hit (Nifty rose → PE lost value)
         at._manage_active_trade(sl_price)
 
         trade = at.state.trades_today[-1]
-        expected_pnl = round((entry - trade.exit_price) * qty, 2)
+        expected_pnl = round((EXIT_LTP - ENTRY_LTP) * qty, 2)
         assert abs(trade.pnl - expected_pnl) < 0.01
-        assert trade.pnl < 0
+        assert trade.pnl < 0, "SL hit should be a loss"
+        assert trade.exit_premium == EXIT_LTP
 
     def test_total_pnl_accumulates_across_trades(self):
-        at, _ = _fresh_auto_trader()
+        """Total P&L = sum of individual trade P&Ls (both option-based)."""
+        at, mock_km = _fresh_auto_trader()
+        # Trade 1 ltps: entry=150, exit=190 → +40×65 = +2600
+        # Trade 2 ltps: entry=150, exit=120 → -30×65 = -1950
+        mock_km.get_option_ltp.side_effect = [150.0, 190.0, 150.0, 120.0]
 
-        # Trade 1: long, hits target (win)
+        # Trade 1: long, hits target
         _force_enter(at, "long", BASE_PRICE)
         target1 = at.state.active_trade.target
         at._manage_active_trade(target1 + 1)
         pnl1 = at.state.trades_today[0].pnl
 
-        # Trade 2: short, hits SL (loss)
+        # Trade 2: short, hits SL
         _force_enter(at, "short", BASE_PRICE)
         sl2 = at.state.active_trade.stop_loss + 1
         at._manage_active_trade(sl2)

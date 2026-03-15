@@ -56,19 +56,21 @@ class Trade:
     """A single trade record."""
     id: str
     timestamp: str
-    direction: str  # 'long' or 'short'
+    direction: str        # 'long' or 'short'
     instrument: str
-    entry_price: float
-    quantity: int
-    stop_loss: float
+    entry_price: float    # Nifty SPOT at entry  — used for SL / target / trailing math
+    entry_premium: float  # Option LTP at entry  — used for real P&L calculation
+    quantity: int         # units sent to exchange (lots × 65)
+    stop_loss: float      # Nifty spot SL level (moves with trailing)
     target: float | None = None
-    exit_price: float | None = None
+    exit_price: float | None = None    # Nifty spot at exit
+    exit_premium: float | None = None  # Option LTP at exit — for real P&L
     exit_time: str | None = None
     exit_reason: str | None = None
     pnl: float = 0.0
     status: str = OrderStatus.PENDING
-    order_id: str | None = None     # Zerodha entry order ID
-    sl_order_id: str | None = None  # Zerodha SL-M order ID (exchange-level guard)
+    order_id: str | None = None        # Zerodha entry order ID
+    sl_order_id: str | None = None     # Zerodha SL-M order ID (exchange-level guard)
     paper: bool = True
 
 
@@ -136,33 +138,36 @@ def _save_state_snapshot():
         "strike_offset":      state.strike_offset,
         "max_trades_per_day": state.max_trades_per_day,
         "active_trade": {
-            "id":          active.id,
-            "timestamp":   active.timestamp,
-            "direction":   active.direction,
-            "instrument":  active.instrument,
-            "entry_price": active.entry_price,
-            "quantity":    active.quantity,
-            "stop_loss":   active.stop_loss,
-            "target":      active.target,
-            "order_id":    active.order_id,
-            "sl_order_id": active.sl_order_id,
-            "paper":       active.paper,
-            "status":      active.status,
+            "id":            active.id,
+            "timestamp":     active.timestamp,
+            "direction":     active.direction,
+            "instrument":    active.instrument,
+            "entry_price":   active.entry_price,    # Nifty spot at entry
+            "entry_premium": active.entry_premium,  # Option LTP at entry
+            "quantity":      active.quantity,
+            "stop_loss":     active.stop_loss,
+            "target":        active.target,
+            "order_id":      active.order_id,
+            "sl_order_id":   active.sl_order_id,
+            "paper":         active.paper,
+            "status":        active.status,
         } if active else None,
         "trades_today": [
             {
-                "id":          t.id,
-                "timestamp":   t.timestamp,
-                "direction":   t.direction,
-                "instrument":  t.instrument,
-                "entry_price": t.entry_price,
-                "quantity":    t.quantity,
-                "stop_loss":   t.stop_loss,
-                "target":      t.target,
-                "exit_price":  t.exit_price,
-                "exit_time":   t.exit_time,
-                "exit_reason": t.exit_reason,
-                "pnl":         t.pnl,
+                "id":            t.id,
+                "timestamp":     t.timestamp,
+                "direction":     t.direction,
+                "instrument":    t.instrument,
+                "entry_price":   t.entry_price,
+                "entry_premium": t.entry_premium,
+                "quantity":      t.quantity,
+                "stop_loss":     t.stop_loss,
+                "target":        t.target,
+                "exit_price":    t.exit_price,
+                "exit_premium":  t.exit_premium,
+                "exit_time":     t.exit_time,
+                "exit_reason":   t.exit_reason,
+                "pnl":           t.pnl,
                 "status":      t.status,
                 "order_id":    t.order_id,
                 "paper":       t.paper,
@@ -222,9 +227,13 @@ def _recover_state(snapshot_file: Path | None = None):
         state.trades_today.append(Trade(
             id=t["id"], timestamp=t["timestamp"],
             direction=t["direction"], instrument=t["instrument"],
-            entry_price=t["entry_price"], quantity=t["quantity"],
+            entry_price=t["entry_price"],
+            entry_premium=t.get("entry_premium", t["entry_price"]),  # back-compat: old snapshots lack this
+            quantity=t["quantity"],
             stop_loss=t["stop_loss"], target=t["target"],
-            exit_price=t.get("exit_price"), exit_time=t.get("exit_time"),
+            exit_price=t.get("exit_price"),
+            exit_premium=t.get("exit_premium"),
+            exit_time=t.get("exit_time"),
             exit_reason=t.get("exit_reason"), pnl=t.get("pnl", 0.0),
             status=t.get("status", OrderStatus.EXITED),
             order_id=t.get("order_id"), paper=t.get("paper", True),
@@ -251,7 +260,9 @@ def _recover_state(snapshot_file: Path | None = None):
         recovered_trade = Trade(
             id=at["id"], timestamp=at["timestamp"],
             direction=at["direction"], instrument=at["instrument"],
-            entry_price=at["entry_price"], quantity=at["quantity"],
+            entry_price=at["entry_price"],
+            entry_premium=at.get("entry_premium", at["entry_price"]),  # back-compat
+            quantity=at["quantity"],
             stop_loss=at["stop_loss"], target=at["target"],
             order_id=at.get("order_id"),
             sl_order_id=at.get("sl_order_id"),   # restore SL order for cancel-on-exit
@@ -276,7 +287,9 @@ def _recover_state(snapshot_file: Path | None = None):
         ghost_trade = Trade(
             id=at["id"], timestamp=at["timestamp"],
             direction=at["direction"], instrument=at["instrument"],
-            entry_price=at["entry_price"], quantity=at["quantity"],
+            entry_price=at["entry_price"],
+            entry_premium=at.get("entry_premium", at["entry_price"]),  # back-compat
+            quantity=at["quantity"],
             stop_loss=at["stop_loss"], target=at["target"],
             order_id=at.get("order_id"), paper=paper_mode,
             status=OrderStatus.EXITED,
@@ -629,7 +642,11 @@ def _sync_trailing_sl_to_exchange() -> None:
 
 
 def _exit_position(reason: str, current_price: float):
-    """Exit active trade."""
+    """Exit active trade.
+
+    current_price = Nifty SPOT at the moment of exit decision.
+    Real P&L uses option LTP fetched at exit (not Nifty spot change).
+    """
     trade = state.active_trade
     if not trade:
         return
@@ -639,7 +656,14 @@ def _exit_position(reason: str, current_price: float):
     # exit order, both could fill → double-exit (short-sell problem).
     _cancel_sl_order(trade)
 
-    exit_direction = Direction.SHORT if trade.direction == "long" else Direction.LONG
+    # ── Fetch real option LTP at exit (best-effort) ───────────────
+    # Used for accurate P&L. Falls back to entry_premium if unavailable.
+    sym_clean      = trade.instrument.replace("NFO:", "")
+    exit_ltp     = kite_manager.get_option_ltp(sym_clean)
+    exit_premium = (
+        exit_ltp if isinstance(exit_ltp, (int, float)) and exit_ltp > 0
+        else trade.entry_premium   # fallback: report P&L=0 (better than Nifty×qty math)
+    )
 
     if not state.is_paper_mode:
         try:
@@ -648,9 +672,9 @@ def _exit_position(reason: str, current_price: float):
             kite_manager.kite.place_order(
                 variety=kite_manager.kite.VARIETY_REGULAR,
                 exchange="NFO",
-                tradingsymbol=trade.instrument.replace("NFO:", ""),
+                tradingsymbol=sym_clean,
                 transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
-                quantity=trade.quantity,
+                quantity=trade.quantity,       # ← same qty as entry, always
                 product=kite_manager.kite.PRODUCT_MIS,
                 order_type=kite_manager.kite.ORDER_TYPE_MARKET,
                 validity="DAY",
@@ -658,25 +682,33 @@ def _exit_position(reason: str, current_price: float):
         except Exception as e:
             print(f"❌ Exit order failed: {e}")
 
-    # Calculate P&L
-    if trade.direction == "long":
-        pnl = (current_price - trade.entry_price) * trade.quantity
-    else:
-        pnl = (trade.entry_price - current_price) * trade.quantity
+    # ── Real P&L: (option exit price − option entry price) × units ─
+    # We are always an OPTION BUYER so:
+    #   LONG (bought CE): profit when CE premium rises
+    #   SHORT (bought PE): profit when PE premium rises
+    # Both directions profit when their option premium goes UP.
+    pnl = (exit_premium - trade.entry_premium) * trade.quantity
 
-    trade.exit_price = current_price
-    trade.exit_time = datetime.now().isoformat()
-    trade.exit_reason = reason
-    trade.pnl = round(pnl, 2)
-    trade.status = OrderStatus.EXITED
+    trade.exit_price   = current_price    # Nifty spot at exit (for logs)
+    trade.exit_premium = exit_premium     # Option LTP at exit
+    trade.exit_time    = datetime.now().isoformat()
+    trade.exit_reason  = reason
+    trade.pnl          = round(pnl, 2)
+    trade.status       = OrderStatus.EXITED
 
     state.total_pnl += pnl
     state.active_trade = None
 
-    mode = "📝 PAPER" if trade.paper else "🟢 LIVE"
+    mode  = "📝 PAPER" if trade.paper else "🟢 LIVE"
     emoji = "🟢" if pnl >= 0 else "🔴"
-    print(f"{emoji} [{mode}] EXIT {trade.direction.upper()} @ ₹{current_price} "
-          f"| P&L: ₹{pnl:+.2f} | Reason: {reason}")
+    print(
+        f"{emoji} [{mode}] EXIT {trade.direction.upper()} {trade.quantity}u {sym_clean}\n"
+        f"   Nifty: entry ₹{trade.entry_price:.0f} → exit ₹{current_price:.0f} "
+        f"({current_price - trade.entry_price:+.0f} pts)\n"
+        f"   Option: entry ₹{trade.entry_premium:.2f} → exit ₹{exit_premium:.2f} "
+        f"({exit_premium - trade.entry_premium:+.2f})\n"
+        f"   P&L: ₹{pnl:+,.2f} | Qty: {trade.quantity} units | Reason: {reason}"
+    )
 
     _save_trade_log()
     _save_state_snapshot()   # ← crash recovery: snapshot immediately on exit (no active_trade)
@@ -816,12 +848,20 @@ def _enter_trade(direction: Direction, price: float):
     if not order_id:
         return
 
+    # Resolve entry_premium BEFORE building Trade (needed as a field)
+    entry_premium = (
+        real_ltp
+        if isinstance(real_ltp, (int, float)) and real_ltp > 0
+        else _estimate_premium_fallback(price)
+    )
+
     trade = Trade(
         id=f"T-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
         timestamp=datetime.now().isoformat(),
         direction=direction.value,
         instrument=symbol,
-        entry_price=price,
+        entry_price=price,                  # Nifty spot — SL/target math
+        entry_premium=entry_premium,        # Option LTP  — real P&L math
         quantity=qty,
         stop_loss=sl,
         target=target,
@@ -844,15 +884,7 @@ def _enter_trade(direction: Direction, price: float):
 
     # ── Place SL-M backstop at exchange immediately after entry ───
     # Crash protection: if app dies, exchange still holds this order.
-    # Use real_ltp (fetched above) so the trigger reflects the ACTUAL
-    # option price we paid, not a guessed constant.
-    # Tick guard handles all active / trailing SL management.
-    # Guard: real_ltp must be a positive number (MagicMock in tests is truthy but not float)
-    entry_premium = (
-        real_ltp
-        if isinstance(real_ltp, (int, float)) and real_ltp > 0
-        else _estimate_premium_fallback(price)
-    )
+    # entry_premium is already resolved above (before Trade constructor).
     sl_trigger = _estimate_option_sl_trigger(state.sl_points, entry_premium)
     sl_order_id   = _place_sl_order(trade, sl_trigger)
     trade.sl_order_id        = sl_order_id
@@ -967,9 +999,13 @@ def _save_trade_log():
         trades.append({
             "id": t.id, "timestamp": t.timestamp,
             "direction": t.direction, "instrument": t.instrument,
-            "entry_price": t.entry_price, "quantity": t.quantity,
+            "entry_price":   t.entry_price,    # Nifty spot at entry
+            "entry_premium": t.entry_premium,  # Option LTP at entry
+            "quantity": t.quantity,
             "stop_loss": t.stop_loss, "target": t.target,
-            "exit_price": t.exit_price, "exit_time": t.exit_time,
+            "exit_price":   t.exit_price,      # Nifty spot at exit
+            "exit_premium": t.exit_premium,    # Option LTP at exit
+            "exit_time": t.exit_time,
             "exit_reason": t.exit_reason, "pnl": t.pnl,
             "status": t.status, "order_id": t.order_id,
             "paper": t.paper,

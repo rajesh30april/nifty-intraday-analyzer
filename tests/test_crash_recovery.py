@@ -110,7 +110,9 @@ class TestSnapshotWrite:
         assert snap["active_trade"]["entry_price"] == BASE_PRICE
 
     def test_snapshot_cleared_active_trade_after_exit(self, tmp_path):
-        at, _ = _fresh_at(tmp_path)
+        at, mock_km = _fresh_at(tmp_path)
+        # entry_ltp=150, exit_ltp=119 → P&L = (119-150)×65 = -2015 (loss)
+        mock_km.get_option_ltp.side_effect = [150.0, 119.0]
         _inject_trade(at)
 
         # Trigger SL exit
@@ -306,21 +308,23 @@ class TestStateRecovery:
             "is_paper_mode": True,
             "selected_strategy": "smart_router",
             "active_trade": {
-                "id":          "T-RECOVER-SL",
-                "timestamp":   datetime.now().isoformat(),
-                "direction":   "long",
-                "instrument":  "NIFTY20260320_23250CE",
-                "entry_price": BASE_PRICE,
-                "quantity":    65,
-                "stop_loss":   BASE_PRICE - 30,
-                "target":      BASE_PRICE + 60,
-                "order_id":    "PAPER-789",
-                "paper":       True,
-                "status":      "filled",
+                "id":           "T-RECOVER-SL",
+                "timestamp":    datetime.now().isoformat(),
+                "direction":    "long",
+                "instrument":   "NIFTY20260320_23250CE",
+                "entry_price":  BASE_PRICE,
+                "entry_premium": 150.0,   # option LTP at entry (new required field)
+                "quantity":     65,
+                "stop_loss":    BASE_PRICE - 30,
+                "target":       BASE_PRICE + 60,
+                "order_id":     "PAPER-789",
+                "paper":        True,
+                "status":       "filled",
             },
             "trades_today": [],
         }
-        at, _ = _fresh_at(tmp_path)
+        at, mock_km = _fresh_at(tmp_path)
+        mock_km.get_option_ltp.return_value = 118.0   # exit LTP → loss on SL hit
         at.STATE_SNAPSHOT_FILE.write_text(json.dumps(snap))
         at._recover_state(at.STATE_SNAPSHOT_FILE)
 
