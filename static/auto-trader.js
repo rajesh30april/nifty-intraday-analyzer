@@ -233,6 +233,75 @@ async function startAutoTrader() {
     }
 }
 
+// ── Render recovery banner based on recovery_type ──────────────
+function _renderRecoveryBanner(data) {
+    const banner  = document.getElementById('recovery-banner');
+    if (!banner) return;
+
+    if (!data.recovery_mode) {
+        banner.classList.add('hidden');
+        return;
+    }
+
+    const type    = data.recovery_type || 'closed';
+    const msg     = data.recovery_message || '';
+    const titleEl = document.getElementById('recovery-title');
+    const msgEl   = document.getElementById('recovery-msg');
+    const iconEl  = document.getElementById('recovery-icon');
+    const actEl   = document.getElementById('recovery-actions');
+
+    banner.classList.remove('hidden');
+
+    if (type === 'open') {
+        // Trade still live in Zerodha — user needs to resume managing it
+        banner.className = 'mb-3 border-2 border-red-400 bg-red-50 rounded-xl p-4';
+        if (iconEl)  iconEl.textContent  = '🚨';
+        if (titleEl) { titleEl.textContent = 'App Restarted — Open Trade Detected!';
+                       titleEl.className  = 'font-bold text-sm text-red-800'; }
+        if (msgEl)   { msgEl.textContent  = msg;
+                       msgEl.className    = 'text-red-700 text-xs mt-1'; }
+        if (actEl) actEl.innerHTML = `
+            <button onclick="resumeFromRecovery()"
+                class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold">
+                ▶ Resume Managing Trade
+            </button>
+            <a href="https://kite.zerodha.com/" target="_blank"
+                class="bg-white border border-red-400 text-red-700 text-xs px-3 py-1.5 rounded-lg font-bold">
+                Open Zerodha ↗
+            </a>`;
+
+    } else if (type === 'closed') {
+        // Trade was already closed in Zerodha — nothing to resume
+        banner.className = 'mb-3 border-2 border-yellow-400 bg-yellow-50 rounded-xl p-4';
+        if (iconEl)  iconEl.textContent  = '⚠️';
+        if (titleEl) { titleEl.textContent = 'Position Closed While App Was Offline';
+                       titleEl.className  = 'font-bold text-sm text-yellow-800'; }
+        if (msgEl)   { msgEl.textContent  = msg + ' Nothing to resume — the trade is already done.';
+                       msgEl.className    = 'text-yellow-700 text-xs mt-1'; }
+        if (actEl) actEl.innerHTML = `
+            <button onclick="dismissRecovery()"
+                class="bg-yellow-500 hover:bg-yellow-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold">
+                ✅ Got It — Dismiss
+            </button>
+            <a href="https://kite.zerodha.com/" target="_blank"
+                class="bg-white border border-yellow-400 text-yellow-700 text-xs px-3 py-1.5 rounded-lg font-bold">
+                Check P&amp;L in Zerodha ↗
+            </a>`;
+
+    } else {
+        // type === 'clean' — just a routine restore, no alert needed
+        banner.classList.add('hidden');
+        return;
+    }
+
+    // Beep once per session
+    if (!banner._beeped && type !== 'clean') {
+        _atBeep(type === 'open' ? 440 : 330, 200);
+        setTimeout(() => _atBeep(type === 'open' ? 330 : 440, 300), 220);
+        banner._beeped = true;
+    }
+}
+
 // ── Resume from crash recovery (dismiss banner + start trader) ──
 async function resumeFromRecovery() {
     await dismissRecovery();
@@ -481,22 +550,8 @@ function renderAutoTrader(data) {
     }
 
     // ── CRASH RECOVERY BANNER ──────────────────────────────────
-    const recoveryBanner = document.getElementById('recovery-banner');
-    const recoveryMsg    = document.getElementById('recovery-msg');
-    if (recoveryBanner) {
-        if (data.recovery_mode) {
-            recoveryBanner.classList.remove('hidden');
-            if (recoveryMsg) recoveryMsg.textContent = data.recovery_message || '';
-            // Play alert beep once
-            if (!recoveryBanner._beeped) {
-                _atBeep(440, 200);
-                setTimeout(() => _atBeep(330, 300), 220);
-                recoveryBanner._beeped = true;
-            }
-        } else {
-            recoveryBanner.classList.add('hidden');
-        }
-    }
+    // ── CRASH RECOVERY BANNER — rendered per recovery_type ──────
+    _renderRecoveryBanner(data);
 }
 
 // ── Trade history ────────────────────────────────────────────────

@@ -88,8 +88,9 @@ class TraderState:
     kill_switch: bool = False  # Emergency stop
     selected_strategy: str = "smart_router"  # default strategy
     last_block_reason: str | None = None       # why last signal was blocked
-    recovery_mode: bool = False   # True if state was restored after a crash
-    recovery_message: str = ""    # Human-readable description of what was recovered
+    recovery_mode: bool = False    # True if state was restored after a crash
+    recovery_message: str = ""     # Human-readable description of what was recovered
+    recovery_type: str = ""        # 'open' = trade still live | 'closed' = already exited | 'clean' = no trade
 
 
 # ── Singleton State ─────────────────────────────────────────────
@@ -200,6 +201,7 @@ def _recover_state(snapshot_file: Path | None = None):
     at = snap.get("active_trade")
     if not at:
         state.recovery_mode    = True
+        state.recovery_type    = "clean"
         state.recovery_message = (
             f"✅ State restored: {len(state.trades_today)} trades today, "
             f"PnL=₹{state.total_pnl:+,.0f}, no open position"
@@ -228,6 +230,7 @@ def _recover_state(snapshot_file: Path | None = None):
         state.highest_price_since_entry = at["entry_price"]
         state.lowest_price_since_entry  = at["entry_price"]
         state.recovery_mode    = True
+        state.recovery_type    = "open"
         state.recovery_message = (
             f"🚨 RECOVERED open {'PAPER' if paper_mode else 'LIVE'} trade: "
             f"{at['direction'].upper()} {at['instrument']} "
@@ -237,7 +240,6 @@ def _recover_state(snapshot_file: Path | None = None):
         print(f"   ⚠️  Auto-trader is NOT running — click START to resume managing it.")
     else:
         # Position already closed in Zerodha while app was down
-        # Mark the trade as exited with unknown PnL
         ghost_trade = Trade(
             id=at["id"], timestamp=at["timestamp"],
             direction=at["direction"], instrument=at["instrument"],
@@ -246,12 +248,13 @@ def _recover_state(snapshot_file: Path | None = None):
             order_id=at.get("order_id"), paper=paper_mode,
             status=OrderStatus.EXITED,
             exit_reason="App crashed — position closed by Zerodha/broker while app was down",
-            pnl=0.0,   # Can't calculate without exit price
+            pnl=0.0,
         )
         state.trades_today.append(ghost_trade)
         state.recovery_mode    = True
+        state.recovery_type    = "closed"
         state.recovery_message = (
-            f"⚠️ Position was closed while app was down: "
+            f"Position was closed while app was down: "
             f"{at['direction'].upper()} {at['instrument']}. "
             f"Check Zerodha for actual P&L."
         )
@@ -853,6 +856,7 @@ def get_trader_status() -> dict:
         "selected_strategy": state.selected_strategy,
         "block_reason":     state.last_block_reason,
         "recovery_mode":    state.recovery_mode,
+        "recovery_type":    state.recovery_type,
         "recovery_message": state.recovery_message,
     }
 
