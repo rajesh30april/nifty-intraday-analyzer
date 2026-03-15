@@ -513,15 +513,17 @@
 
                     <!-- Qty mode toggle -->
                     <div class="col-span-2 md:col-span-2">
-                      <label class="text-[10px] text-gray-400 block mb-1">Quantity Mode</label>
+                      <label class="text-[10px] text-gray-400 block mb-1">How to size each trade?</label>
                       <div class="flex gap-1">
                         <button id="at-qty-mode-manual" onclick="setAtQtyMode('manual')"
-                          class="flex-1 text-xs px-2 py-1.5 rounded-l-lg font-bold border border-gray-600 bg-[#0053e2] text-white transition">
-                          Manual
+                          class="flex-1 text-xs px-2 py-1.5 rounded-l-lg font-bold border border-gray-600 bg-[#0053e2] text-white transition"
+                          title="You pick how many lots to trade every time">
+                          📌 Fixed Lots
                         </button>
                         <button id="at-qty-mode-capital" onclick="setAtQtyMode('capital')"
-                          class="flex-1 text-xs px-2 py-1.5 rounded-r-lg font-bold border border-gray-600 bg-gray-700 text-gray-300 transition">
-                          By Capital
+                          class="flex-1 text-xs px-2 py-1.5 rounded-r-lg font-bold border border-gray-600 bg-gray-700 text-gray-300 transition"
+                          title="App auto-calculates lots from your capital at entry time">
+                          💰 Auto (by Capital)
                         </button>
                       </div>
                     </div>
@@ -529,32 +531,52 @@
                   </div>
 
                   <!-- Qty detail row — switches based on mode -->
-                  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 items-end mt-2">
+                  <div class="mt-3 space-y-2">
 
-                    <!-- Manual mode -->
+                    <!-- ── Fixed Lots mode ── -->
                     <div id="at-qty-manual-row">
-                      <label class="text-[10px] text-gray-400 block mb-1" for="at-manual-qty">Units (lots × 75)</label>
-                      <input id="at-manual-qty" type="number" value="750" min="75" max="7500" step="75"
-                        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
-                        onchange="applyAtSettings()">
-                    </div>
-                    <div id="at-qty-manual-hint" class="text-[10px] text-gray-500 pt-4">
-                      780 units = <span id="at-lots-hint">10</span> lots × 75
+                      <div class="flex items-end gap-3">
+                        <div class="w-28">
+                          <label class="text-[10px] text-gray-400 block mb-1" for="at-manual-qty">Lots to trade</label>
+                          <input id="at-manual-qty" type="number" value="10" min="1" max="100" step="1"
+                            class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-sm text-white font-bold"
+                            oninput="_updateLotsHint()">
+                        </div>
+                        <!-- Live breakdown -->
+                        <div class="text-[11px] text-gray-400 pb-2 leading-5">
+                          <span id="at-lots-hint-line1" class="text-white font-bold">10 lots</span>
+                          <span class="text-gray-500"> × 75 units/lot =</span>
+                          <span id="at-lots-hint-units" class="text-[#ffc220] font-bold"> 750 units</span><br>
+                          <span class="text-gray-500">Approx margin needed: </span>
+                          <span id="at-lots-hint-cost" class="text-green-400 font-bold">~₹1,12,500</span>
+                          <span class="text-gray-600"> (at ₹150 premium)</span>
+                        </div>
+                      </div>
+                      <p class="text-[10px] text-gray-600 mt-1">💡 1 Nifty options lot = 75 units. Every trade will use exactly this many lots.</p>
                     </div>
 
-                    <!-- Capital mode -->
+                    <!-- ── Auto Capital mode ── -->
                     <div id="at-qty-capital-row" class="hidden">
-                      <label class="text-[10px] text-gray-400 block mb-1" for="at-capital">Capital (₹)</label>
-                      <input id="at-capital" type="number" value="96000" min="10000" max="10000000" step="5000"
-                        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
-                        onchange="applyAtSettings()">
-                    </div>
-                    <div id="at-qty-capital-hint" class="hidden text-[10px] text-gray-400 pt-4">
-                      Est. qty: <span id="at-capital-qty-est" class="text-[#ffc220] font-bold">--</span>
-                      <span class="text-gray-500"> (based on ~0.35% ATM premium)</span>
+                      <div class="flex items-end gap-3">
+                        <div class="w-36">
+                          <label class="text-[10px] text-gray-400 block mb-1" for="at-capital">Your trading capital (₹)</label>
+                          <input id="at-capital" type="number" value="96000" min="10000" max="10000000" step="5000"
+                            class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-sm text-white font-bold"
+                            oninput="_updateCapitalEstimate()">
+                        </div>
+                        <!-- Live breakdown -->
+                        <div class="text-[11px] text-gray-400 pb-2 leading-5">
+                          <span class="text-gray-500">≈ </span>
+                          <span id="at-capital-qty-est" class="text-[#ffc220] font-bold">--</span>
+                          <span class="text-gray-500"> lots at entry</span><br>
+                          <span id="at-capital-units-est" class="text-white font-bold">--</span>
+                          <span class="text-gray-500"> units (lots × 75)</span>
+                        </div>
+                      </div>
+                      <p class="text-[10px] text-gray-600 mt-1">💡 App estimates the live option premium at entry and buys as many lots as your capital allows. More accurate than guessing lots in advance.</p>
                     </div>
 
-                    <div class="col-span-2 flex items-end">
+                    <div>
                       <button onclick="applyAtSettings()"
                         class="w-full bg-[#0053e2] hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold">
                         ✅ Apply Settings
