@@ -120,6 +120,13 @@ def _save_state_snapshot():
         "orders_placed":   state.orders_placed,
         "is_paper_mode":   state.is_paper_mode,
         "selected_strategy": state.selected_strategy,
+        # ── Runtime trade settings (survive restart) ──
+        "sl_points":          state.sl_points,
+        "trailing_sl_points": state.trailing_sl_points,
+        "rr_ratio":           state.rr_ratio,
+        "qty_mode":           state.qty_mode,
+        "manual_qty":         state.manual_qty,
+        "capital":            state.capital,
         "active_trade":    {
             "id":          active.id,
             "timestamp":   active.timestamp,
@@ -187,10 +194,18 @@ def _recover_state(snapshot_file: Path | None = None):
         return
 
     # ── Restore base counters ─────────────────────────────────
-    state.total_pnl       = snap.get("total_pnl", 0.0)
-    state.orders_placed   = snap.get("orders_placed", 0)
-    state.is_paper_mode   = snap.get("is_paper_mode", not LIVE_TRADING)
+    state.total_pnl         = snap.get("total_pnl", 0.0)
+    state.orders_placed     = snap.get("orders_placed", 0)
+    state.is_paper_mode     = snap.get("is_paper_mode", not LIVE_TRADING)
     state.selected_strategy = snap.get("selected_strategy", "smart_router")
+
+    # ── Restore runtime trade settings ───────────────────────
+    state.sl_points          = snap.get("sl_points",          SL_POINTS)
+    state.trailing_sl_points = snap.get("trailing_sl_points", TRAILING_SL_POINTS)
+    state.rr_ratio           = snap.get("rr_ratio",           2.0)
+    state.qty_mode           = snap.get("qty_mode",           "manual")
+    state.manual_qty         = snap.get("manual_qty",         DEFAULT_QUANTITY)
+    state.capital            = snap.get("capital",            DEFAULT_CAPITAL)
 
     # ── Restore historical trades ─────────────────────────────
     for t in snap.get("trades_today", []):
@@ -326,8 +341,8 @@ def _is_market_hours() -> bool:
 
 # ── Order Placement ───────────────────────────────────────────────────────
 
-CAPITAL = float(os.getenv("TRADING_CAPITAL", "96000"))
-LOT_SIZE = int(os.getenv("LOT_SIZE", "65"))
+# CAPITAL moved to line 39 as DEFAULT_CAPITAL; LOT_SIZE consolidated below
+LOT_SIZE = int(os.getenv("LOT_SIZE", "75"))  # Nifty lot size (75 since Jul 2024)
 
 
 # Cache instruments to avoid repeated API calls
@@ -413,7 +428,7 @@ def _get_option_symbol(nifty_price: float, direction: Direction) -> tuple[str, i
     print(f"🎯 Strike Selection:")
     print(f"   Nifty: {nifty_price:.0f} | ATM: {atm_strike} | Picked: {strike} {option_type}")
     print(f"   Expiry: {expiry_str} | Symbol: {symbol} | Token: {token}")
-    print(f"   Why: OTM = cheaper premium = more lots per ₹{CAPITAL:.0f}")
+    print(f"   Why: OTM = cheaper premium = more lots per ₹{state.capital:.0f}")
 
     return symbol, token
 
@@ -654,7 +669,8 @@ def evaluate_and_act(df, current_price: float):
     _enter_trade(signal.direction, current_price)
 
 
-LOT_SIZE = 75   # Nifty F&O lot size (as of 2024)
+# LOT_SIZE defined above as env-var default 65; 75 is the current Nifty lot size.
+# Override via LOT_SIZE env var if needed.
 
 
 def _resolve_quantity(nifty_price: float) -> int:
