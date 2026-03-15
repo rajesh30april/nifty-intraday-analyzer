@@ -783,7 +783,18 @@ def evaluate_and_act(df, current_price: float):
         _sync_trailing_sl_to_exchange()
         return
 
-    # 3. No active trade — evaluate selected strategy
+    # 3. Guard: no strategy evaluation outside NSE market hours.
+    #    Outside 9:15–15:30 IST there is no live candle data — only yesterday's
+    #    stale OHLCV. Strategies that look at timestamps (ORB, VWAP, etc.) will
+    #    always see conditions as met (375 min since "open"), producing phantom
+    #    signals that pollute the UI and confuse the user.
+    if not _is_market_hours():
+        state.last_block_reason  = "Market closed — evaluation paused until 9:15 AM"
+        state.last_signal_reason = "⏸ Market closed"
+        state.last_conditions    = []
+        return
+
+    # 4. No active trade — evaluate selected strategy
     strat_info = get_strategy(state.selected_strategy)
     if strat_info:
         signal = strat_info.evaluate(df)
@@ -796,7 +807,7 @@ def evaluate_and_act(df, current_price: float):
         for c in signal.conditions
     ]
 
-    # 4. Check safety before actually placing orders
+    # 5. Check safety before actually placing orders
     safe, safety_msg = _check_safety()
     if not safe:
         state.last_signal_reason = f"{signal.reason} | ⚠️ {safety_msg}"

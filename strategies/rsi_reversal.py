@@ -112,10 +112,11 @@ def evaluate_rsi_reversal(
         detail=f"Price {dist_pct:.2f}% from EMA-50 ({ema_50:.0f})",
     ))
 
-    # ── 5. Time filter ─────────────────────────────
-    last_time = df.index[-1]
-    market_open = last_time.replace(hour=9, minute=15, second=0)
-    mins_since = (last_time - market_open).total_seconds() / 60
+    # ── 5. Time filter — use wall clock, NOT candle timestamp ──────────
+    from datetime import datetime as _dt
+    _now = _dt.now()
+    _market_open_dt = _now.replace(hour=9, minute=15, second=0, microsecond=0)
+    mins_since = max(0, (_now - _market_open_dt).total_seconds() / 60)
     time_ok = mins_since >= 15
 
     conditions.append(StrategyCondition(

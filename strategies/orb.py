@@ -5,9 +5,13 @@ a range, then trade the breakout direction with volume confirmation.
 """
 
 import pandas as pd
+from datetime import datetime, time as dt_time, date as dt_date
 from strategy import StrategySignal, StrategyCondition, Direction
 import indicators as ind
 from strategies.registry import register, StrategyInfo
+
+MARKET_OPEN_TIME  = dt_time(9, 15)
+MARKET_CLOSE_TIME = dt_time(15, 30)
 
 
 def evaluate_orb(
@@ -29,39 +33,67 @@ def evaluate_orb(
     if len(df) < 20:
         return StrategySignal(should_enter=False, reason="Insufficient data")
 
-    # Get today's data only
-    today = df.index[-1].date()
-    today_df = df[df.index.date == today]
+    # ── Wall-clock market hours guard ───────────────────────────────────────
+    # CRITICAL: use datetime.now() — NOT df.index[-1] — for time checks.
+    # If evaluate_orb runs at 1 AM (before market open), df contains yesterday's
+    # candles. Using the last candle's timestamp gives mins_since ≈ 375 min
+    # (all day!), making the time condition always True on stale data.
+    now_wall = datetime.now()
+    now_time = now_wall.time()
+
+    if not (MARKET_OPEN_TIME <= now_time <= MARKET_CLOSE_TIME):
+        return StrategySignal(
+            should_enter=False,
+            reason=f"⏸ Market closed ({now_time.strftime('%H:%M')} IST) — ORB paused",
+        )
+
+    # ── Stale data guard — candles must be from today ────────────────────────
+    # Kite historical API returns yesterday's data when market is closed.
+    # If the last candle's date != today, bail out immediately.
+    last_candle_date = df.index[-1].date()
+    today_date       = now_wall.date()
+    if last_candle_date != today_date:
+        return StrategySignal(
+            should_enter=False,
+            reason=f"⏸ Stale data ({last_candle_date}) — waiting for today's candles",
+        )
+
+    # Get today's data only (safe: last_candle_date == today)
+    today_df = df[df.index.date == today_date]
     if len(today_df) < 4:
         return StrategySignal(should_enter=False, reason="Need more today's data")
 
-    # Calculate ORB range
-    start_time = today_df.index[0]
-    orb_end = start_time + pd.Timedelta(minutes=orb_minutes)
+    # ── ORB range: first N minutes of TODAY's session ────────────────────────
+    # Use wall-clock minutes since 9:15 for the time check — NOT the candle
+    # timestamp — so the check is correct regardless of data freshness.
+    market_open_dt = now_wall.replace(hour=9, minute=15, second=0, microsecond=0)
+    mins_since_open = max(0, (now_wall - market_open_dt).total_seconds() / 60)
+    time_ok = mins_since_open >= orb_minutes
+
+    orb_end     = today_df.index[0] + pd.Timedelta(minutes=orb_minutes)
     orb_candles = today_df[today_df.index <= orb_end]
 
     if len(orb_candles) < 2:
-        return StrategySignal(should_enter=False, reason="ORB range not formed")
+        return StrategySignal(should_enter=False, reason="ORB range not formed yet")
 
-    orb_high = float(orb_candles["high"].max())
-    orb_low = float(orb_candles["low"].min())
+    orb_high  = float(orb_candles["high"].max())
+    orb_low   = float(orb_candles["low"].min())
     orb_range = orb_high - orb_low
 
-    curr = df.iloc[-1]
-    price = float(curr["close"])
-    c_high = float(curr["high"])
-    c_low = float(curr["low"])
-
-    # ── 1. Time filter ─────────────────────────────
-    last_time = df.index[-1]
-    market_open = last_time.replace(hour=9, minute=15, second=0)
-    mins_since = (last_time - market_open).total_seconds() / 60
-    time_ok = mins_since >= orb_minutes
+    curr    = df.iloc[-1]
+    price   = float(curr["close"])
+    c_high  = float(curr["high"])
+    c_low   = float(curr["low"])
 
     conditions.append(StrategyCondition(
         name="ORB Formed",
         met=time_ok,
-        detail=f"ORB range: {orb_low:.0f} - {orb_high:.0f} ({orb_range:.0f} pts)",
+        detail=(
+            f"ORB range: {orb_low:.0f} - {orb_high:.0f} ({orb_range:.0f} pts)"
+            f" | {mins_since_open:.0f}min since open"
+            if time_ok else
+            f"Need {orb_minutes - mins_since_open:.0f} more min to complete ORB range"
+        ),
     ))
 
     # ── 2. Breakout detection ──────────────────────

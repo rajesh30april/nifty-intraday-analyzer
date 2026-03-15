@@ -13,8 +13,8 @@
   "strike_offset": 0,
   "max_trades_per_day": 6,
   "active_trade": {
-    "id": "T-20260316-011011637092",
-    "timestamp": "2026-03-16T01:10:11.637096",
+    "id": "T-20260316-011449949072",
+    "timestamp": "2026-03-16T01:14:49.949077",
     "direction": "long",
     "instrument": "NIFTY20260317_23250CE",
     "entry_price": 23200.0,

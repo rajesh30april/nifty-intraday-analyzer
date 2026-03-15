@@ -94,9 +94,11 @@ def evaluate_gap_and_go(df: pd.DataFrame) -> StrategySignal:
         ),
     ))
 
-    # ── Condition 4: Not too late in the day ─────────────────────
-    from datetime import time as dt_time
-    curr_time = df.index[-1].time()
+    # ── Condition 4: Not too late in the day (wall clock) ───────────
+    # Use datetime.now() — NOT df.index[-1].time() — to avoid stale-data
+    # false positives where yesterday's 9:xx candle makes time_ok=True at 1 AM.
+    from datetime import datetime as _dt, time as dt_time
+    curr_time = _dt.now().time()
     time_ok   = curr_time <= dt_time(10, 30)  # gap trades work best early
     conditions.append(StrategyCondition(
         name="Early Session",

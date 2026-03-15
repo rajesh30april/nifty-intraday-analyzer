@@ -105,10 +105,13 @@ def evaluate_vwap_reversion(
         detail=f"ADX {adx_val:.0f} ({'OK, ranging' if adx_ok else 'trending — avoid reversion'})",
     ))
 
-    # ── 5. Time filter ─────────────────────────────
-    last_time = df.index[-1]
-    market_open = last_time.replace(hour=9, minute=15, second=0)
-    mins_since = (last_time - market_open).total_seconds() / 60
+    # ── 5. Time filter — use wall clock, NOT candle timestamp ──────────
+    # Using df.index[-1] for mins_since is wrong when data is stale (e.g.
+    # yesterday's last candle at 3:30 PM gives mins_since = 375 at 1 AM).
+    from datetime import datetime as _dt
+    _now = _dt.now()
+    _market_open_dt = _now.replace(hour=9, minute=15, second=0, microsecond=0)
+    mins_since = max(0, (_now - _market_open_dt).total_seconds() / 60)
     time_ok = mins_since >= 15
 
     conditions.append(StrategyCondition(
