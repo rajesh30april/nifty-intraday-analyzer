@@ -220,6 +220,7 @@ def _backtest_day(
                 df.index[i].strftime("%H:%M"),
                 entry_price, price, stop_loss, target,
                 pnl_pts, "Time Exit", conditions_met,
+                quantity=quantity,
             )
             result.trades.append(trade)
             in_trade = False
@@ -246,6 +247,7 @@ def _backtest_day(
                         df.index[i].strftime("%H:%M"),
                         entry_price, exit_price, stop_loss, target,
                         pnl_pts, reason, conditions_met,
+                        quantity=quantity,
                     )
                     result.trades.append(trade)
                     in_trade = False
@@ -258,6 +260,7 @@ def _backtest_day(
                         df.index[i].strftime("%H:%M"),
                         entry_price, target, stop_loss, target,
                         pnl_pts, "Target", conditions_met,
+                        quantity=quantity,
                     )
                     result.trades.append(trade)
                     in_trade = False
@@ -276,6 +279,7 @@ def _backtest_day(
                         df.index[i].strftime("%H:%M"),
                         entry_price, exit_price, stop_loss, target,
                         pnl_pts, reason, conditions_met,
+                        quantity=quantity,
                     )
                     result.trades.append(trade)
                     in_trade = False
@@ -287,6 +291,7 @@ def _backtest_day(
                         df.index[i].strftime("%H:%M"),
                         entry_price, target, stop_loss, target,
                         pnl_pts, "Target", conditions_met,
+                        quantity=quantity,
                     )
                     result.trades.append(trade)
                     in_trade = False
@@ -455,6 +460,7 @@ def replay_day(
     rr_ratio: float = DEFAULT_RR_RATIO,
     max_trades: int = 3,
     data_source: str = "yahoo",
+    quantity: int = QUANTITY,
 ) -> dict:
     """Replay a single trading day candle-by-candle.
 
@@ -572,6 +578,7 @@ def replay_day(
                         date_str, direction, entry_time, time_str,
                         entry_price, exit_p, stop_loss_lvl, target_lvl,
                         pnl, rsn, conditions_met,
+                        quantity=quantity,
                     ))
                     cumul_pts  += pnl
                     unrealized  = pnl
@@ -602,6 +609,7 @@ def replay_day(
                         date_str, direction, entry_time, time_str,
                         entry_price, exit_p, stop_loss_lvl, target_lvl,
                         pnl, rsn, conditions_met,
+                        quantity=quantity,
                     ))
                     cumul_pts  += pnl
                     unrealized  = pnl
