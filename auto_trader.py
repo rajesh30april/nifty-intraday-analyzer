@@ -446,33 +446,39 @@ def _place_order(symbol: str, direction: Direction,
         return None
 
 
-def _get_option_ltp(symbol: str) -> float | None:
-    """Fetch last traded price of an option from Zerodha."""
-    try:
-        clean = symbol.replace("NFO:", "")
-        quote = kite_manager.kite.quote([f"NFO:{clean}"])
-        ltp = quote.get(f"NFO:{clean}", {}).get("last_price")
-        return float(ltp) if ltp else None
-    except Exception as e:
-        print(f"⚠️  LTP fetch failed for {symbol}: {e}")
-        return None
+def _estimate_option_sl_trigger(direction: str, sl_points: float) -> float:
+    """Estimate option-level SL trigger price WITHOUT any API call.
+
+    Logic: ATM options have delta ≈ 0.5. So a 30-point Nifty move
+    ≈ ₹15 move in option premium. We use this to estimate the
+    option price at which our Nifty SL would be hit.
+
+    This is used ONCE at entry to set a fixed exchange backstop.
+    The tick guard handles all intelligent in-app SL management.
+    """
+    ASSUMED_DELTA = 0.5         # ATM option delta approximation
+    ASSUMED_ENTRY_PREMIUM = float(os.getenv("ASSUMED_PREMIUM", "150"))  # configurable
+
+    # Premium drop expected when Nifty moves SL_POINTS against us
+    expected_premium_loss = sl_points * ASSUMED_DELTA
+    trigger = max(ASSUMED_ENTRY_PREMIUM - expected_premium_loss, 1.0)
+    return round(trigger, 1)
 
 
 def _place_sl_order(trade: "Trade", sl_trigger_price: float) -> str | None:
-    """Place a Stop-Loss Market (SL-M) order at the exchange for crash safety.
+    """Place a Stop-Loss Market (SL-M) order at the exchange.
 
-    The trigger is the option price corresponding to SL being hit.
-    Uses the option LTP at entry × a loss ratio to derive the option-level SL.
-    In paper mode returns a fake order ID.
+    This is a CRASH BACKSTOP — placed once at entry, never updated.
+    The tick guard handles all active SL management (no API calls).
+    This only fires if the app dies and the exchange holds the order.
     """
     if trade.paper:
         fake_id = f"SL-PAPER-{datetime.now().strftime('%H%M%S')}"
-        print(f"📝 [PAPER SL] SL-M placed @ trigger ₹{sl_trigger_price:.2f} | ID: {fake_id}")
+        print(f"📝 [PAPER SL] SL-M backstop @ ₹{sl_trigger_price:.2f} | ID: {fake_id}")
         return fake_id
 
     try:
         clean = trade.instrument.replace("NFO:", "")
-        # SL order is the OPPOSITE direction (exit the position)
         transaction = (
             kite_manager.kite.TRANSACTION_TYPE_SELL
             if trade.direction == "long"
@@ -485,63 +491,42 @@ def _place_sl_order(trade: "Trade", sl_trigger_price: float) -> str | None:
             transaction_type=transaction,
             quantity=trade.quantity,
             product=kite_manager.kite.PRODUCT_MIS,
-            order_type=kite_manager.kite.ORDER_TYPE_SLM,   # Stop-Loss Market
-            trigger_price=round(sl_trigger_price, 1),
+            order_type=kite_manager.kite.ORDER_TYPE_SLM,
+            trigger_price=sl_trigger_price,
         )
-        print(f"🛡 [LIVE] SL-M order placed @ ₹{sl_trigger_price:.2f} | ID: {order_id}")
+        print(f"🛡 [LIVE] SL-M backstop placed @ ₹{sl_trigger_price:.2f} | ID: {order_id}")
         return str(order_id)
     except Exception as e:
-        print(f"⚠️  SL-M order failed (will use in-app guard as fallback): {e}")
+        print(f"⚠️  SL-M order failed (tick guard still protects): {e}")
         return None
 
 
 def _cancel_sl_order(trade: "Trade") -> None:
-    """Cancel the standing SL-M order at the exchange."""
+    """Cancel the standing SL-M backstop order before placing an exit.
+
+    MUST be called before any exit order to prevent double-fill.
+    """
     if not trade.sl_order_id or trade.paper:
+        trade.sl_order_id = None
         return
     if trade.sl_order_id.startswith("SL-PAPER"):
+        trade.sl_order_id = None
         return
     try:
         kite_manager.kite.cancel_order(
             variety=kite_manager.kite.VARIETY_REGULAR,
             order_id=trade.sl_order_id,
         )
-        print(f"🗑 SL-M order {trade.sl_order_id} cancelled")
+        print(f"🗑 SL-M backstop {trade.sl_order_id} cancelled")
     except Exception as e:
-        print(f"⚠️  Could not cancel SL order {trade.sl_order_id}: {e}")
+        print(f"⚠️  Could not cancel SL-M {trade.sl_order_id}: {e}")
     finally:
         trade.sl_order_id = None
 
-
-def _update_exchange_sl(trade: "Trade", new_nifty_sl: float) -> None:
-    """Cancel old SL-M order and place new one when trailing SL moves.
-
-    new_nifty_sl: new SL level in Nifty spot points.
-    We derive the option trigger price proportionally from the current LTP.
-    """
-    ltp = _get_option_ltp(trade.instrument) if not trade.paper else None
-    if ltp is None and not trade.paper:
-        # Can't derive option SL without LTP — skip exchange update
-        # In-app tick guard still protects us
-        print("⚠️  Skipping exchange SL update — LTP unavailable")
-        return
-
-    # Derive option-level SL trigger:
-    # Use current option LTP × SL_POINTS/TRAILING_SL_POINTS ratio as a proxy.
-    # A simpler, more robust approach: option SL = ltp × 0.5 (50% of current premium).
-    # This is a conservative floor — ensures we don't over-stay a losing option.
-    if ltp:
-        option_sl_trigger = round(ltp * 0.50, 1)   # 50% drop = exit
-        option_sl_trigger = max(option_sl_trigger, 1.0)  # minimum ₹1
-    else:
-        option_sl_trigger = 1.0  # paper fallback
-
-    _cancel_sl_order(trade)
-    new_id = _place_sl_order(trade, option_sl_trigger)
-    if new_id:
-        trade.sl_order_id = new_id
-        print(f"🔄 Exchange SL updated → ₹{new_nifty_sl:.0f} (Nifty) "
-              f"| option trigger ₹{option_sl_trigger:.2f}")
+    # NOTE: _update_exchange_sl intentionally REMOVED.
+    # Trailing SL is managed purely in-app by the tick guard (zero API calls).
+    # The exchange SL-M is a fixed crash backstop — updating it on every
+    # trailing move would block the tick thread with 3 API calls per update.
 
 
 def _exit_position(reason: str, current_price: float):
@@ -699,22 +684,17 @@ def _enter_trade(direction: Direction, price: float):
     print(f"🚀 [{mode}] ENTRY {direction.value.upper()} {DEFAULT_QUANTITY}x {symbol} "
           f"@ ₹{price} | SL: ₹{sl} | Target: ₹{target}")
 
-    # ── Place SL-M order at exchange immediately after entry ──────
-    # This protects the position even if the app crashes.
-    # Option LTP is fetched to derive the option-level SL trigger price.
-    option_ltp = _get_option_ltp(symbol) if not state.is_paper_mode else None
-    if option_ltp:
-        # SL trigger = option LTP × 0.5  (50% drop in premium = exit)
-        # This is conservative — premium can drop fast in F&O
-        sl_trigger = max(round(option_ltp * 0.50, 1), 1.0)
-    else:
-        sl_trigger = 1.0   # paper / LTP unavailable — symbolic
-
+    # ── Place SL-M backstop at exchange immediately after entry ───
+    # Crash protection: if app dies, exchange still holds this order.
+    # We estimate the option trigger WITHOUT an API call (delta approximation)
+    # so the tick thread is never blocked.
+    # Tick guard handles all active / trailing SL management.
+    sl_trigger = _estimate_option_sl_trigger(direction.value, SL_POINTS)
     sl_order_id = _place_sl_order(trade, sl_trigger)
     trade.sl_order_id = sl_order_id
 
-    print(f"🛡 Exchange SL-M set @ option ₹{sl_trigger:.2f} "
-          f"(Nifty SL: ₹{sl:.0f}) | SL order: {sl_order_id}")
+    print(f"🛡 Exchange SL-M backstop @ ₹{sl_trigger:.2f} (option) "
+          f"| Nifty SL: ₹{sl:.0f} | order: {sl_order_id}")
 
     _save_trade_log()
     _save_state_snapshot()   # ← crash recovery: snapshot immediately on entry
@@ -738,19 +718,17 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
             state.lowest_price_since_entry, current_price
         )
 
-    # Trailing stop-loss
+    # Trailing stop-loss — updated in-app only (zero API calls in tick thread)
     if is_long:
         new_sl = state.highest_price_since_entry - TRAILING_SL_POINTS
         if new_sl > trade.stop_loss:
             trade.stop_loss = round(new_sl, 2)
-            _save_state_snapshot()   # SL moved — persist latest SL for crash recovery
-            _update_exchange_sl(trade, trade.stop_loss)  # update exchange SL-M order
+            _save_state_snapshot()   # persist new SL for crash recovery
     else:
         new_sl = state.lowest_price_since_entry + TRAILING_SL_POINTS
         if new_sl < trade.stop_loss:
             trade.stop_loss = round(new_sl, 2)
-            _save_state_snapshot()   # SL moved — persist latest SL for crash recovery
-            _update_exchange_sl(trade, trade.stop_loss)  # update exchange SL-M order
+            _save_state_snapshot()   # persist new SL for crash recovery
 
     # Check stop-loss hit
     if is_long and current_price <= trade.stop_loss:
