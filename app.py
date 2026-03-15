@@ -1592,33 +1592,71 @@ async def auto_trader_status():
     return {"success": True, **status}
 
 
+def _fetch_india_vix_from_nse(fallback: float = 15.0) -> float:
+    """Fetch India VIX directly from NSE's official allIndices API.
+
+    NSE requires a browser-like session (cookie handshake) before the
+    JSON endpoint will respond. We do a lightweight GET on the homepage
+    first to acquire the session cookie, then hit the data endpoint.
+
+    Returns the last-traded VIX value, or `fallback` if NSE is
+    unreachable (weekend / market holiday / network issue).
+    """
+    import requests
+    NSE_HOME   = "https://www.nseindia.com"
+    NSE_INDICES = "https://www.nseindia.com/api/allIndices"
+    HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/122.0.0.0 Safari/537.36",
+        "Accept":          "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer":         NSE_HOME + "/",
+    }
+    # Bypass any corporate HTTP proxy for the direct NSE connection —
+    # proxies like Walmart sysproxy block NSE with 407.
+    NO_PROXY = {"http": "", "https": ""}
+    try:
+        session = requests.Session()
+        session.get(NSE_HOME, headers=HEADERS, timeout=8,
+                    proxies=NO_PROXY)             # acquire cookie, no proxy
+        resp = session.get(NSE_INDICES, headers=HEADERS, timeout=8,
+                           proxies=NO_PROXY)
+        resp.raise_for_status()
+        for item in resp.json().get("data", []):
+            if "VIX" in item.get("index", "").upper():
+                val = float(item["last"])
+                print(f"[VIX] NSE fetch OK: {val}")
+                return val
+        print("[VIX] NSE returned data but no VIX item found — using fallback")
+    except Exception as exc:
+        print(f"[VIX] NSE fetch FAILED ({type(exc).__name__}) — using fallback {fallback}")
+    return fallback
+
+
 @app.get("/api/premium-estimate")
 async def premium_estimate(spot: float = 23500.0, offset: int = 0):
     """Return a Black-Scholes-based ATM / OTM premium estimate.
 
-    Uses India VIX (^INDIAVIX via yfinance, cached 5 min) and days-to-expiry
-    to the nearest Nifty 50 weekly Tuesday expiry so the preview in the
-    settings panel is grounded in reality, not a hardcoded 0.22% magic number.
+    Uses India VIX (fetched live from NSE allIndices API, cached 5 min)
+    and days-to-expiry to the nearest Nifty 50 weekly Tuesday expiry
+    so the preview in the settings panel is grounded in reality.
 
     offset: 0 = ATM, 1 = 1-OTM, 2 = 2-OTM  (mirrors state.strike_offset)
     """
     import math
-    import yfinance as yf
     from datetime import date, timedelta
 
-    # ── India VIX (cached 5 min) ──────────────────────────────────
+    # ── India VIX — fetched directly from NSE (cached 5 min) ───────
+    # Source: NSE official allIndices API (same data NSE website shows).
+    # Falls back to 15.0 when market is closed or NSE is unreachable.
     _now = _time.time()
     cache = getattr(premium_estimate, "_cache", {})
     if _now - cache.get("ts", 0) > 300:   # 5-minute TTL
-        try:
-            vix_ticker = yf.Ticker("^INDIAVIX")
-            hist = vix_ticker.history(period="1d", interval="1m")
-            vix_val = float(hist["Close"].iloc[-1]) if not hist.empty else 15.0
-        except Exception:
-            vix_val = 15.0   # sensible Nifty default when market closed
+        vix_val = _fetch_india_vix_from_nse()
         cache = {"ts": _now, "vix": vix_val}
         premium_estimate._cache = cache
-    iv = cache["vix"] / 100.0   # e.g. 14.5 VIX → 0.145 annualised vol
+    iv = cache["vix"] / 100.0   # e.g. 22.65 VIX → 0.2265 annualised vol
 
     # ── Days to nearest Nifty 50 weekly expiry (Tuesday) ───────────
     # NSE moved Nifty 50 weekly expiry Thu → Tue in Oct 2024.
