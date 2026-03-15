@@ -447,6 +447,7 @@ class ReplayFrame:
     high: float
     low: float
     close: float
+    exit_price: float | None    # actual fill price on exit (≠ close when SL/target hit intra-candle)
     # Strategy evaluation
     strategy_name: str
     strategy_emoji: str
@@ -536,9 +537,10 @@ def replay_day(
         open_ = float(candle["open"])
 
         time_str  = day_df.index[i].strftime("%H:%M")
-        trade_state = "idle"
-        exit_reason = ""
-        unrealized  = 0.0
+        trade_state  = "idle"
+        exit_reason  = ""
+        unrealized   = 0.0
+        candle_exit_price: float | None = None   # actual fill price when trade closes this candle
 
         # ── Evaluate strategy for this candle ─────────────────
         current_ts  = day_df.index[i]
@@ -606,11 +608,12 @@ def replay_day(
                         pnl, rsn, conditions_met,
                         quantity=quantity,
                     ))
-                    cumul_pts  += pnl
-                    unrealized  = pnl
-                    trade_state = "exit"
-                    exit_reason = rsn
-                    in_trade    = False
+                    cumul_pts        += pnl
+                    unrealized        = pnl
+                    trade_state       = "exit"
+                    exit_reason       = rsn
+                    candle_exit_price = round(exit_p, 2)   # ← actual fill price
+                    in_trade          = False
 
             else:  # short
                 lowest  = min(lowest, low)
@@ -637,11 +640,12 @@ def replay_day(
                         pnl, rsn, conditions_met,
                         quantity=quantity,
                     ))
-                    cumul_pts  += pnl
-                    unrealized  = pnl
-                    trade_state = "exit"
-                    exit_reason = rsn
-                    in_trade    = False
+                    cumul_pts        += pnl
+                    unrealized        = pnl
+                    trade_state       = "exit"
+                    exit_reason       = rsn
+                    candle_exit_price = round(exit_p, 2)   # ← actual fill price
+                    in_trade          = False
 
         # ── Entry check ───────────────────────────────────────
         elif (
@@ -690,6 +694,7 @@ def replay_day(
             high=round(high, 2),
             low=round(low, 2),
             close=round(price, 2),
+            exit_price=candle_exit_price,
             strategy_name=strat_name,
             strategy_emoji=strat_emoji,
             signal_fires=sig_fires,

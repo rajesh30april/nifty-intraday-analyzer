@@ -250,9 +250,10 @@ function renderTradeLogWithExpand(trades) {
                                         <th class="px-2 py-1">High</th>
                                         <th class="px-2 py-1">Low</th>
                                         <th class="px-2 py-1">Close</th>
+                                        <th class="px-2 py-1 text-yellow-400">Exit@</th>
                                         <th class="px-2 py-1">Trail SL</th>
                                         <th class="px-2 py-1">Target</th>
-                                        <th class="px-2 py-1">Unreal.</th>
+                                        <th class="px-2 py-1">P&L pts</th>
                                         <th class="px-2 py-1">State</th>
                                     </tr>
                                 </thead>
@@ -402,6 +403,18 @@ function _renderTradeDetail(idx, candles, direction, trade) {
         const slMoved = c.sl !== slPrev;
         const slColor = slMoved ? 'text-yellow-400 font-bold' : 'text-red-400';
 
+        // Exit@ column: show actual fill price on exit rows, dash otherwise
+        const isExit      = c.state === 'exit';
+        const exitPriceCell = isExit && c.exit_price
+            ? `<td class="px-2 py-1 text-yellow-300 font-bold">${c.exit_price.toLocaleString()}</td>`
+            : `<td class="px-2 py-1 text-gray-600">—</td>`;
+
+        // P&L column label changes: ENTRY=blank, IN_TRADE=unrealized, EXIT=realized
+        const pnlLabel = isExit ? `<span class="text-xs text-gray-500">real.</span> ` : '';
+        const pnlCell  = c.state === 'entry' || (!c.unrealized && c.state !== 'exit')
+            ? `<td class="px-2 py-1 text-gray-600">—</td>`
+            : `<td class="px-2 py-1 font-bold ${urCol}">${pnlLabel}${c.unrealized >= 0 ? '+' : ''}${c.unrealized}</td>`;
+
         return `
         <tr class="border-b border-gray-900 ${rowBg}">
             <td class="px-2 py-1 text-gray-300">${c.time}</td>
@@ -409,9 +422,10 @@ function _renderTradeDetail(idx, candles, direction, trade) {
             <td class="px-2 py-1 text-green-500">${c.high.toLocaleString()}</td>
             <td class="px-2 py-1 text-red-500">${c.low.toLocaleString()}</td>
             <td class="px-2 py-1 text-white font-bold">${c.close.toLocaleString()}</td>
+            ${exitPriceCell}
             <td class="px-2 py-1 ${slColor}">${c.sl.toLocaleString()}${slMoved ? ' ↑' : ''}</td>
             <td class="px-2 py-1 text-green-500">${c.target.toLocaleString()}</td>
-            <td class="px-2 py-1 font-bold ${urCol}">${c.unrealized >= 0 ? '+' : ''}${c.unrealized}</td>
+            ${pnlCell}
             <td class="px-2 py-1">${stateMap[c.state] || ''}</td>
         </tr>`;
     }).join('');
