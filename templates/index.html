@@ -420,8 +420,11 @@
                     <p class="text-red-800 font-bold text-sm">App Restarted — Open Trade Detected!</p>
                     <p id="recovery-msg" class="text-red-700 text-xs mt-1"></p>
                     <div class="mt-2 flex gap-2">
-                      <button onclick="atStart()" class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold">
+                      <button onclick="resumeFromRecovery()" class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold">
                         ▶ Resume Managing Trade
+                      </button>
+                      <button onclick="dismissRecovery()" class="bg-white border border-red-400 text-red-700 text-xs px-3 py-1.5 rounded-lg font-bold">
+                        ✕ Dismiss
                       </button>
                       <a href="https://kite.zerodha.com/" target="_blank"
                         class="bg-white border border-red-400 text-red-700 text-xs px-3 py-1.5 rounded-lg font-bold">
@@ -1040,7 +1043,7 @@
     <script src="/static/progress.js?v=3"></script>
     <script src="/static/dashboard.js?v=3"></script>
     <script src="/static/charts.js?v=3"></script>
-    <script src="/static/auto-trader.js?v=9"></script>
+    <script src="/static/auto-trader.js?v=10"></script>
     <script src="/static/live-monitor.js?v=2"></script>
 <script src="/static/backtest.js?v=5"></script>
 <script src="/static/replay.js?v=2"></script>

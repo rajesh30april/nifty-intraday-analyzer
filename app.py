@@ -1418,6 +1418,14 @@ async def auto_trader_start(strategy: str = "smart_router"):
     return {"success": True, **result}
 
 
+@app.post("/api/auto-trader/dismiss-recovery")
+async def auto_trader_dismiss_recovery():
+    """User has acknowledged the recovery banner — clear it."""
+    trader_state.recovery_mode    = False
+    trader_state.recovery_message = ""
+    return {"success": True}
+
+
 @app.post("/api/auto-trader/stop")
 async def auto_trader_stop():
     """Stop the auto-trader and exit positions."""

@@ -210,7 +210,7 @@ function _stopAtPolling() {
 
 // ── Start ────────────────────────────────────────────────────────
 async function startAutoTrader() {
-    const strategyId = document.getElementById('at-strategy')?.value || 'orb';
+    const strategyId = document.getElementById('at-strategy')?.value || 'smart_router';
     _setAtStatus('starting');
     try {
         const resp = await fetch(`/api/auto-trader/start?strategy=${strategyId}`, { method: 'POST' });
@@ -231,6 +231,21 @@ async function startAutoTrader() {
     } catch (e) {
         _setAtStatus('error', 'Connection error');
     }
+}
+
+// ── Resume from crash recovery (dismiss banner + start trader) ──
+async function resumeFromRecovery() {
+    await dismissRecovery();
+    await startAutoTrader();
+}
+
+// ── Dismiss recovery banner without starting ──────────────────────
+async function dismissRecovery() {
+    try {
+        await fetch('/api/auto-trader/dismiss-recovery', { method: 'POST' });
+    } catch (_) { /* silent */ }
+    const banner = document.getElementById('recovery-banner');
+    if (banner) banner.classList.add('hidden');
 }
 
 // ── Stop ─────────────────────────────────────────────────────────
