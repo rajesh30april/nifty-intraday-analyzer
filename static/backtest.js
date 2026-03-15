@@ -163,13 +163,23 @@ async function runBacktest() {
         } else if (msg.phase === 'done') {
             es.close();
             _setBtProgress(100, '✅ Done!');
-            renderBacktestResults(msg);
-            resultsEl.classList.remove('hidden');
-            loadingEl.classList.add('hidden');
-            _backtestRunning = false;
-            btn.disabled = false;
-            btn.textContent = '🚀 Run Backtest';
-            btn.className = 'bg-[#0053e2] hover:bg-blue-700 px-6 py-2 rounded-lg font-bold text-sm text-white transition';
+            // SSE wraps all stats inside `summary` — flatten to top level
+            // so renderBacktestResults() finds data.win_rate etc directly.
+            const renderData = { ...msg.summary, trades: msg.trades, equity_curve: msg.equity_curve };
+            try {
+                renderBacktestResults(renderData);
+                resultsEl.classList.remove('hidden');
+            } catch (err) {
+                console.error('renderBacktestResults failed:', err, renderData);
+                _setBtProgress(0, '❌ Render error — check console');
+            } finally {
+                // Always hide loading — no more stuck spinner!
+                loadingEl.classList.add('hidden');
+                _backtestRunning = false;
+                btn.disabled = false;
+                btn.textContent = '🚀 Run Backtest';
+                btn.className = 'bg-[#0053e2] hover:bg-blue-700 px-6 py-2 rounded-lg font-bold text-sm text-white transition';
+            }
         } else if (msg.phase === 'error') {
             es.close();
             _setBtProgress(0, '❌ ' + (msg.msg || 'Error'));

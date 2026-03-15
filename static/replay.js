@@ -93,22 +93,29 @@ async function _fetchAndStartReplay(date, instant) {
                 _replayIdx    = -1;
                 _replayPaused = false;
 
-                document.getElementById('replay-date-label').textContent = date;
+                // Always hide loading first — never leave user stuck
                 loadingEl.classList.add('hidden');
-                resultsEl.classList.remove('hidden');
-                document.getElementById('replay-candle-card')?.classList.remove('hidden');
 
-                _renderSummary(msg.summary);
-                _initPriceChart(msg.frames, date);
-                _buildTable(msg.frames);
+                try {
+                    document.getElementById('replay-date-label').textContent = date;
+                    resultsEl.classList.remove('hidden');
+                    document.getElementById('replay-candle-card')?.classList.remove('hidden');
 
-                if (instant) {
-                    _replayIdx = _replayFrames.length - 1;
-                    _renderFrame(_replayIdx);
-                    _updateProgress();
-                } else {
-                    document.getElementById('replay-pause-btn').textContent = '⏸';
-                    _advanceReplay();
+                    _renderSummary(msg.summary);
+                    _initPriceChart(msg.frames, date);
+                    _buildTable(msg.frames);
+
+                    if (instant) {
+                        _replayIdx = _replayFrames.length - 1;
+                        _renderFrame(_replayIdx);
+                        _updateProgress();
+                    } else {
+                        document.getElementById('replay-pause-btn').textContent = '⏸';
+                        _advanceReplay();
+                    }
+                } catch (err) {
+                    console.error('Replay render failed:', err, msg);
+                    _setReplayProgress(0, '❌ Render error — check console');
                 }
                 resolve();
             } else if (msg.phase === 'error') {

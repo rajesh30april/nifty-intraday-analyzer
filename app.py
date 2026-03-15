@@ -3,6 +3,7 @@
 Supports both Yahoo Finance (delayed) and Zerodha Kite Connect (live) data.
 """
 
+import dataclasses
 import pandas as pd
 import traceback
 import json as json_lib
@@ -704,10 +705,34 @@ async def trade_candles(
         return {"success": False, "error": str(e)}
 
 
+class _NumpySafeEncoder(json_lib.JSONEncoder):
+    """JSON encoder that handles numpy scalars and pandas Timestamps.
+
+    Plain json.dumps crashes on numpy.float64 / numpy.int64 values that
+    come out of pandas calculations in BacktestResult. This encoder
+    converts them to native Python types before serialisation.
+    """
+    def default(self, obj):
+        # numpy scalar types
+        try:
+            import numpy as np
+            if isinstance(obj, np.integer): return int(obj)
+            if isinstance(obj, np.floating): return float(obj)
+            if isinstance(obj, np.ndarray):  return obj.tolist()
+        except ImportError:
+            pass
+        # pandas Timestamp
+        try:
+            import pandas as pd
+            if isinstance(obj, pd.Timestamp): return obj.isoformat()
+        except ImportError:
+            pass
+        return super().default(obj)
+
+
 def _sse(payload: dict) -> str:
-    """Format a dict as an SSE data line."""
-    import json as _j
-    return "data: " + _j.dumps(payload) + "\n\n"
+    """Format a dict as an SSE data line (numpy-safe)."""
+    return "data: " + json_lib.dumps(payload, cls=_NumpySafeEncoder) + "\n\n"
 
 
 @app.get("/api/backtest/replay/stream")
@@ -743,17 +768,28 @@ async def replay_stream(
     threading.Thread(target=_run, daemon=True).start()
 
     async def _generate():
+        """Poll-based SSE generator — safe across Python 3.13 asyncio."""
+        deadline = 120
+        waited   = 0.0
         while True:
             try:
-                kind, payload = await asyncio.to_thread(q.get, timeout=120)
-            except Exception:
-                yield _sse({"phase": "error", "msg": "timeout"})
-                break
+                kind, payload = q.get_nowait()
+            except queue.Empty:
+                if waited >= deadline:
+                    yield _sse({"phase": "error", "msg": "timeout after 120s"})
+                    break
+                await asyncio.sleep(0.15)
+                waited += 0.15
+                continue
+
+            waited = 0.0
+
             if kind == "progress":
                 yield _sse(payload)
             elif kind == "done":
-                frames  = [dataclasses.asdict(f) for f in payload.get("frames", [])]
-                trades  = [dataclasses.asdict(t) for t in payload.get("trades", [])]
+                # replay_day returns a plain dict (already serialisable)
+                frames  = payload.get("frames", [])
+                trades  = payload.get("trades", [])
                 summary = payload.get("summary", {})
                 avail   = payload.get("available_dates", [])
                 yield _sse({"phase": "done", "pct": 100, "frames": frames,
@@ -802,26 +838,41 @@ async def backtest_stream(
     threading.Thread(target=_run, daemon=True).start()
 
     async def _generate():
+        """Poll the queue with async sleep — avoids blocking asyncio's thread
+        pool executor across multiple yields which breaks on Python 3.13."""
+        deadline = 120   # seconds before giving up
+        waited   = 0.0
         while True:
             try:
-                kind, payload = await asyncio.to_thread(q.get, timeout=120)
-            except Exception:
-                yield _sse({"phase": "error", "msg": "timeout"})
-                break
+                kind, payload = q.get_nowait()
+            except queue.Empty:
+                if waited >= deadline:
+                    yield _sse({"phase": "error", "msg": "timeout after 120s"})
+                    break
+                await asyncio.sleep(0.15)
+                waited += 0.15
+                continue
+
+            # Reset timeout on each received item
+            waited = 0.0
+
             if kind == "progress":
                 yield _sse(payload)
             elif kind == "done":
-                trades = [dataclasses.asdict(t) for t in payload.trades]
-                cumul  = 0.0
-                equity = []
-                for t in payload.trades:
-                    cumul += t.pnl_points
-                    equity.append({"date": t.date, "time": t.exit_time,
-                                   "cumulative": round(cumul, 2)})
-                summary = dataclasses.asdict(payload)
-                summary.pop("trades", None)
-                yield _sse({"phase": "done", "pct": 100, "trades": trades,
-                            "equity_curve": equity, "summary": summary})
+                try:
+                    trades = [dataclasses.asdict(t) for t in payload.trades]
+                    cumul  = 0.0
+                    equity = []
+                    for t in payload.trades:
+                        cumul += t.pnl_points
+                        equity.append({"date": t.date, "time": t.exit_time,
+                                       "cumulative": round(float(cumul), 2)})
+                    summary = dataclasses.asdict(payload)
+                    summary.pop("trades", None)
+                    yield _sse({"phase": "done", "pct": 100, "trades": trades,
+                                "equity_curve": equity, "summary": summary})
+                except Exception as exc:
+                    yield _sse({"phase": "error", "msg": f"serialise error: {exc}"})
                 break
             else:
                 yield _sse({"phase": "error", "msg": str(payload)})
