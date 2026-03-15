@@ -32,7 +32,7 @@ DEFAULT_TRAILING_SL = 15.0
 DEFAULT_RR_RATIO = 2.0  # 1:2 risk-reward
 ENTRY_START = dt_time(9, 18)   # No trades in first 3 min
 EXIT_TIME = dt_time(15, 15)    # Force exit at 3:15 PM
-QUANTITY = 65                  # Nifty lot size (65 units/lot as of Apr 2025)
+QUANTITY = 75                  # Nifty lot size — revised to 75 units/lot Nov 2024
 
 
 @dataclass
@@ -720,7 +720,7 @@ def replay_day(
             "winners": len(wins),
             "losers": len(losses),
             "total_pnl_pts": round(sum(t.pnl_points for t in trades), 2),
-            "total_pnl_rupees": round(sum(t.pnl_points for t in trades) * QUANTITY, 2),
+            "total_pnl_rupees": round(sum(t.pnl_rupees for t in trades), 2),
         },
         "source": source_label,
     }
@@ -733,7 +733,10 @@ def print_backtest_report(result: BacktestResult):
     print("=" * 60)
     print(f"Data: {result.data_source} | Period: {result.period}")
     print(f"Days tested: {result.days_tested}")
-    print(f"Lot size: {QUANTITY} (Nifty)")
+    # Derive actual lot size from first trade (handles custom quantity arg)
+    _qty = result.trades[0].pnl_rupees / result.trades[0].pnl_points if result.trades else QUANTITY
+    _qty = abs(round(_qty)) if result.trades else QUANTITY
+    print(f"Lot size: {_qty} (Nifty)")
     print("-" * 60)
 
     print(f"\nPerformance Summary:")
@@ -747,10 +750,16 @@ def print_backtest_report(result: BacktestResult):
     print(f"  Max drawdown: {result.max_drawdown} pts")
     print(f"  Sharpe (approx): {result.sharpe_approx}")
 
+    # Daily rupee P&L — sum from actual trade.pnl_rupees (correct quantity)
+    _daily_rs: dict[str, float] = {}
+    for t in result.trades:
+        _daily_rs[t.date] = _daily_rs.get(t.date, 0) + t.pnl_rupees
+
     print(f"\nDaily P&L:")
     for date, pnl in result.daily_pnl.items():
         marker = " WIN" if pnl >= 0 else "LOSS"
-        print(f"  [{marker}] {date}: {pnl:+.1f} pts (Rs {pnl * QUANTITY:+,.0f})")
+        rs = _daily_rs.get(date, pnl * _qty)
+        print(f"  [{marker}] {date}: {pnl:+.1f} pts (Rs {rs:+,.0f})")
 
     print(f"\nTrade Log:")
     for t in result.trades:
