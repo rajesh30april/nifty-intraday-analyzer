@@ -13,3 +13,4 @@ __pycache__/
 # Runtime state — contains live trade data, never commit
 .state_snapshot.json
 trade_log.json
+paper_trades.db

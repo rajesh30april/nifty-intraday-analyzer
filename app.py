@@ -117,6 +117,10 @@ app = FastAPI(title="Nifty 50 Intraday Probability Analyzer", lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# ── Paper Trading routes ──────────────────────────────────────────
+from routes_paper import router as _paper_router  # noqa: E402
+app.include_router(_paper_router)
+
 
 class NoCacheHTMLMiddleware(BaseHTTPMiddleware):
     """Prevent browser from caching HTML pages (so JS changes apply immediately)."""
