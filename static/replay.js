@@ -503,19 +503,33 @@ function _buildTable(frames) {
         const sigHtml = f.signal_fires
             ? `<span class="text-${f.direction === 'long' ? 'green' : 'red'}-600 font-bold">${f.direction === 'long' ? '▲' : '▼'} ${f.confidence}%</span>`
             : '<span class="text-gray-300">—</span>';
-        const urColor = f.unrealized_pts >= 0 ? 'text-green-600' : 'text-red-600';
+        const isExit   = f.trade_state === 'exit';
+        const urColor  = f.unrealized_pts >= 0 ? 'text-green-600' : 'text-red-600';
         const cumColor = f.cumul_pts >= 0 ? 'text-green-600' : 'text-red-600';
-        const rowBg = f.trade_state === 'entry' ? 'bg-green-50' :
-                      f.trade_state === 'exit'  ? 'bg-red-50'   : '';
+        const rowBg    = f.trade_state === 'entry' ? 'bg-green-50' :
+                         f.trade_state === 'exit'  ? (f.unrealized_pts >= 0 ? 'bg-green-50' : 'bg-red-50') : '';
+
+        // Exit@ cell — actual fill price (only on EXIT rows)
+        const exitAtCell = isExit && f.exit_price
+            ? `<td class="px-2 py-1.5 font-mono font-bold text-yellow-600">${f.exit_price.toLocaleString()}</td>`
+            : `<td class="px-2 py-1.5 text-gray-300">—</td>`;
+
+        // P&L cell — prefix "real." on exit rows so user knows it's realized
+        const pnlPrefix = isExit ? '<span class="text-[9px] text-gray-400">real.</span> ' : '';
+        const pnlCell   = f.unrealized_pts !== 0
+            ? `<td class="px-2 py-1.5 ${urColor} font-semibold">${pnlPrefix}${f.unrealized_pts > 0 ? '+' : ''}${f.unrealized_pts}</td>`
+            : `<td class="px-2 py-1.5 text-gray-300">—</td>`;
+
         return `
             <tr id="rrow-${i}" class="border-b border-gray-100 hover:bg-indigo-50 cursor-pointer transition ${rowBg}"
                 onclick="_replayJumpTo(${i})">
                 <td class="px-2 py-1.5 font-mono font-semibold">${f.time}</td>
                 <td class="px-2 py-1.5 font-mono">${f.close.toLocaleString()}</td>
+                ${exitAtCell}
                 <td class="px-2 py-1.5">${f.strategy_emoji} <span class="text-gray-600">${f.strategy_name.split(' ')[0]}</span></td>
                 <td class="px-2 py-1.5">${sigHtml}</td>
                 <td class="px-2 py-1.5">${(stateMap[f.trade_state] || stateMap.idle)(f)}</td>
-                <td class="px-2 py-1.5 ${urColor} font-semibold">${f.unrealized_pts !== 0 ? (f.unrealized_pts > 0 ? '+' : '') + f.unrealized_pts : '—'}</td>
+                ${pnlCell}
                 <td class="px-2 py-1.5 ${cumColor} font-bold">${f.cumul_pts >= 0 ? '+' : ''}${f.cumul_pts}</td>
             </tr>
         `;
