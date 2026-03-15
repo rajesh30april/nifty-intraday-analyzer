@@ -336,3 +336,131 @@ class TestStateRecovery:
 
         assert at.state.active_trade is None, "SL must work on recovered trade"
         assert at.state.trades_today[-1].pnl < 0
+
+
+class TestMultiTradeConsistency:
+    """Multiple trades across the day — counts, P&L, no duplicates, crash-safe.
+
+    NOTE: auto_trader is a module singleton (Python caches imports).
+    We simulate restarts by resetting at.state = at.TraderState() then
+    calling at._recover_state() — this is exactly what happens on a real restart.
+    """
+
+    def _restart(self, at, mock_km, kite_positions=None):
+        """Simulate a crash + restart on the same module instance."""
+        # Simulate: process dies → files stay on disk → new process starts fresh
+        at.state = at.TraderState()
+        if kite_positions is not None:
+            mock_km.kite.positions.return_value = {"net": kite_positions}
+        at._recover_state(at.STATE_SNAPSHOT_FILE)
+
+    def test_three_trades_no_duplicate_after_each_crash(self, tmp_path):
+        """Simulate: trade1 exit → crash → restart → trade2 exit → crash → restart → trade3.
+        After each recovery, trades_today must have exactly the right count (no duplicates).
+        """
+        at, mock_km = _fresh_at(tmp_path)
+
+        # ── Trade 1: long → hits target ──────────────────────
+        mock_km.get_option_ltp.side_effect = [150.0, 190.0]  # entry=150, exit=190
+        _inject_trade(at)
+        assert len(at.state.trades_today) == 1
+        at._manage_active_trade(at.state.active_trade.target + 1)
+        assert at.state.active_trade is None
+        pnl1 = at.state.trades_today[0].pnl
+        assert pnl1 > 0
+
+        snap1 = json.loads(at.STATE_SNAPSHOT_FILE.read_text())
+        assert snap1["active_trade"] is None, "No active trade after exit"
+        assert len(snap1["trades_today"]) == 1, "Exactly 1 completed trade saved"
+
+        # ── Crash + restart after trade 1 ─────────────────────
+        self._restart(at, mock_km)
+        assert len(at.state.trades_today) == 1, "1 trade after recovery — no duplicates!"
+        assert abs(at.state.total_pnl - pnl1) < 0.01
+
+        # ── Trade 2: short → hits SL ──────────────────────────
+        mock_km.get_option_ltp.side_effect = [150.0, 115.0]  # entry=150, exit=115 (loss)
+        _inject_trade(at, direction="short")
+        assert len(at.state.trades_today) == 2
+        at._manage_active_trade(at.state.active_trade.stop_loss + 1)
+        pnl2 = at.state.trades_today[1].pnl
+        assert pnl2 < 0
+
+        snap2 = json.loads(at.STATE_SNAPSHOT_FILE.read_text())
+        assert snap2["active_trade"] is None
+        assert len(snap2["trades_today"]) == 2, "2 completed trades saved"
+
+        # ── Crash + restart after trade 2 ─────────────────────
+        self._restart(at, mock_km)
+        assert len(at.state.trades_today) == 2, "2 trades after second recovery"
+
+        # ── Trade 3: long → still active when crash happens ──
+        mock_km.get_option_ltp.side_effect = [150.0, 118.0]  # entry=150, exit=118 (loss)
+        _inject_trade(at)
+        assert len(at.state.trades_today) == 3
+        active_id = at.state.active_trade.id
+
+        snap3 = json.loads(at.STATE_SNAPSHOT_FILE.read_text())
+        assert snap3["active_trade"] is not None, "Active trade saved"
+        assert len(snap3["trades_today"]) == 2, "Only 2 completed — active saved separately!"
+        assert snap3["active_trade"]["id"] == active_id
+
+        # ── Crash + restart with open position ────────────────
+        self._restart(at, mock_km)   # paper mode → trusts snapshot
+        assert len(at.state.trades_today) == 3, "3 total (2 done + 1 active restored)"
+        assert at.state.active_trade is not None, "Active trade restored"
+        assert at.state.active_trade.id == active_id
+
+        # SL fires on the recovered trade
+        sl = at.state.active_trade.stop_loss - 1
+        at._manage_active_trade(sl)
+        assert at.state.active_trade is None
+        assert len(at.state.trades_today) == 3
+        pnl3 = at.state.trades_today[2].pnl
+        assert pnl3 < 0   # option dropped from 150 → 118
+
+    def test_atomic_write_survives_corrupt_primary(self, tmp_path):
+        """If primary snapshot is corrupt, recover from .bak."""
+        at, mock_km = _fresh_at(tmp_path)
+        mock_km.get_option_ltp.return_value = 150.0
+        _inject_trade(at)   # writes a clean snapshot → also creates .bak on next write
+        at._manage_active_trade(at.state.active_trade.target + 1)  # exit → rewrites
+
+        # Corrupt the primary snapshot (simulate partial write killed mid-way)
+        at.STATE_SNAPSHOT_FILE.write_text("{corrupt json{{{", encoding="utf-8")
+
+        # Recovery should fall back to .bak — no exception, no crash
+        at.state = at.TraderState()
+        at._recover_state(at.STATE_SNAPSHOT_FILE)
+        assert True, "Recovery must not raise on corrupt snapshot"
+
+    def test_no_duplicate_active_trade_in_trades_today(self, tmp_path):
+        """Active trade must NOT be in trades_today snapshot list.
+        On recovery, it's added exactly once from active_trade.
+        """
+        at, mock_km = _fresh_at(tmp_path)
+        mock_km.get_option_ltp.return_value = 150.0
+        _inject_trade(at)
+
+        snap = json.loads(at.STATE_SNAPSHOT_FILE.read_text())
+        active_id = snap["active_trade"]["id"]
+        ids_in_list = [t["id"] for t in snap["trades_today"]]
+        assert active_id not in ids_in_list, "Active trade must NOT be in trades_today list — dedup bug!"
+
+        # Recover and verify: exactly 1 entry (active trade added once)
+        at.state = at.TraderState()
+        at._recover_state(at.STATE_SNAPSHOT_FILE)
+        assert len(at.state.trades_today) == 1, "Exactly 1 entry after recovery — no duplicate!"
+
+    def test_total_pnl_consistent_across_multiple_restarts(self, tmp_path):
+        """total_pnl must accumulate correctly across crash-restart cycles."""
+        at, mock_km = _fresh_at(tmp_path)
+        mock_km.get_option_ltp.side_effect = [150.0, 185.0]  # +35 × 65 = +2275
+        _inject_trade(at)
+        at._manage_active_trade(at.state.active_trade.target + 1)
+        expected_pnl = round((185.0 - 150.0) * 65, 2)
+
+        # Crash + recover
+        at.state = at.TraderState()
+        at._recover_state(at.STATE_SNAPSHOT_FILE)
+        assert abs(at.state.total_pnl - expected_pnl) < 0.01

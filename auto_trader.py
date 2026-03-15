@@ -115,16 +115,70 @@ state = TraderState()
 
 # ── State Snapshot (crash recovery) ─────────────────────────────
 
+def _trade_to_dict(t: "Trade") -> dict:
+    """Serialize a Trade to a JSON-safe dict."""
+    return {
+        "id":            t.id,
+        "timestamp":     t.timestamp,
+        "direction":     t.direction,
+        "instrument":    t.instrument,
+        "entry_price":   t.entry_price,
+        "entry_premium": t.entry_premium,
+        "quantity":      t.quantity,
+        "stop_loss":     t.stop_loss,
+        "target":        t.target,
+        "exit_price":    t.exit_price,
+        "exit_premium":  t.exit_premium,
+        "exit_time":     t.exit_time,
+        "exit_reason":   t.exit_reason,
+        "pnl":           t.pnl,
+        "status":        t.status,
+        "order_id":      t.order_id,
+        "sl_order_id":   getattr(t, "sl_order_id", None),
+        "paper":         t.paper,
+    }
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    """Write content to path atomically using a temp file + rename.
+
+    Protects against corrupt snapshots from a mid-write crash (kill -9, OOM, etc.).
+    os.replace() is atomic on POSIX — the old file is never partially overwritten.
+    Strategy: write to .tmp → backup old → rename .tmp → old
+    """
+    tmp = path.with_suffix(".tmp")
+    bak = path.with_suffix(".bak")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        if path.exists():
+            import shutil
+            shutil.copy2(path, bak)   # keep last-known-good backup
+        os.replace(tmp, path)         # atomic rename — never a partial write
+    except Exception as e:
+        print(f"⚠️  Snapshot write failed: {e}")
+        tmp.unlink(missing_ok=True)   # clean up partial temp
+
+
 def _save_state_snapshot():
     """Write a full state snapshot to disk after every significant change.
 
     Called on: entry, exit, trailing SL update.
     On restart, `_recover_state()` reads this to rebuild state.
+
+    DESIGN: active_trade is stored separately from trades_today.
+    trades_today contains ONLY completed (exited) trades.
+    This prevents the duplicate-on-recovery bug where the active trade
+    would appear twice after a crash (once from trades_today list,
+    once from the active_trade recovery append).
     """
     active = state.active_trade
+
+    # Only include COMPLETED trades — active trade is stored separately
+    completed_trades = [t for t in state.trades_today if t is not active]
+
     snapshot = {
         "date":            datetime.now().strftime("%Y-%m-%d"),
-        "total_pnl":       state.total_pnl,
+        "total_pnl":       round(state.total_pnl, 2),
         "orders_placed":   state.orders_placed,
         "is_paper_mode":   state.is_paper_mode,
         "selected_strategy": state.selected_strategy,
@@ -137,45 +191,12 @@ def _save_state_snapshot():
         "capital":            state.capital,
         "strike_offset":      state.strike_offset,
         "max_trades_per_day": state.max_trades_per_day,
-        "active_trade": {
-            "id":            active.id,
-            "timestamp":     active.timestamp,
-            "direction":     active.direction,
-            "instrument":    active.instrument,
-            "entry_price":   active.entry_price,    # Nifty spot at entry
-            "entry_premium": active.entry_premium,  # Option LTP at entry
-            "quantity":      active.quantity,
-            "stop_loss":     active.stop_loss,
-            "target":        active.target,
-            "order_id":      active.order_id,
-            "sl_order_id":   active.sl_order_id,
-            "paper":         active.paper,
-            "status":        active.status,
-        } if active else None,
-        "trades_today": [
-            {
-                "id":            t.id,
-                "timestamp":     t.timestamp,
-                "direction":     t.direction,
-                "instrument":    t.instrument,
-                "entry_price":   t.entry_price,
-                "entry_premium": t.entry_premium,
-                "quantity":      t.quantity,
-                "stop_loss":     t.stop_loss,
-                "target":        t.target,
-                "exit_price":    t.exit_price,
-                "exit_premium":  t.exit_premium,
-                "exit_time":     t.exit_time,
-                "exit_reason":   t.exit_reason,
-                "pnl":           t.pnl,
-                "status":      t.status,
-                "order_id":    t.order_id,
-                "paper":       t.paper,
-            }
-            for t in state.trades_today
-        ],
+        # active_trade stored with full detail (includes sl_order_id for crash cancel)
+        "active_trade": _trade_to_dict(active) if active else None,
+        # Only completed trades — avoids double-counting on recovery
+        "trades_today": [_trade_to_dict(t) for t in completed_trades],
     }
-    STATE_SNAPSHOT_FILE.write_text(json.dumps(snapshot, indent=2))
+    _atomic_write(STATE_SNAPSHOT_FILE, json.dumps(snapshot, indent=2))
 
 
 def _recover_state(snapshot_file: Path | None = None):
@@ -195,9 +216,20 @@ def _recover_state(snapshot_file: Path | None = None):
         return
 
     try:
-        snap = json.loads(f.read_text())
-    except (json.JSONDecodeError, OSError):
-        return
+        snap = json.loads(f.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        # Primary snapshot corrupt — try the .bak if it exists
+        bak = f.with_suffix(".bak")
+        if bak.exists():
+            print(f"⚠️  Snapshot corrupt ({e}) — trying backup {bak.name}")
+            try:
+                snap = json.loads(bak.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                print("❌ Backup also corrupt — starting fresh")
+                return
+        else:
+            print(f"⚠️  Snapshot corrupt and no backup — starting fresh ({e})")
+            return
 
     # Only recover if snapshot is from TODAY
     today = datetime.now().strftime("%Y-%m-%d")
@@ -270,7 +302,11 @@ def _recover_state(snapshot_file: Path | None = None):
             status=OrderStatus.FILLED,
         )
         state.active_trade = recovered_trade
-        state.trades_today.append(recovered_trade)   # keep trades_today in sync
+        # Append only if not already in trades_today (guards against old snapshots
+        # that included the active trade in the trades_today list)
+        existing_ids = {t.id for t in state.trades_today}
+        if recovered_trade.id not in existing_ids:
+            state.trades_today.append(recovered_trade)
         state.highest_price_since_entry = at["entry_price"]
         state.lowest_price_since_entry  = at["entry_price"]
         state.recovery_mode    = True
@@ -296,7 +332,9 @@ def _recover_state(snapshot_file: Path | None = None):
             exit_reason="App crashed — position closed by Zerodha/broker while app was down",
             pnl=0.0,
         )
-        state.trades_today.append(ghost_trade)
+        existing_ids = {t.id for t in state.trades_today}
+        if ghost_trade.id not in existing_ids:
+            state.trades_today.append(ghost_trade)
         state.recovery_mode    = True
         state.recovery_type    = "closed"
         state.recovery_message = (
@@ -856,7 +894,7 @@ def _enter_trade(direction: Direction, price: float):
     )
 
     trade = Trade(
-        id=f"T-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+        id=f"T-{datetime.now().strftime('%Y%m%d-%H%M%S%f')}",
         timestamp=datetime.now().isoformat(),
         direction=direction.value,
         instrument=symbol,
@@ -1010,7 +1048,7 @@ def _save_trade_log():
             "status": t.status, "order_id": t.order_id,
             "paper": t.paper,
         })
-    TRADE_LOG_FILE.write_text(json.dumps({
+    _atomic_write(TRADE_LOG_FILE, json.dumps({
         "date": datetime.now().strftime("%Y-%m-%d"),
         "total_pnl": round(state.total_pnl, 2),
         "orders_placed": state.orders_placed,
