@@ -95,7 +95,7 @@ function _handleEvent(d) {
     const slVal  = document.getElementById('bt-sl')?.value  || '30';
     const rrVal  = document.getElementById('bt-rr')?.value  || '2';
     const qtyVal = document.getElementById('bt-qty')?.value || '780';
-    const lots   = Math.round(parseInt(qtyVal) / 75);   // approx lots (lot size 75)
+    const lots   = Math.round(parseInt(qtyVal) / 65);   // approx lots (lot size 65)
     _setText('lm-sl-val',  slVal + ' pts');
     _setText('lm-rr-val',  '1:' + rrVal);
     _setText('lm-qty-val', qtyVal + ' (~' + lots + 'L)');

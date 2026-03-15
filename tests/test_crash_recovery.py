@@ -203,7 +203,7 @@ class TestStateRecovery:
                 "direction":   "long",
                 "instrument":  "NIFTY20260320_23250CE",
                 "entry_price": BASE_PRICE,
-                "quantity":    75,
+                "quantity":    65,
                 "stop_loss":   BASE_PRICE - 30,
                 "target":      BASE_PRICE + 60,
                 "order_id":    "PAPER-123456",
@@ -228,7 +228,7 @@ class TestStateRecovery:
         instrument = "NIFTY20260320_23250CE"
         zerodha_positions = [{
             "tradingsymbol": instrument,
-            "quantity":      75,
+            "quantity":      65,
             "product":       "MIS",
         }]
         snap = {
@@ -243,7 +243,7 @@ class TestStateRecovery:
                 "direction":   "short",
                 "instrument":  instrument,
                 "entry_price": BASE_PRICE,
-                "quantity":    75,
+                "quantity":    65,
                 "stop_loss":   BASE_PRICE + 30,
                 "target":      BASE_PRICE - 60,
                 "order_id":    "99999",
@@ -275,7 +275,7 @@ class TestStateRecovery:
                 "direction":   "long",
                 "instrument":  "NIFTY20260320_23250CE",
                 "entry_price": BASE_PRICE,
-                "quantity":    75,
+                "quantity":    65,
                 "stop_loss":   BASE_PRICE - 30,
                 "target":      BASE_PRICE + 60,
                 "order_id":    "88888",
@@ -311,7 +311,7 @@ class TestStateRecovery:
                 "direction":   "long",
                 "instrument":  "NIFTY20260320_23250CE",
                 "entry_price": BASE_PRICE,
-                "quantity":    75,
+                "quantity":    65,
                 "stop_loss":   BASE_PRICE - 30,
                 "target":      BASE_PRICE + 60,
                 "order_id":    "PAPER-789",

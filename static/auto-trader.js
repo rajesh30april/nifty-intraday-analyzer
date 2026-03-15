@@ -7,7 +7,7 @@ let _atPollTimer       = null;
 let _atHadTrade        = false;
 let _atQtyMode         = 'manual';   // 'manual' | 'capital'
 const AT_POLL_MS       = 6000;
-const LOT_SIZE         = 75;         // Nifty F&O lot size
+const LOT_SIZE         = 65;         // Nifty F&O lot size (65 units/lot, Apr 2025)
 
 // ── Event log dedup trackers ──────────────────────────────────────
 let _atLastCondKey     = null;   // JSON key of which conditions were met last render

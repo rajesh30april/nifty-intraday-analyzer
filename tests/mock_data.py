@@ -151,7 +151,7 @@ def mock_instruments(nifty_price: float = BASE_PRICE) -> list[dict]:
                 "expiry":          expiry,
                 "tradingsymbol":   f"NIFTY{expiry.replace('-','')}{strike}{opt}",
                 "instrument_token": token,
-                "lot_size":        75,
+                "lot_size":        65,
             })
             token += 1
     return instruments

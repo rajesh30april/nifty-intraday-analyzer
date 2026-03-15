@@ -32,7 +32,7 @@ DEFAULT_TRAILING_SL = 15.0
 DEFAULT_RR_RATIO = 2.0  # 1:2 risk-reward
 ENTRY_START = dt_time(9, 18)   # No trades in first 3 min
 EXIT_TIME = dt_time(15, 15)    # Force exit at 3:15 PM
-QUANTITY = 50                  # Nifty lot size
+QUANTITY = 65                  # Nifty lot size (65 units/lot as of Apr 2025)
 
 
 @dataclass

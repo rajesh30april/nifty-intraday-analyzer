@@ -2,10 +2,10 @@
 // Handles ⚙️ SL / Trail SL / R:R / Quantity
 //
 // QUANTITY CONCEPTS:
-//   1 lot  = 75 units (the exchange minimum for Nifty options)
+//   1 lot  = 65 units (Nifty lot size as of Apr 2025 SEBI revision)
 //   units  = what gets sent to the exchange order
 //   lots   = how a trader thinks about size
-//   Fixed Lots mode  → trader picks N lots → we send N×75 units
+//   Fixed Lots mode  → trader picks N lots → we send N×65 units
 //   Auto Capital mode → trader picks ₹ budget → app picks lots at entry
 
 function toggleAtSettings() {
@@ -128,7 +128,7 @@ function _applyQtyModeUI(mode, animate = false) {
 // ── Live hints ───────────────────────────────────────────────────
 function _updateLotsHint() {
     const lots  = Math.max(1, parseInt(document.getElementById('at-manual-qty')?.value || '10'));
-    const units = lots * LOT_SIZE;                     // e.g. 10 × 75 = 750
+    const units = lots * LOT_SIZE;                     // e.g. 10 × 65 = 650
     const APPROX_PREMIUM = 150;                        // ₹150/unit rough estimate
     const approxCost = units * APPROX_PREMIUM;         // e.g. 750 × 150 = ₹1,12,500
 
@@ -174,7 +174,7 @@ async function applyAtSettings() {
     const trail   = parseFloat(document.getElementById('at-trail-sl')?.value  || '15');
     const rr      = parseFloat(document.getElementById('at-rr')?.value        || '2');
     const lots    = Math.max(1, parseInt(document.getElementById('at-manual-qty')?.value || '10'));
-    const manQty  = lots * LOT_SIZE;   // server always receives units (lots × 75)
+    const manQty  = lots * LOT_SIZE;   // server always receives units (lots × 65)
     const capital = parseFloat(document.getElementById('at-capital')?.value   || '96000');
     const mode    = _atQtyMode;
 

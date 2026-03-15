@@ -357,7 +357,7 @@ def _is_market_hours() -> bool:
 # ── Order Placement ───────────────────────────────────────────────────────
 
 # CAPITAL moved to line 39 as DEFAULT_CAPITAL; LOT_SIZE consolidated below
-LOT_SIZE = int(os.getenv("LOT_SIZE", "75"))  # Nifty lot size (75 since Jul 2024)
+LOT_SIZE = int(os.getenv("LOT_SIZE", "65"))  # Nifty lot size (65 as of Apr 2025 SEBI revision)
 
 
 # Cache instruments to avoid repeated API calls
@@ -739,8 +739,8 @@ def evaluate_and_act(df, current_price: float):
     _enter_trade(signal.direction, current_price)
 
 
-# LOT_SIZE defined above as env-var default 65; 75 is the current Nifty lot size.
-# Override via LOT_SIZE env var if needed.
+# LOT_SIZE: 65 units/lot as of the Apr-2025 SEBI contract-size revision.
+# Override via LOT_SIZE env var if NSE revises it again.
 
 
 def _estimate_premium_fallback(nifty_price: float) -> float:

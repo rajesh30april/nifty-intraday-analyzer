@@ -486,7 +486,7 @@ class TestInstrumentLookup:
             "name": "NIFTY", "instrument_type": "CE",
             "strike": float(atm), "expiry": expiry,
             "tradingsymbol": f"NIFTY{expiry.replace('-','')}{int(atm)}CE",
-            "instrument_token": 999, "lot_size": 75,
+            "instrument_token": 999, "lot_size": 65,
         }]
         # Also mock the expiry date so it matches our instrument
         mock_expiry = datetime.strptime(expiry, "%Y-%m-%d")

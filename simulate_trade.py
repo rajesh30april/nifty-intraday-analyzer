@@ -169,7 +169,7 @@ def run():
 
         # ── Strike & Quantity calculation (mirrors _get_option_symbol) ──
         CAPITAL      = 96_000          # from env TRADING_CAPITAL default
-        LOT_SIZE     = 75              # Nifty lot size (changed to 75 from Apr 2024)
+        LOT_SIZE     = 65              # Nifty lot size (65 as of Apr 2025 SEBI revision)
         DEFAULT_QTY  = 780             # 12 lots × 65 (legacy config) — kept as-is
         option_type  = "CE" if direction == "long" else "PE"
         atm_strike   = round(entry_price / 50) * 50
@@ -198,8 +198,7 @@ def run():
         print()
         print(f"  {W}Step 4 — Quantity{RST}")
         print(f"  {DIM}  Config  : DEFAULT_QUANTITY = {DEFAULT_QTY}  (from .env){RST}")
-        print(f"  {DIM}  = 12 lots × 65 units/lot  (old Nifty lot size){RST}")
-        print(f"  {DIM}  NOTE: Current Nifty lot size is 75.  You may want to update this.{RST}")
+        print(f"  {DIM}  = 12 lots × 65 units/lot  (Nifty lot size as of Apr 2025){RST}")
         print(f"  {DIM}  At ₹{est_premium:.0f} est. premium → capital needed = {DEFAULT_QTY} × ₹{est_premium:.0f} = ₹{DEFAULT_QTY*est_premium:,.0f}{RST}")
         print(f"  {G}  ✅ Quantity chosen : {DEFAULT_QTY} units  (12 lots){RST}")
 
@@ -292,7 +291,7 @@ def run():
     #   Premium change ≈ Nifty pts × delta
     QTY        = 780           # 12 lots × 65 units (from DEFAULT_QUANTITY)
     DELTA      = 0.35          # 1-OTM PE/CE delta approximation
-    LOT_SIZE   = 65            # units per lot as configured
+    LOT_SIZE   = 65            # Nifty lot size (Apr 2025 SEBI revision)
     LOTS       = QTY // LOT_SIZE
 
     option_pts = round(pnl_pts * DELTA, 1)        # option premium change

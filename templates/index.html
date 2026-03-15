@@ -585,14 +585,14 @@
                         <!-- Live breakdown -->
                         <div class="text-[11px] text-gray-400 pb-2 leading-5">
                           <span id="at-lots-hint-line1" class="text-white font-bold">10 lots</span>
-                          <span class="text-gray-500"> × 75 units/lot =</span>
-                          <span id="at-lots-hint-units" class="text-[#ffc220] font-bold"> 750 units</span><br>
+                          <span class="text-gray-500"> × 65 units/lot =</span>
+                          <span id="at-lots-hint-units" class="text-[#ffc220] font-bold"> 650 units</span><br>
                           <span class="text-gray-500">Approx margin needed: </span>
                           <span id="at-lots-hint-cost" class="text-green-400 font-bold">~₹1,12,500</span>
                           <span class="text-gray-600"> (at ₹150 premium)</span>
                         </div>
                       </div>
-                      <p class="text-[10px] text-gray-600 mt-1">💡 1 Nifty options lot = 75 units. Every trade will use exactly this many lots.</p>
+                      <p class="text-[10px] text-gray-600 mt-1">💡 1 Nifty options lot = 65 units (Apr 2025 SEBI revision). Every trade will use exactly this many lots.</p>
                     </div>
 
                     <!-- ── Auto Capital mode ── -->
@@ -611,7 +611,7 @@
                           <span class="text-gray-500"> lots</span>
                           <span class="text-gray-600 text-[9px]"> (preview)</span><br>
                           <span id="at-capital-units-est" class="text-white font-bold">--</span>
-                          <span class="text-gray-500"> units (lots × 75)</span>
+                          <span class="text-gray-500"> units (lots × 65)</span>
                         </div>
                       </div>
                       <!-- Math breakdown -->
@@ -621,7 +621,7 @@
                         <p class="text-[10px] text-gray-400 font-bold">🎯 How the app picks strike &amp; lots at entry:</p>
                         <p class="text-[10px] text-gray-500">1. <span class="text-white">Strike:</span> ATM = nearest 50-point level to Nifty. App picks <span class="text-[#ffc220]">1-OTM</span> (ATM + 50 for CE, ATM − 50 for PE) — cheaper premium = more lots.</p>
                         <p class="text-[10px] text-gray-500">2. <span class="text-white">Real premium:</span> Fetches <span class="text-green-400">live LTP</span> of the chosen option from Zerodha at the moment of entry — not a formula guess.</p>
-                        <p class="text-[10px] text-gray-500">3. <span class="text-white">Lots:</span> <code class="text-[#ffc220]">floor(₹capital ÷ (LTP × 75))</code> — uses every rupee efficiently.</p>
+                        <p class="text-[10px] text-gray-500">3. <span class="text-white">Lots:</span> <code class="text-[#ffc220]">floor(₹capital ÷ (LTP × 65))</code> — uses every rupee efficiently.</p>
                         <p class="text-[10px] text-gray-600">Preview above uses ~0.22% of Nifty as OTM estimate. Actual lots may differ based on real premium at entry time.</p>
                       </div>
                     </div>
@@ -784,7 +784,7 @@
                             <div><label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-sl">SL (pts)</label><input id="bt-sl" type="number" value="30" min="5" max="100" step="5" class="w-full border rounded-lg px-2 py-1.5 text-xs"></div>
                             <div><label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-trail">Trail SL</label><input id="bt-trail" type="number" value="15" min="5" max="60" step="5" class="w-full border rounded-lg px-2 py-1.5 text-xs"></div>
                             <div><label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-rr">R:R</label><select id="bt-rr" class="w-full border rounded-lg px-2 py-1.5 text-xs bg-white"><option value="1.5">1:1.5</option><option value="2" selected>1:2</option><option value="2.5">1:2.5</option><option value="3">1:3</option></select></div>
-                            <div><label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-qty">Qty (units)</label><input id="bt-qty" type="number" value="780" min="75" max="7500" step="75" title="Total units = lots × 75. E.g. 10 lots = 750 units" class="w-full border rounded-lg px-2 py-1.5 text-xs"></div>
+                            <div><label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-qty">Qty (units)</label><input id="bt-qty" type="number" value="650" min="65" max="6500" step="65" title="Total units = lots × 65. E.g. 10 lots = 650 units" class="w-full border rounded-lg px-2 py-1.5 text-xs"></div>
                             <div><label class="text-xs font-semibold text-gray-600 block mb-1" for="bt-max-trades">Max/Day</label><select id="bt-max-trades" class="w-full border rounded-lg px-2 py-1.5 text-xs bg-white"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="5">5</option></select></div>
                             <div><button id="bt-run-btn" onclick="runBacktest()" class="bg-[#0053e2] hover:bg-blue-700 px-4 py-1.5 rounded-lg font-bold text-xs text-white w-full">🚀 Run</button></div>
                         </div>
