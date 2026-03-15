@@ -75,7 +75,7 @@ def _fresh_auto_trader():
 
 
 def _force_enter(at, direction: str = "long", price: float = BASE_PRICE,
-                 symbol: str = "NIFTY20260319_23200CE"):
+                 symbol: str = "NIFTY20260317_23200CE"):
     """Directly inject a trade into state without going through strategy logic."""
     from strategy import Direction
     at.state.is_paper_mode = True
@@ -98,7 +98,7 @@ class TestPaperEntry:
         at.state.is_running    = True
 
         with patch.object(at, "_get_option_symbol",
-                          return_value=("NIFTY20260319_23250CE", 111)):
+                          return_value=("NIFTY20260317_23250CE", 111)):
             from strategy import Direction
             at._enter_trade(Direction.LONG, BASE_PRICE)
 
@@ -113,7 +113,7 @@ class TestPaperEntry:
         at.state.is_paper_mode = True
 
         with patch.object(at, "_get_option_symbol",
-                          return_value=("NIFTY20260319_23150PE", 222)):
+                          return_value=("NIFTY20260317_23150PE", 222)):
             from strategy import Direction
             at._enter_trade(Direction.SHORT, BASE_PRICE)
 
@@ -479,7 +479,7 @@ class TestInstrumentLookup:
         """If 1-OTM strike not in instruments, should fall back to ATM."""
         at, _ = _fresh_auto_trader()
         atm    = round(BASE_PRICE / 50) * 50
-        expiry = "2026-03-20"   # fixed expiry for test
+        expiry = "2026-03-17"   # next Tuesday from 2026-03-16 (Nifty weekly expiry)
 
         # Only ATM CE available, no OTM (+50)
         instruments = [{
@@ -612,7 +612,7 @@ class TestLiveOrderPlacement:
         at, mock_km = _fresh_auto_trader()
         at.state.is_paper_mode = False   # LIVE mode!
 
-        with patch.object(at, "_get_option_symbol", return_value=("NIFTY20260320_23250CE", 111)):
+        with patch.object(at, "_get_option_symbol", return_value=("NIFTY20260317_23250CE", 111)):
             from strategy import Direction
             at._enter_trade(Direction.LONG, BASE_PRICE)
 
@@ -632,7 +632,7 @@ class TestLiveOrderPlacement:
         at.state.is_paper_mode = False
         mock_km.kite.place_order.side_effect = Exception("Insufficient funds")
 
-        with patch.object(at, "_get_option_symbol", return_value=("NIFTY20260320_23250CE", 111)):
+        with patch.object(at, "_get_option_symbol", return_value=("NIFTY20260317_23250CE", 111)):
             from strategy import Direction
             at._enter_trade(Direction.LONG, BASE_PRICE)
 

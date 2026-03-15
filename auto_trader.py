@@ -383,13 +383,20 @@ def _get_nfo_instruments() -> list[dict]:
 
 
 def _get_nearest_expiry_date() -> datetime:
-    """Return nearest weekly expiry date (Thursday)."""
+    """Return nearest weekly expiry date.
+
+    NSE changed Nifty 50 weekly option expiry from Thursday → Tuesday
+    effective October 2024 (SEBI circular on expiry-day rationalisation).
+    weekday(): Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
+    """
     from datetime import timedelta
+    EXPIRY_WEEKDAY = 1   # Tuesday (Nifty 50 weekly expiry as of Oct 2024)
     today = datetime.now()
-    days_until_thursday = (3 - today.weekday()) % 7
-    if days_until_thursday == 0 and today.hour >= 15:
-        days_until_thursday = 7
-    return today + timedelta(days=days_until_thursday)
+    days_until_expiry = (EXPIRY_WEEKDAY - today.weekday()) % 7
+    if days_until_expiry == 0 and today.hour >= 15:
+        # Past 3 PM on expiry day → roll to next week
+        days_until_expiry = 7
+    return today + timedelta(days=days_until_expiry)
 
 
 def _get_option_symbol(nifty_price: float, direction: Direction) -> tuple[str, int]:

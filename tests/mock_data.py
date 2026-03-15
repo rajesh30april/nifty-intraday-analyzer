@@ -135,10 +135,10 @@ def mock_instruments(nifty_price: float = BASE_PRICE) -> list[dict]:
     from datetime import timedelta
     atm = round(nifty_price / 50) * 50
 
-    # Thursday nearest expiry
-    today   = datetime(2026, 3, 16)
-    days_to_thu = (3 - today.weekday()) % 7 or 7
-    expiry  = (today + timedelta(days=days_to_thu)).strftime("%Y-%m-%d")
+    # Tuesday nearest expiry (Nifty 50 weekly, changed from Thu → Tue Oct 2024)
+    today   = datetime(2026, 3, 16)   # Monday
+    days_to_tue = (1 - today.weekday()) % 7 or 7   # weekday 1 = Tuesday
+    expiry  = (today + timedelta(days=days_to_tue)).strftime("%Y-%m-%d")
 
     instruments = []
     token = 100000

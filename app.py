@@ -1597,8 +1597,8 @@ async def premium_estimate(spot: float = 23500.0, offset: int = 0):
     """Return a Black-Scholes-based ATM / OTM premium estimate.
 
     Uses India VIX (^INDIAVIX via yfinance, cached 5 min) and days-to-expiry
-    to the nearest weekly Thursday expiry so the preview in the settings panel
-    is grounded in reality, not a hardcoded 0.22% magic number.
+    to the nearest Nifty 50 weekly Tuesday expiry so the preview in the
+    settings panel is grounded in reality, not a hardcoded 0.22% magic number.
 
     offset: 0 = ATM, 1 = 1-OTM, 2 = 2-OTM  (mirrors state.strike_offset)
     """
@@ -1620,15 +1620,17 @@ async def premium_estimate(spot: float = 23500.0, offset: int = 0):
         premium_estimate._cache = cache
     iv = cache["vix"] / 100.0   # e.g. 14.5 VIX → 0.145 annualised vol
 
-    # ── Days to nearest weekly expiry (Thursday) ──────────────────
+    # ── Days to nearest Nifty 50 weekly expiry (Tuesday) ───────────
+    # NSE moved Nifty 50 weekly expiry Thu → Tue in Oct 2024.
+    # weekday(): Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
+    NIFTY_EXPIRY_WEEKDAY = 1   # Tuesday
     today = date.today()
-    days_to_thu = (3 - today.weekday()) % 7  # 0=Mon … 6=Sun; Thu=3
-    if days_to_thu == 0:
-        # If it's Thursday and past 3:30 PM, use next Thursday
+    days_to_expiry = (NIFTY_EXPIRY_WEEKDAY - today.weekday()) % 7
+    if days_to_expiry == 0:
         import datetime as _dt
         if _dt.datetime.now().hour >= 15:
-            days_to_thu = 7
-    dte = max(days_to_thu, 1)   # never 0 (causes div-by-zero)
+            days_to_expiry = 7   # past 3 PM on Tue → roll to next Tuesday
+    dte = max(days_to_expiry, 1)   # never 0 (div-by-zero guard)
 
     # ── Black-Scholes ATM approximation ──────────────────────────
     # ATM call ≈ Spot × IV × √(T) × 0.4  (Brenner-Subrahmanyam, 1988)
@@ -1656,7 +1658,7 @@ async def premium_estimate(spot: float = 23500.0, offset: int = 0):
         "atm_premium":   round(atm_premium),
         "est_premium":   est_premium,              # the one to use for lot calc
         "formula":       f"₹{spot}×{round(iv*100,1)}%÷100×√({dte}/365)×0.4×{discount}",
-        "note":          "Uses live India VIX + DTE to nearest Thursday expiry",
+        "note":          "Uses live India VIX + DTE to nearest Tuesday expiry (Nifty 50 weekly)",
     }
 
 
