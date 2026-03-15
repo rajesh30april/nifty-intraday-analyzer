@@ -513,8 +513,11 @@ def evaluate_and_act(df, current_price: float):
         return
 
     # 2. If we have an active trade — manage it
+    #    Acquire the tick guard lock so we don't race with real-time ticks.
     if state.active_trade:
-        _manage_active_trade(current_price)
+        with _tick_guard_lock:
+            if state.active_trade:   # re-check: tick may have just closed it
+                _manage_active_trade(current_price, source="🕯 candle")
         return
 
     # 3. No active trade — evaluate selected strategy
@@ -592,7 +595,7 @@ def _enter_trade(direction: Direction, price: float):
     _save_state_snapshot()   # ← crash recovery: snapshot immediately on entry
 
 
-def _manage_active_trade(current_price: float):
+def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
     """Manage stop-loss, trailing SL, and target for active trade."""
     trade = state.active_trade
     if not trade:
@@ -624,20 +627,62 @@ def _manage_active_trade(current_price: float):
 
     # Check stop-loss hit
     if is_long and current_price <= trade.stop_loss:
-        _exit_position(f"Stop-loss hit (SL=₹{trade.stop_loss})", current_price)
+        _exit_position(f"{source} — SL hit ₹{trade.stop_loss} @ ₹{current_price:.0f}", current_price)
         return
     if not is_long and current_price >= trade.stop_loss:
-        _exit_position(f"Stop-loss hit (SL=₹{trade.stop_loss})", current_price)
+        _exit_position(f"{source} — SL hit ₹{trade.stop_loss} @ ₹{current_price:.0f}", current_price)
         return
 
     # Check target hit
     if trade.target:
         if is_long and current_price >= trade.target:
-            _exit_position(f"Target hit (₹{trade.target})", current_price)
+            _exit_position(f"{source} — Target ₹{trade.target} @ ₹{current_price:.0f}", current_price)
             return
         if not is_long and current_price <= trade.target:
-            _exit_position(f"Target hit (₹{trade.target})", current_price)
+            _exit_position(f"{source} — Target ₹{trade.target} @ ₹{current_price:.0f}", current_price)
             return
+
+
+# ── Tick-Level Guard (called on every WebSocket tick) ────────────
+
+_tick_guard_lock = threading.Lock()
+
+def tick_guard(tick: dict) -> None:
+    """Real-time SL / target / trailing-SL protection on every Kite tick.
+
+    Entry decisions stay on 5-min candles (need closed candle data).
+    Exit decisions run here — every ~1s tick — so we never overshoot SL
+    by a whole candle.
+
+    This runs in the KiteTicker background thread so we use a lock
+    to avoid racing with the 5-min candle loop.
+    """
+    if not state.is_running or state.kill_switch:
+        return
+    if not state.active_trade:
+        return   # nothing to protect
+
+    price = tick.get("last_price")
+    if not price or price <= 0:
+        return
+
+    # Non-blocking: if the 5-min loop is already inside _manage_active_trade
+    # just skip this tick — next one will catch it.
+    acquired = _tick_guard_lock.acquire(blocking=False)
+    if not acquired:
+        return
+    try:
+        # Re-check inside lock — 5-min loop may have just closed the trade
+        if not state.active_trade:
+            return
+        now = datetime.now()
+        # Time-based exit via tick (catches 15:15 to the second)
+        if now.time() >= EXIT_TIME:
+            _exit_position(f"⚡ Tick exit — time limit ({EXIT_TIME.strftime('%H:%M')})", price)
+            return
+        _manage_active_trade(price, source="⚡ tick")
+    finally:
+        _tick_guard_lock.release()
 
 
 # ── Trade Log ─────────────────────────────────────────────────

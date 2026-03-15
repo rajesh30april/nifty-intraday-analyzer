@@ -355,8 +355,9 @@ async def callback(request: Request):
         print(f"🔄 Exchanging request_token for access_token...")
         kite_manager.generate_session(request_token)
         print(f"✅ Zerodha authenticated! Starting WebSocket...")
-        # Start live WebSocket streaming after login
-        kite_manager.start_ticker()
+        # Wire real-time tick guard for SL/target protection on every tick
+        from auto_trader import tick_guard
+        kite_manager.start_ticker(on_tick_callback=tick_guard)
         return RedirectResponse(url="/?live=true")
     except Exception as e:
         print(f"❌ Auth error: {e}")
