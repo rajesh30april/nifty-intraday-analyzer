@@ -81,8 +81,12 @@ class TraderState:
     trades_today: list[Trade] = field(default_factory=list)
     total_pnl: float = 0.0
     orders_placed: int = 0
-    highest_price_since_entry: float = 0.0  # for trailing SL
-    lowest_price_since_entry: float = float("inf")
+    highest_price_since_entry: float = 0.0   # for trailing SL
+    lowest_price_since_entry:  float = float("inf")
+    # ── Exchange SL-M sync ────────────────────────────────────────
+    entry_nifty_sl:          float = 0.0   # original Nifty SL at entry
+    entry_option_trigger:    float = 0.0   # original option trigger at entry
+    pending_sl_exchange_update: bool = False  # tick sets → candle loop clears
     last_evaluation: str = ""
     last_signal_reason: str = ""
     last_conditions: list[dict] = field(default_factory=list)
@@ -550,7 +554,56 @@ def _cancel_sl_order(trade: "Trade") -> None:
     finally:
         trade.sl_order_id = None
 
-    # NOTE: _update_exchange_sl intentionally REMOVED.
+
+def _compute_option_trigger_for_nifty_sl(nifty_sl: float) -> float:
+    """Convert a Nifty spot SL level → estimated option trigger price.
+
+    Uses the delta offset from the original entry:
+      option_trigger = entry_option_trigger
+                       + DELTA × (nifty_sl − entry_nifty_sl)
+
+    For a LONG trade: nifty_sl > entry_nifty_sl (SL moved in our favour),
+    so option_trigger rises (we're protecting more premium).
+    For a SHORT trade: nifty_sl < entry_nifty_sl → same math, negative diff.
+    """
+    ASSUMED_DELTA = 0.5
+    delta_nifty   = nifty_sl - state.entry_nifty_sl        # pts SL moved from entry
+    new_trigger   = state.entry_option_trigger + ASSUMED_DELTA * delta_nifty
+    return max(round(new_trigger, 1), 1.0)
+
+
+def _sync_trailing_sl_to_exchange() -> None:
+    """Modify the standing SL-M order at Zerodha to the current trailed level.
+
+    Called from the 5-min candle loop — API calls are safe here.
+    Skipped in paper mode (logged instead).
+    """
+    trade = state.active_trade
+    if not trade or not state.pending_sl_exchange_update:
+        return
+
+    state.pending_sl_exchange_update = False   # clear flag first (idempotent)
+
+    new_trigger = _compute_option_trigger_for_nifty_sl(trade.stop_loss)
+    nifty_sl    = trade.stop_loss
+
+    is_paper_order = trade.paper or not trade.sl_order_id or trade.sl_order_id.startswith("SL-PAPER")
+    if is_paper_order:
+        print(f"📝 [PAPER] Exchange SL-M would update → "
+              f"₹{new_trigger:.1f} (Nifty SL ₹{nifty_sl:.0f})")
+        return
+
+    try:
+        kite_manager.kite.modify_order(
+            variety=kite_manager.kite.VARIETY_REGULAR,
+            order_id=trade.sl_order_id,
+            trigger_price=new_trigger,
+        )
+        print(f"🛡 [TRAILING] Exchange SL-M updated → "
+              f"₹{new_trigger:.1f} option | Nifty SL ₹{nifty_sl:.0f}")
+    except Exception as e:
+        # Order may have been filled already (trade closed) — non-fatal
+        print(f"⚠️  Exchange SL-M modify failed (order may be filled): {e}")
     # Trailing SL is managed purely in-app by the tick guard (zero API calls).
     # The exchange SL-M is a fixed crash backstop — updating it on every
     # trailing move would block the tick thread with 3 API calls per update.
@@ -637,6 +690,10 @@ def evaluate_and_act(df, current_price: float):
         with _tick_guard_lock:
             if state.active_trade:   # re-check: tick may have just closed it
                 _manage_active_trade(current_price, source="🕯 candle")
+        # ── Sync trailing SL to exchange OUTSIDE the lock (API call safe here) ──
+        # tick_guard sets pending_sl_exchange_update=True when SL trails;
+        # we pick it up here every 5 min — no API calls in the tick thread.
+        _sync_trailing_sl_to_exchange()
         return
 
     # 3. No active trade — evaluate selected strategy
@@ -737,8 +794,10 @@ def _enter_trade(direction: Direction, price: float):
     state.active_trade = trade
     state.trades_today.append(trade)
     state.orders_placed += 1
-    state.highest_price_since_entry = price
-    state.lowest_price_since_entry = price
+    state.highest_price_since_entry    = price
+    state.lowest_price_since_entry     = price
+    state.entry_nifty_sl               = sl        # original SL for delta math
+    state.pending_sl_exchange_update   = False
 
     mode = "📝 PAPER" if trade.paper else "🟢 LIVE"
     print(f"🚀 [{mode}] ENTRY {direction.value.upper()} {qty}x {symbol} "
@@ -751,7 +810,8 @@ def _enter_trade(direction: Direction, price: float):
     # Tick guard handles all active / trailing SL management.
     sl_trigger = _estimate_option_sl_trigger(direction.value, state.sl_points)
     sl_order_id = _place_sl_order(trade, sl_trigger)
-    trade.sl_order_id = sl_order_id
+    trade.sl_order_id        = sl_order_id
+    state.entry_option_trigger = sl_trigger   # remember for trailing delta math
 
     print(f"🛡 Exchange SL-M backstop @ ₹{sl_trigger:.2f} (option) "
           f"| Nifty SL: ₹{sl:.0f} | order: {sl_order_id}")
@@ -778,17 +838,20 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
             state.lowest_price_since_entry, current_price
         )
 
-    # Trailing stop-loss — updated in-app only (zero API calls in tick thread)
+    # Trailing stop-loss — in-app only (ZERO API calls here — tick thread safe)
+    # Flag pending_sl_exchange_update so the next 5-min candle loop syncs Zerodha.
     if is_long:
         new_sl = state.highest_price_since_entry - state.trailing_sl_points
         if new_sl > trade.stop_loss:
             trade.stop_loss = round(new_sl, 2)
-            _save_state_snapshot()   # persist new SL for crash recovery
+            state.pending_sl_exchange_update = True   # ← candle loop will sync
+            _save_state_snapshot()
     else:
         new_sl = state.lowest_price_since_entry + state.trailing_sl_points
         if new_sl < trade.stop_loss:
             trade.stop_loss = round(new_sl, 2)
-            _save_state_snapshot()   # persist new SL for crash recovery
+            state.pending_sl_exchange_update = True   # ← candle loop will sync
+            _save_state_snapshot()
 
     # Check stop-loss hit
     if is_long and current_price <= trade.stop_loss:
@@ -890,6 +953,7 @@ def get_trader_status() -> dict:
             "instrument": active.instrument,
             "entry_price": active.entry_price,
             "stop_loss": active.stop_loss,
+        "exchange_sl_pending": state.pending_sl_exchange_update,
             "target": active.target,
             "quantity": active.quantity,
             "pnl_unrealized": 0,  # updated by caller with live price

@@ -505,6 +505,17 @@ function renderAutoTrader(data) {
         setT('at-sl',    `₹${t.stop_loss}`);
         setT('at-tgt',   `₹${t.target || '--'}`);
 
+        // ── Exchange SL-M sync badge ──────────────────────────────
+        const slBadge = document.getElementById('at-sl-sync-badge');
+        if (slBadge) {
+            if (data.exchange_sl_pending) {
+                slBadge.classList.remove('hidden');
+                slBadge.title = 'Trailing SL updated in-app — Zerodha exchange order will sync on next 5-min candle';
+            } else {
+                slBadge.classList.add('hidden');
+            }
+        }
+
         const upnlEl = document.getElementById('at-upnl');
         if (upnlEl) {
             const pnl = t.pnl_unrealized;
