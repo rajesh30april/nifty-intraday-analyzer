@@ -474,22 +474,23 @@ def _place_order(symbol: str, direction: Direction,
         available = 0  # proceed, order will fail at exchange if insufficient
 
     # LIVE ORDER via Kite Connect
+    # LONG = BUY CE option  (bullish: buying a call)
+    # SHORT = BUY PE option (bearish: buying a put)
+    # Both directions are OPTION BUYER entries — always BUY at entry.
+    # The direction only controls WHICH option we buy (CE vs PE),
+    # resolved in _get_option_symbol BEFORE this function is called.
     try:
-        transaction = (
-            kite_manager.kite.TRANSACTION_TYPE_BUY
-            if direction == Direction.LONG
-            else kite_manager.kite.TRANSACTION_TYPE_SELL
-        )
         order_id = kite_manager.kite.place_order(
             variety=kite_manager.kite.VARIETY_REGULAR,
             exchange="NFO",
-            tradingsymbol=symbol,          # already clean — no "NFO:" prefix
-            transaction_type=transaction,
+            tradingsymbol=symbol,   # already clean — no "NFO:" prefix
+            transaction_type=kite_manager.kite.TRANSACTION_TYPE_BUY,
             quantity=quantity,
             product=kite_manager.kite.PRODUCT_MIS,   # Intraday MIS
             order_type=kite_manager.kite.ORDER_TYPE_MARKET,
+            validity="DAY",
         )
-        print(f"✅ [LIVE] Order placed: {direction.value.upper()} {quantity}x {symbol} | ID: {order_id}")
+        print(f"✅ [LIVE] BUY {quantity}x {symbol} | ID: {order_id}")
         return str(order_id)
     except Exception as e:
         print(f"❌ [LIVE] Order failed: {e}")
@@ -497,22 +498,21 @@ def _place_order(symbol: str, direction: Direction,
         return None
 
 
-def _estimate_option_sl_trigger(direction: str, sl_points: float) -> float:
-    """Estimate option-level SL trigger price WITHOUT any API call.
+def _estimate_option_sl_trigger(sl_points: float, entry_premium: float) -> float:
+    """Estimate option-level SL trigger price from the REAL entry premium.
 
-    Logic: ATM options have delta ≈ 0.5. So a 30-point Nifty move
-    ≈ ₹15 move in option premium. We use this to estimate the
-    option price at which our Nifty SL would be hit.
+    Uses a fixed ATM delta of 0.5 (Brenner-Subrahmanyam approximation):
+      trigger = entry_premium - (sl_points × delta)
 
-    This is used ONCE at entry to set a fixed exchange backstop.
-    The tick guard handles all intelligent in-app SL management.
+    Example: entry=₹210, SL=30pts, delta=0.5 → trigger=₹195
+    (the option should lose ~₹15 when Nifty drops 30 points)
+
+    This is used ONCE at entry to set a fixed exchange crash backstop.
+    The tick guard handles all active / trailing SL management.
     """
-    ASSUMED_DELTA = 0.5         # ATM option delta approximation
-    ASSUMED_ENTRY_PREMIUM = float(os.getenv("ASSUMED_PREMIUM", "150"))  # configurable
-
-    # Premium drop expected when Nifty moves SL_POINTS against us
-    expected_premium_loss = sl_points * ASSUMED_DELTA
-    trigger = max(ASSUMED_ENTRY_PREMIUM - expected_premium_loss, 1.0)
+    ASSUMED_DELTA = 0.5   # ATM 1-week option delta approximation
+    expected_loss = sl_points * ASSUMED_DELTA
+    trigger = max(entry_premium - expected_loss, 1.0)
     return round(trigger, 1)
 
 
@@ -530,20 +530,18 @@ def _place_sl_order(trade: "Trade", sl_trigger_price: float) -> str | None:
 
     try:
         clean = trade.instrument.replace("NFO:", "")
-        transaction = (
-            kite_manager.kite.TRANSACTION_TYPE_SELL
-            if trade.direction == "long"
-            else kite_manager.kite.TRANSACTION_TYPE_BUY
-        )
+        # We are always an OPTION BUYER (BUY CE or BUY PE at entry).
+        # The SL-M backstop closes the position → always SELL.
         order_id = kite_manager.kite.place_order(
             variety=kite_manager.kite.VARIETY_REGULAR,
             exchange="NFO",
             tradingsymbol=clean,
-            transaction_type=transaction,
+            transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
             quantity=trade.quantity,
             product=kite_manager.kite.PRODUCT_MIS,
             order_type=kite_manager.kite.ORDER_TYPE_SLM,
             trigger_price=sl_trigger_price,
+            validity="DAY",
         )
         print(f"🛡 [LIVE] SL-M backstop placed @ ₹{sl_trigger_price:.2f} | ID: {order_id}")
         return str(order_id)
@@ -617,6 +615,7 @@ def _sync_trailing_sl_to_exchange() -> None:
         kite_manager.kite.modify_order(
             variety=kite_manager.kite.VARIETY_REGULAR,
             order_id=trade.sl_order_id,
+            order_type=kite_manager.kite.ORDER_TYPE_SLM,   # explicit — preserve SL-M type
             trigger_price=new_trigger,
         )
         print(f"🛡 [TRAILING] Exchange SL-M updated → "
@@ -644,19 +643,17 @@ def _exit_position(reason: str, current_price: float):
 
     if not state.is_paper_mode:
         try:
-            transaction = (
-                kite_manager.kite.TRANSACTION_TYPE_SELL
-                if trade.direction == "long"
-                else kite_manager.kite.TRANSACTION_TYPE_BUY
-            )
+            # Option buyer strategy: we always BUY at entry (CE or PE).
+            # Exit closes the long option position → always SELL.
             kite_manager.kite.place_order(
                 variety=kite_manager.kite.VARIETY_REGULAR,
                 exchange="NFO",
                 tradingsymbol=trade.instrument.replace("NFO:", ""),
-                transaction_type=transaction,
+                transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
                 quantity=trade.quantity,
                 product=kite_manager.kite.PRODUCT_MIS,
                 order_type=kite_manager.kite.ORDER_TYPE_MARKET,
+                validity="DAY",
             )
         except Exception as e:
             print(f"❌ Exit order failed: {e}")
@@ -847,11 +844,17 @@ def _enter_trade(direction: Direction, price: float):
 
     # ── Place SL-M backstop at exchange immediately after entry ───
     # Crash protection: if app dies, exchange still holds this order.
-    # We estimate the option trigger WITHOUT an API call (delta approximation)
-    # so the tick thread is never blocked.
+    # Use real_ltp (fetched above) so the trigger reflects the ACTUAL
+    # option price we paid, not a guessed constant.
     # Tick guard handles all active / trailing SL management.
-    sl_trigger = _estimate_option_sl_trigger(direction.value, state.sl_points)
-    sl_order_id = _place_sl_order(trade, sl_trigger)
+    # Guard: real_ltp must be a positive number (MagicMock in tests is truthy but not float)
+    entry_premium = (
+        real_ltp
+        if isinstance(real_ltp, (int, float)) and real_ltp > 0
+        else _estimate_premium_fallback(price)
+    )
+    sl_trigger = _estimate_option_sl_trigger(state.sl_points, entry_premium)
+    sl_order_id   = _place_sl_order(trade, sl_trigger)
     trade.sl_order_id        = sl_order_id
     state.entry_option_trigger = sl_trigger   # remember for trailing delta math
 

@@ -57,12 +57,14 @@ def _fresh_auto_trader():
     mock_kite.VARIETY_REGULAR       = "regular"
     mock_kite.PRODUCT_MIS           = "MIS"
     mock_kite.ORDER_TYPE_MARKET     = "MARKET"
+    mock_kite.ORDER_TYPE_SLM        = "SL-M"
     mock_kite.place_order.return_value = 99999   # Zerodha order ID
-    mock_kite.margins.return_value  = {"equity": {"available": {"live_balance": 100_000}}}
+    mock_kite.margins.return_value  = {"net": 100_000}
 
     mock_km = MagicMock()
     mock_km.kite = mock_kite
     mock_km.latest_tick = {"last_price": BASE_PRICE}
+    mock_km.get_option_ltp.return_value = 150.0   # realistic option LTP for tests
 
     with patch.dict("sys.modules", {"kite_integration": MagicMock(kite_manager=mock_km)}):
         import auto_trader as at
@@ -626,6 +628,30 @@ class TestLiveOrderPlacement:
         assert first_call["transaction_type"] == "BUY"
         assert first_call["product"]          == "MIS"
         assert first_call["order_type"]       == "MARKET"
+        assert first_call["validity"]         == "DAY"
+
+        # Second call must be SL-M backstop — also SELL (closing a bought option)
+        second_call = mock_km.kite.place_order.call_args_list[1].kwargs
+        assert second_call["transaction_type"] == "SELL", (
+            "SL-M backstop must be SELL — we bought the option at entry"
+        )
+        assert second_call["order_type"] == "SL-M"
+        assert "trigger_price" in second_call
+
+    def test_short_entry_also_buys_option(self):
+        """Direction.SHORT = buy a PE (bearish bet). Entry must be BUY, not SELL."""
+        at, mock_km = _fresh_auto_trader()
+        at.state.is_paper_mode = False
+
+        with patch.object(at, "_get_option_symbol",
+                          return_value=("NIFTY20260317_23450PE", 222)):
+            from strategy import Direction
+            at._enter_trade(Direction.SHORT, BASE_PRICE)
+
+        first_call = mock_km.kite.place_order.call_args_list[0].kwargs
+        assert first_call["transaction_type"] == "BUY", (
+            "SHORT direction = buy a PE option — must be BUY not SELL"
+        )
 
     def test_failed_live_order_does_not_create_trade(self):
         at, mock_km = _fresh_auto_trader()
