@@ -283,14 +283,80 @@ async function applyAtSettings() {
         const data = await resp.json();
         if (data.success) {
             const statusEl = document.getElementById('at-settings-status');
-            if (statusEl) { statusEl.classList.remove('hidden'); setTimeout(() => statusEl.classList.add('hidden'), 3000); }
+            if (statusEl) { statusEl.classList.remove('hidden'); setTimeout(() => statusEl.classList.add('hidden'), 2000); }
             const qtyDesc = mode === 'capital'
                 ? `capital ₹${capital.toLocaleString('en-IN')}`
                 : `${lots} lot${lots>1?'s':''} (${manQty} units)`;
-            _atShowToast(`⚙️ Saved — SL:${sl}pts | Trail:${trail}pts | R:R 1:${rr} | ${qtyDesc}`, 'info');
+            _atShowToast(`✅ Saved — SL:${sl}pts | Trail:${trail}pts | R:R 1:${rr} | ${qtyDesc}`, 'info');
+            // Auto-show symbol preview so user sees exactly what will be traded
+            loadSymbolPreview();
         }
     } catch (e) {
         _atShowToast('❌ Failed to save settings', 'error');
+    }
+}
+
+// ── Symbol preview ───────────────────────────────────────────────
+async function loadSymbolPreview() {
+    const card = document.getElementById('at-symbol-preview');
+    if (!card) return;
+
+    // Show loading state
+    card.classList.remove('hidden');
+    ['at-sym-ce','at-sym-pe','at-sym-ce-ltp','at-sym-pe-ltp',
+     'at-sym-ce-lots','at-sym-pe-lots'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '⏳ loading...';
+    });
+
+    try {
+        const resp = await fetch('/api/auto-trader/preview-symbol');
+        const d    = await resp.json();
+
+        if (!d.success) {
+            _atShowToast(`❌ ${d.error}`, 'error');
+            card.classList.add('hidden');
+            return;
+        }
+
+        // Spot + expiry header
+        const spotEl = document.getElementById('at-symbol-spot');
+        if (spotEl) spotEl.textContent = `Nifty ₹${d.spot?.toFixed(0)} | Expiry ${d.expiry}`;
+
+        const expiryEl = document.getElementById('at-symbol-expiry');
+        if (expiryEl) expiryEl.textContent =
+            `${d.offset_label} strikes | SL ${d.sl_points}pts | R:R 1:${d.rr_ratio} | ${d.qty_mode === 'capital' ? '₹'+d.capital?.toLocaleString('en-IN')+' capital' : 'fixed lots'}`;
+
+        // CE (LONG)
+        const fmt = (sym, ltp, lots, cost) => ({
+            sym:  sym  || '❌ not found',
+            ltp:  ltp  ? `₹${ltp} LTP` : '❌ no price',
+            lots: lots ? `${lots} lots × 65 = ${lots*65} units  ≈ ₹${cost?.toLocaleString('en-IN')}` : '—',
+        });
+
+        const ce = fmt(d.long?.symbol,  d.long?.ltp,  d.long?.lots,  d.long?.cost);
+        const pe = fmt(d.short?.symbol, d.short?.ltp, d.short?.lots, d.short?.cost);
+
+        document.getElementById('at-sym-ce')?.setAttribute('textContent', ce.sym);
+        document.getElementById('at-sym-ce').textContent      = ce.sym;
+        document.getElementById('at-sym-ce-ltp').textContent  = ce.ltp;
+        document.getElementById('at-sym-ce-lots').textContent = ce.lots;
+        document.getElementById('at-sym-pe').textContent      = pe.sym;
+        document.getElementById('at-sym-pe-ltp').textContent  = pe.ltp;
+        document.getElementById('at-sym-pe-lots').textContent = pe.lots;
+
+        // Color LTP green if found
+        ['at-sym-ce-ltp','at-sym-pe-ltp'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.className = el.textContent.startsWith('❌')
+                ? 'text-red-400 font-bold mt-0.5'
+                : 'text-green-400 font-bold mt-0.5';
+        });
+
+    } catch(e) {
+        _atShowToast('❌ Symbol lookup failed', 'error');
+        card.classList.add('hidden');
     }
 }
 

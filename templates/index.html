@@ -626,15 +626,43 @@
                       </div>
                     </div>
 
-                    <div>
+                    <div class="flex gap-2">
                       <button onclick="applyAtSettings()"
-                        class="w-full bg-[#0053e2] hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold">
+                        class="flex-1 bg-[#0053e2] hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold">
                         ✅ Apply Settings
+                      </button>
+                      <button onclick="loadSymbolPreview()"
+                        class="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold">
+                        🔍 Load Symbol
                       </button>
                     </div>
 
                   </div>
-                  <p id="at-settings-status" class="text-[10px] text-green-400 mt-1 hidden">✅ Settings saved — will apply on next trade entry</p>
+
+                  <!-- Symbol preview card — shown after Apply or Load Symbol -->
+                  <div id="at-symbol-preview" class="hidden mt-2 bg-gray-900 border border-gray-700 rounded-lg p-2 text-[10px]">
+                    <div class="flex justify-between items-center mb-1">
+                      <span class="text-gray-400 font-semibold">📋 What will be traded on next signal</span>
+                      <span id="at-symbol-spot" class="text-gray-500"></span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                      <div class="bg-blue-950 rounded p-1.5">
+                        <div class="text-blue-400 font-bold mb-0.5">📈 LONG signal → BUY CE</div>
+                        <div id="at-sym-ce" class="font-mono text-white text-[9px]">—</div>
+                        <div id="at-sym-ce-ltp" class="text-green-400 font-bold mt-0.5">—</div>
+                        <div id="at-sym-ce-lots" class="text-gray-400">—</div>
+                      </div>
+                      <div class="bg-orange-950 rounded p-1.5">
+                        <div class="text-orange-400 font-bold mb-0.5">📉 SHORT signal → BUY PE</div>
+                        <div id="at-sym-pe" class="font-mono text-white text-[9px]">—</div>
+                        <div id="at-sym-pe-ltp" class="text-green-400 font-bold mt-0.5">—</div>
+                        <div id="at-sym-pe-lots" class="text-gray-400">—</div>
+                      </div>
+                    </div>
+                    <div id="at-symbol-expiry" class="text-gray-600 mt-1 text-center"></div>
+                  </div>
+
+                  <p id="at-settings-status" class="text-[10px] text-green-400 mt-1 hidden">✅ Settings saved</p>
                 </div>
 
                 <!-- Status grid -->

@@ -1758,6 +1758,108 @@ async def premium_estimate(spot: float = 23500.0, offset: int = 0):
     }
 
 
+@app.get("/api/auto-trader/preview-symbol")
+async def auto_trader_preview_symbol():
+    """Resolve the exact option symbol that would be traded RIGHT NOW.
+
+    Uses current live Nifty price + active settings (strike_offset, etc.)
+    to look up the real Kite tradingsymbol and fetch its live LTP.
+    Returns both LONG (CE) and SHORT (PE) symbols so the UI can show
+    exactly what will be bought on the next signal.
+    """
+    from auto_trader import state as at_state, _get_nfo_instruments, _get_nearest_expiry_date
+    from strategy import Direction
+
+    # ── Live spot price ──────────────────────────────────────────
+    tick  = kite_manager.latest_tick
+    quote = kite_manager.get_live_quote() if not tick else None
+    spot  = (
+        tick["last_price"]           if tick and isinstance(tick, dict)
+        else quote["last_price"]     if quote
+        else None
+    )
+    if not spot:
+        return {"success": False, "error": "No live Nifty price — is Kite authenticated?"}
+
+    atm_strike = round(spot / 50) * 50
+    offset_pts = at_state.strike_offset * 50
+    ce_strike  = atm_strike + offset_pts
+    pe_strike  = atm_strike - offset_pts
+    expiry     = _get_nearest_expiry_date().date()   # always compare as date, not datetime
+
+    # ── Instrument lookup ────────────────────────────────────────
+    try:
+        instruments = _get_nfo_instruments()
+    except Exception as e:
+        return {"success": False, "error": f"Instruments unavailable: {e}"}
+
+    def _find(itype, strike):
+        for i in instruments:
+            if (i["name"] == "NIFTY"
+                    and i["instrument_type"] == itype
+                    and int(i["strike"]) == int(strike)
+                    and i["expiry"] == expiry):
+                return i["tradingsymbol"], i["instrument_token"]
+        return None, None
+
+    ce_sym, ce_tok = _find("CE", ce_strike)
+    pe_sym, pe_tok = _find("PE", pe_strike)
+
+    if not ce_sym or not pe_sym:
+        return {
+            "success":    False,
+            "error":      f"Symbols not found for expiry {expiry} — market may be closed or instruments not loaded",
+            "ce_strike":  ce_strike,
+            "pe_strike":  pe_strike,
+            "expiry":     str(expiry),
+        }
+
+    # ── Fetch live LTP for both in one batch call ────────────────
+    ltps     = kite_manager.get_options_ltp_batch([ce_sym, pe_sym])
+    ce_ltp   = ltps.get(ce_sym)
+    pe_ltp   = ltps.get(pe_sym)
+    lot_size = 65
+
+    def _lots(ltp):
+        if not ltp or ltp <= 0:
+            return None
+        if at_state.qty_mode == "capital":
+            return max(1, int(at_state.capital / (ltp * lot_size)))
+        return at_state.manual_qty // lot_size
+
+    offset_label = {0: "ATM", 1: "1-OTM", 2: "2-OTM"}.get(at_state.strike_offset, "OTM")
+
+    return {
+        "success":      True,
+        "spot":         spot,
+        "atm_strike":   atm_strike,
+        "expiry":       str(expiry),
+        "offset_label": offset_label,
+        "long": {
+            "symbol":  ce_sym,
+            "token":   ce_tok,
+            "strike":  ce_strike,
+            "type":    "CE",
+            "ltp":     ce_ltp,
+            "lots":    _lots(ce_ltp),
+            "cost":    round(ce_ltp * lot_size * _lots(ce_ltp)) if ce_ltp and _lots(ce_ltp) else None,
+        },
+        "short": {
+            "symbol":  pe_sym,
+            "token":   pe_tok,
+            "strike":  pe_strike,
+            "type":    "PE",
+            "ltp":     pe_ltp,
+            "lots":    _lots(pe_ltp),
+            "cost":   round(pe_ltp * lot_size * _lots(pe_ltp)) if pe_ltp and _lots(pe_ltp) else None,
+        },
+        "qty_mode":     at_state.qty_mode,
+        "capital":      at_state.capital,
+        "sl_points":    at_state.sl_points,
+        "rr_ratio":     at_state.rr_ratio,
+    }
+
+
 @app.post("/api/auto-trader/start")
 async def auto_trader_start(strategy: str = "smart_router"):
     """Start the auto-trader with a selected strategy."""
