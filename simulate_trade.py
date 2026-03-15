@@ -167,12 +167,50 @@ def run():
         entered = True
         picked_strategy = getattr(signal, "picked_strategy", strategy_id)
 
+        # ── Strike & Quantity calculation (mirrors _get_option_symbol) ──
+        CAPITAL      = 96_000          # from env TRADING_CAPITAL default
+        LOT_SIZE     = 75              # Nifty lot size (changed to 75 from Apr 2024)
+        DEFAULT_QTY  = 780             # 12 lots × 65 (legacy config) — kept as-is
+        option_type  = "CE" if direction == "long" else "PE"
+        atm_strike   = round(entry_price / 50) * 50
+        # 1 strike OTM → cheaper premium → more quantity for same capital
+        otm_strike   = atm_strike + 50 if direction == "long" else atm_strike - 50
+        # Estimated OTM premium (ATM delta≈0.5, OTM delta≈0.35)
+        est_premium  = round(entry_price * 0.003, 0)   # rough: ~0.3% of Nifty for 1-OTM
+        lots_possible = int(CAPITAL / (est_premium * LOT_SIZE))
+
+        hdr("PHASE 1.5 — Strike & Quantity Selection")
+        print(f"  {B}Nifty spot at entry : ₹{entry_price:,.0f}{RST}")
+        print()
+        print(f"  {W}Step 1 — Find ATM strike{RST}")
+        print(f"  {DIM}  Round {entry_price:.0f} to nearest 50 → {atm_strike}{RST}")
+        print()
+        print(f"  {W}Step 2 — Go 1 strike OTM (cheaper premium){RST}")
+        print(f"  {DIM}  Direction = {'SHORT → bearish → buy PE' if direction=='short' else 'LONG → bullish → buy CE'}{RST}")
+        print(f"  {DIM}  ATM = {atm_strike}  →  OTM = {atm_strike} {'- 50' if direction=='short' else '+ 50'} = {otm_strike}{RST}")
+        print(f"  {G}  ✅ Strike chosen : {otm_strike} {option_type}{RST}")
+        print()
+        print(f"  {W}Step 3 — Why OTM not ATM?{RST}")
+        print(f"  {DIM}  ATM premium ≈ ₹150–200   (delta 0.50){RST}")
+        print(f"  {DIM}  OTM premium ≈ ₹80–120    (delta 0.35){RST}")
+        print(f"  {DIM}  Cheaper premium → more lots for same capital → more P&L per point{RST}")
+        print(f"  {DIM}  Downside: delta is lower, moves less per Nifty point{RST}")
+        print()
+        print(f"  {W}Step 4 — Quantity{RST}")
+        print(f"  {DIM}  Config  : DEFAULT_QUANTITY = {DEFAULT_QTY}  (from .env){RST}")
+        print(f"  {DIM}  = 12 lots × 65 units/lot  (old Nifty lot size){RST}")
+        print(f"  {DIM}  NOTE: Current Nifty lot size is 75.  You may want to update this.{RST}")
+        print(f"  {DIM}  At ₹{est_premium:.0f} est. premium → capital needed = {DEFAULT_QTY} × ₹{est_premium:.0f} = ₹{DEFAULT_QTY*est_premium:,.0f}{RST}")
+        print(f"  {G}  ✅ Quantity chosen : {DEFAULT_QTY} units  (12 lots){RST}")
+
         hdr("PHASE 2 — Entry order placed  🚀")
         arrow = "⬇ SHORT" if direction == "short" else "⬆ LONG"
         trade(f"🚀 [{t}]  {arrow}  @ ₹{entry_price:,.2f}")
         if strategy_id == "smart_router":
             trade(f"   Picked by  : 🧠 Smart Router → {picked_strategy}")
-        trade(f"   Stop Loss  : ₹{stop_loss:,.2f}  ({SL_PTS:.0f} pts risk)")
+        trade(f"   Instrument : {otm_strike} {option_type}  (1 strike OTM)")
+        trade(f"   Quantity   : {DEFAULT_QTY} units  (12 lots × 65)")
+        trade(f"   Stop Loss  : ₹{stop_loss:,.2f}  ({SL_PTS:.0f} pts risk on Nifty)")
         trade(f"   Target     : ₹{target:,.2f}  ({SL_PTS*RR:.0f} pts reward | RR {RR:.0f}:1)")
         trade(f"   SL-M order : ✅ placed at exchange (crash backstop)")
 
@@ -266,12 +304,20 @@ def run():
         print(f"  {Y}   ⚪  BREAK EVEN{RST}")
 
     hdr("Trade Summary")
+    # Recompute for summary block
+    _atm  = round(entry_price / 50) * 50
+    _otm  = _atm - 50 if direction == "short" else _atm + 50
+    _otype= "PE" if direction == "short" else "CE"
+    _qty  = 780
+
     rows = [
         ("Strategy",    f"{strat_info.emoji} {strat_info.name}"),
         ("Picked by",   f"Smart Router → {picked_strategy}"
                         if strategy_id == "smart_router" else strategy_id),
         ("Mode",        "📝 PAPER  (no real money)"),
         ("Direction",   "SHORT ⬇" if direction == "short" else "LONG ⬆"),
+        ("Instrument",  f"{_otm} {_otype}  (1 OTM from ATM {_atm})"),
+        ("Quantity",    f"{_qty} units  (12 lots × 65)"),
         ("Entry",       f"₹{entry_price:,.2f}"),
         ("Initial SL",  f"₹{entry_price+SL_PTS if direction=='short' else entry_price-SL_PTS:,.2f}"
                         f"  ({SL_PTS:.0f} pts)"),
