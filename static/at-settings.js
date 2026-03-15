@@ -34,6 +34,11 @@ function syncAtSettingsFromStatus(data) {
         _atStrikeOffset = data.strike_offset;
         _applyStrikeUI(data.strike_offset);
     }
+    if (data.max_trades_per_day !== undefined) {
+        const el = document.getElementById('at-max-trades');
+        if (el) { el.value = data.max_trades_per_day; }
+        _updateMaxTradesBadge(data.max_trades_per_day);
+    }
     _updateLotsHint();
     _updateCapitalEstimate();
 }
@@ -44,6 +49,18 @@ async function _syncAtSettingsFromServer() {
         const data = await resp.json();
         syncAtSettingsFromStatus(data);
     } catch (e) { /* silent */ }
+}
+
+// ── Max trades / day badge ──────────────────────────────────────
+function _updateMaxTradesBadge(val) {
+    const badge = document.getElementById('at-max-trades-badge');
+    if (!badge) return;
+    badge.textContent = val;
+    // colour: green ≤5, yellow ≤10, red >10
+    badge.className = badge.className.replace(/bg-\S+/g, '');
+    if (val <= 5)       badge.classList.add('bg-green-400', 'text-gray-900');
+    else if (val <= 10) badge.classList.add('bg-[#ffc220]', 'text-gray-900');
+    else                badge.classList.add('bg-red-400',   'text-white');
 }
 
 // ── Strike offset picker ────────────────────────────────────────
@@ -165,10 +182,12 @@ async function applyAtSettings() {
     if (sl < 5 || sl > 150) { _atShowToast('⚠️ SL must be between 5 and 150 Nifty points', 'warn'); return; }
     if (trail >= sl)         { _atShowToast('⚠️ Trailing SL must be smaller than the initial SL', 'warn'); return; }
 
+    const maxTrades = parseInt(document.getElementById('at-max-trades')?.value || '3', 10);
     const params = new URLSearchParams({
         sl_points: sl, trailing_sl_points: trail, rr_ratio: rr,
         qty_mode: mode, manual_qty: manQty, capital,
         strike_offset: _atStrikeOffset,
+        max_trades_per_day: maxTrades,
     });
 
     try {

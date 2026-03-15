@@ -538,6 +538,19 @@
                       </select>
                     </div>
 
+                    <div>
+                      <label class="text-[10px] text-gray-400 block mb-1" for="at-max-trades">
+                        Max Trades / Day
+                        <span id="at-max-trades-badge" class="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-[#ffc220] text-gray-900">3</span>
+                      </label>
+                      <input id="at-max-trades" type="range" min="1" max="15" step="1" value="3"
+                        class="w-full accent-[#0053e2]"
+                        oninput="_updateMaxTradesBadge(this.value)" onchange="applyAtSettings()">
+                      <div class="flex justify-between text-[9px] text-gray-600 mt-0.5">
+                        <span>1</span><span>5</span><span>10</span><span>15</span>
+                      </div>
+                    </div>
+
                     <!-- Qty mode toggle -->
                     <div class="col-span-2 md:col-span-2">
                       <label class="text-[10px] text-gray-400 block mb-1">How to size each trade?</label>

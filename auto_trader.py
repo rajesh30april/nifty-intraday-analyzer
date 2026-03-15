@@ -101,6 +101,7 @@ class TraderState:
     qty_mode:           str   = "manual"            # 'manual' | 'capital'
     manual_qty:         int   = DEFAULT_QUANTITY    # used when qty_mode=manual
     strike_offset:      int   = 0                   # 0=ATM, 1=1-OTM, 2=2-OTM (steps of 50)
+    max_trades_per_day: int   = MAX_ORDERS_PER_DAY  # runtime-overridable (1-15)
     recovery_mode: bool = False    # True if state was restored after a crash
     recovery_message: str = ""     # Human-readable description of what was recovered
     recovery_type: str = ""        # 'open' = trade still live | 'closed' = already exited | 'clean' = no trade
@@ -133,6 +134,7 @@ def _save_state_snapshot():
         "manual_qty":         state.manual_qty,
         "capital":            state.capital,
         "strike_offset":      state.strike_offset,
+        "max_trades_per_day": state.max_trades_per_day,
         "active_trade": {
             "id":          active.id,
             "timestamp":   active.timestamp,
@@ -213,6 +215,7 @@ def _recover_state(snapshot_file: Path | None = None):
     state.manual_qty         = snap.get("manual_qty",         DEFAULT_QUANTITY)
     state.capital            = snap.get("capital",            DEFAULT_CAPITAL)
     state.strike_offset      = snap.get("strike_offset",      0)   # default ATM
+    state.max_trades_per_day = snap.get("max_trades_per_day", MAX_ORDERS_PER_DAY)
 
     # ── Restore historical trades ─────────────────────────────
     for t in snap.get("trades_today", []):
@@ -322,8 +325,8 @@ def _check_safety() -> tuple[bool, str]:
     if state.kill_switch:
         return False, "🛑 Kill switch activated — no new trades"
 
-    if state.orders_placed >= MAX_ORDERS_PER_DAY:
-        return False, f"Max orders reached ({MAX_ORDERS_PER_DAY}/day)"
+    if state.orders_placed >= state.max_trades_per_day:
+        return False, f"Max trades/day reached ({state.orders_placed}/{state.max_trades_per_day})"
 
     if state.total_pnl <= -MAX_LOSS_PER_DAY:
         return False, f"Max daily loss hit (₹{MAX_LOSS_PER_DAY})"
@@ -1009,6 +1012,7 @@ def get_trader_status() -> dict:
         "manual_qty":         state.manual_qty,
         "capital":            state.capital,
         "strike_offset":      state.strike_offset,
+        "max_trades_per_day": state.max_trades_per_day,
     }
 
 
@@ -1020,6 +1024,7 @@ def configure_auto_trader(
     manual_qty:         int   | None = None,
     capital:            float | None = None,
     strike_offset:      int   | None = None,   # 0=ATM, 1=1-OTM, 2=2-OTM
+    max_trades_per_day: int   | None = None,   # 1-15
 ) -> dict:
     """Update runtime trade settings without restarting."""
     if sl_points          is not None: state.sl_points          = sl_points
@@ -1029,6 +1034,7 @@ def configure_auto_trader(
     if manual_qty         is not None: state.manual_qty         = manual_qty
     if capital            is not None: state.capital            = capital
     if strike_offset      is not None: state.strike_offset      = max(0, min(2, strike_offset))
+    if max_trades_per_day is not None: state.max_trades_per_day = max(1, min(15, max_trades_per_day))
     _save_state_snapshot()
     return {
         "sl_points":          state.sl_points,
@@ -1038,6 +1044,7 @@ def configure_auto_trader(
         "manual_qty":         state.manual_qty,
         "capital":            state.capital,
         "strike_offset":      state.strike_offset,
+        "max_trades_per_day": state.max_trades_per_day,
     }
 
 
