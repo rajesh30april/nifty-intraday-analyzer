@@ -54,7 +54,6 @@ async function replayInstantFull() {
 async function _fetchAndStartReplay(date, instant) {
     _stopTimer();
 
-    // Collect params from the main backtest form
     const params = new URLSearchParams({
         date,
         period:      document.getElementById('bt-period')?.value     || '60d',
@@ -63,45 +62,81 @@ async function _fetchAndStartReplay(date, instant) {
         rr_ratio:    document.getElementById('bt-rr')?.value         || '2',
         max_trades:  document.getElementById('bt-max-trades')?.value || '3',
         strategy:    document.getElementById('bt-strategy')?.value   || 'smart_router',
+        quantity:    document.getElementById('bt-qty')?.value        || '750',
         data_source: window._currentDataSource || 'yahoo',
     });
 
-    document.getElementById('replay-loading').classList.remove('hidden');
-    document.getElementById('replay-results').classList.add('hidden');
+    const loadingEl = document.getElementById('replay-loading');
+    const resultsEl = document.getElementById('replay-results');
+    loadingEl.classList.remove('hidden');
+    resultsEl.classList.add('hidden');
+    _setReplayProgress(0, 'Connecting…');
 
-    try {
-        const resp = await fetch(`/api/backtest/replay?${params}`, { method: 'POST' });
-        const data = await resp.json();
-        if (!data.success) { alert('Replay failed: ' + (data.error || 'Unknown')); return; }
+    return new Promise((resolve) => {
+        const es = new EventSource(`/api/backtest/replay/stream?${params}`);
 
-        _replayFrames = data.frames || [];
-        _replayIdx    = -1;
-        _replayPaused = false;
+        es.onmessage = (e) => {
+            const msg = JSON.parse(e.data);
 
-        document.getElementById('replay-date-label').textContent = date;
-        document.getElementById('replay-loading').classList.add('hidden');
-        document.getElementById('replay-results').classList.remove('hidden');
-        document.getElementById('replay-candle-card').classList.remove('hidden');
+            if (msg.phase === 'fetching') {
+                _setReplayProgress(msg.pct, '📡 ' + (msg.msg || 'Fetching data…'));
+            } else if (msg.phase === 'processing') {
+                const label = msg.total
+                    ? `🕯 Candle ${msg.candle} / ${msg.total}`
+                    : '🕯 Processing…';
+                _setReplayProgress(msg.pct, label);
+            } else if (msg.phase === 'done') {
+                es.close();
+                _setReplayProgress(100, '✅ Done!');
 
-        _renderSummary(data.summary);
-        _initPriceChart(data.frames, date);
-        _buildTable(data.frames);
+                _replayFrames = msg.frames || [];
+                _replayIdx    = -1;
+                _replayPaused = false;
 
-        if (instant) {
-            // Jump to last frame
-            _replayIdx = _replayFrames.length - 1;
-            _renderFrame(_replayIdx);
-            _updateProgress();
-        } else {
-            _replayPaused = false;
-            document.getElementById('replay-pause-btn').textContent = '⏸';
-            _advanceReplay();
-        }
-    } catch (e) {
-        alert('Replay error: ' + e.message);
-    } finally {
-        document.getElementById('replay-loading').classList.add('hidden');
-    }
+                document.getElementById('replay-date-label').textContent = date;
+                loadingEl.classList.add('hidden');
+                resultsEl.classList.remove('hidden');
+                document.getElementById('replay-candle-card')?.classList.remove('hidden');
+
+                _renderSummary(msg.summary);
+                _initPriceChart(msg.frames, date);
+                _buildTable(msg.frames);
+
+                if (instant) {
+                    _replayIdx = _replayFrames.length - 1;
+                    _renderFrame(_replayIdx);
+                    _updateProgress();
+                } else {
+                    document.getElementById('replay-pause-btn').textContent = '⏸';
+                    _advanceReplay();
+                }
+                resolve();
+            } else if (msg.phase === 'error') {
+                es.close();
+                loadingEl.classList.add('hidden');
+                _setReplayProgress(0, '❌ Error: ' + (msg.msg || 'unknown'));
+                resolve();
+            }
+        };
+
+        es.onerror = () => {
+            es.close();
+            loadingEl.classList.add('hidden');
+            _setReplayProgress(0, '❌ Connection error');
+            resolve();
+        };
+    });
+}
+
+function _setReplayProgress(pct, label) {
+    const bar   = document.getElementById('replay-progress-bar');
+    const txt   = document.getElementById('replay-progress-label');
+    const wrap  = document.getElementById('replay-progress-wrap');
+    if (!wrap) return;
+    wrap.classList.remove('hidden');
+    if (bar)  { bar.style.width = pct + '%'; bar.textContent = pct + '%'; }
+    if (txt)  txt.textContent = label || '';
+    if (pct >= 100) setTimeout(() => wrap?.classList.add('hidden'), 1500);
 }
 
 // ── Timer control ─────────────────────────────────────────────

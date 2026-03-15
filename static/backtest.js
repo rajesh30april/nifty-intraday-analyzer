@@ -140,34 +140,67 @@ async function runBacktest() {
         quantity, data_source: dataSource,
     });
 
-    // Update loading message based on source
-    const loadingMsg = {
-        yahoo: 'Fetching from Yahoo Finance... 🌐',
-        zerodha: 'Fetching from Zerodha Kite... 🔷',
-        truedata: 'Fetching from TrueData (may take ~30s for large periods)... 🏆',
-    };
-    document.querySelector('#bt-loading p').textContent = loadingMsg[dataSource] || 'Running backtest... 🐶';
+    _setBtProgress(0, '📡 Connecting…');
 
-    try {
-        const resp = await fetch(`/api/backtest?${params}`, { method: 'POST' });
-        const data = await resp.json();
+    // Close any previous stream
+    if (window._btEventSource) { window._btEventSource.close(); }
 
-        if (!data.success) {
-            alert('Backtest failed: ' + (data.error || 'Unknown error'));
-            return;
+    const es = new EventSource(`/api/backtest/stream?${params}`);
+    window._btEventSource = es;
+
+    es.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+
+        if (msg.phase === 'fetching') {
+            _setBtProgress(msg.pct, '📡 ' + (msg.msg || 'Fetching data…'));
+        } else if (msg.phase === 'running') {
+            const label = msg.total
+                ? `📅 Day ${msg.day} / ${msg.total}  —  ${msg.msg || ''}`
+                : '⚙️ Running…';
+            _setBtProgress(msg.pct, label);
+        } else if (msg.phase === 'finalising') {
+            _setBtProgress(msg.pct, '📊 Calculating stats…');
+        } else if (msg.phase === 'done') {
+            es.close();
+            _setBtProgress(100, '✅ Done!');
+            renderBacktestResults(msg);
+            resultsEl.classList.remove('hidden');
+            loadingEl.classList.add('hidden');
+            _backtestRunning = false;
+            btn.disabled = false;
+            btn.textContent = '🚀 Run Backtest';
+            btn.className = 'bg-[#0053e2] hover:bg-blue-700 px-6 py-2 rounded-lg font-bold text-sm text-white transition';
+        } else if (msg.phase === 'error') {
+            es.close();
+            _setBtProgress(0, '❌ ' + (msg.msg || 'Error'));
+            loadingEl.classList.add('hidden');
+            _backtestRunning = false;
+            btn.disabled = false;
+            btn.textContent = '🚀 Run Backtest';
+            btn.className = 'bg-[#0053e2] hover:bg-blue-700 px-6 py-2 rounded-lg font-bold text-sm text-white transition';
         }
+    };
 
-        renderBacktestResults(data);
-        resultsEl.classList.remove('hidden');
-    } catch (e) {
-        alert('Backtest error: ' + e.message);
-    } finally {
+    es.onerror = () => {
+        es.close();
+        _setBtProgress(0, '❌ Connection lost');
+        loadingEl.classList.add('hidden');
         _backtestRunning = false;
         btn.disabled = false;
         btn.textContent = '🚀 Run Backtest';
         btn.className = 'bg-[#0053e2] hover:bg-blue-700 px-6 py-2 rounded-lg font-bold text-sm text-white transition';
-        loadingEl.classList.add('hidden');
-    }
+    };
+}
+
+function _setBtProgress(pct, label) {
+    const bar  = document.getElementById('bt-progress-bar');
+    const txt  = document.getElementById('bt-progress-label');
+    const wrap = document.getElementById('bt-progress-wrap');
+    if (!wrap) return;
+    wrap.classList.remove('hidden');
+    if (bar)  { bar.style.width = pct + '%'; }
+    if (txt)  txt.textContent = label || '';
+    if (pct >= 100) setTimeout(() => wrap?.classList.add('hidden'), 2000);
 }
 
 /**

@@ -16,6 +16,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, time as dt_time, timedelta
 from dataclasses import dataclass, field
+from typing import Callable
 
 from data_fetcher import fetch_intraday_data
 from strategy import evaluate_vwap_breakout, Direction
@@ -122,6 +123,7 @@ def run_backtest(
     strategy_id: str = "smart_router",
     data_source: str = "yahoo",
     quantity: int = QUANTITY,
+    on_progress: Callable[[dict], None] | None = None,
 ) -> BacktestResult:
     """Run backtest on historical data.
 
@@ -137,6 +139,11 @@ def run_backtest(
     Returns:
         BacktestResult with all trades and stats.
     """
+    def _emit(payload: dict) -> None:
+        if on_progress:
+            on_progress(payload)
+
+    _emit({"phase": "fetching", "pct": 0, "msg": f"Fetching {period} of {interval} data…"})
     print(f"\n🔬 Fetching {period} of {interval} data from {data_source}...")
     df, source_label = _fetch_data(data_source, interval, period)
 
@@ -156,7 +163,11 @@ def run_backtest(
     # Accept trailing_sl_points as alias for trailing_sl (from API)
     effective_trail = trailing_sl_points if trailing_sl_points is not None else trailing_sl
 
-    for day, day_df in trading_days:
+    total_days = len(trading_days)
+    _emit({"phase": "running", "pct": 5, "day": 0, "total": total_days,
+           "msg": f"Simulating {total_days} trading days…"})
+
+    for idx, (day, day_df) in enumerate(trading_days):
         _backtest_day(
             day_df, str(day), result,
             full_df=df,
@@ -168,8 +179,11 @@ def run_backtest(
             strategy_id=strategy_id,
             quantity=quantity,
         )
+        pct = 5 + int(90 * (idx + 1) / total_days)
+        _emit({"phase": "running", "pct": pct,
+               "day": idx + 1, "total": total_days, "msg": str(day)})
 
-    # Calculate summary stats
+    _emit({"phase": "finalising", "pct": 97, "msg": "Calculating stats…"})
     _calculate_stats(result)
     return result
 
@@ -461,6 +475,7 @@ def replay_day(
     max_trades: int = 3,
     data_source: str = "yahoo",
     quantity: int = QUANTITY,
+    on_progress: Callable[[dict], None] | None = None,
 ) -> dict:
     """Replay a single trading day candle-by-candle.
 
@@ -470,12 +485,15 @@ def replay_day(
         summary: dict
         available_dates: list[str]
     """
+    def _emit(payload: dict) -> None:
+        if on_progress:
+            on_progress(payload)
+
+    _emit({"phase": "fetching", "pct": 0, "msg": "Fetching historical data…"})
     full_df, source_label = _fetch_data(data_source, "5m", period)
     full_df.index = pd.DatetimeIndex(full_df.index)
 
-    # All available trading dates
     available_dates = sorted({str(ts.date()) for ts in full_df.index})
-
     target_date = pd.Timestamp(date_str).date()
     day_df = full_df[full_df.index.date == target_date]
 
@@ -484,6 +502,10 @@ def replay_day(
             "error": f"No data found for {date_str}. Available: {available_dates[-5:]}",
             "available_dates": available_dates,
         }
+
+    total_candles = len(day_df)
+    _emit({"phase": "processing", "pct": 10, "candle": 0,
+           "total": total_candles, "msg": f"Replaying {total_candles} candles for {date_str}…"})
 
     frames: list[ReplayFrame] = []
     trades: list[BacktestTrade] = []
@@ -502,6 +524,10 @@ def replay_day(
     conditions_met: list[str] = []
 
     for i in range(len(day_df)):
+        pct = 10 + int(85 * i / max(total_candles - 1, 1))
+        _emit({"phase": "processing", "pct": pct,
+               "candle": i + 1, "total": total_candles})
+
         candle_time = day_df.index[i].time()
         candle = day_df.iloc[i]
         price = float(candle["close"])

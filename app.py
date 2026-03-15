@@ -10,6 +10,7 @@ import time as _time
 
 import numpy as np
 from fastapi import FastAPI, Request, Query
+from fastapi.responses import StreamingResponse
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -701,6 +702,134 @@ async def trade_candles(
     except Exception as e:
         traceback.print_exc()
         return {"success": False, "error": str(e)}
+
+
+def _sse(payload: dict) -> str:
+    """Format a dict as an SSE data line."""
+    import json as _j
+    return "data: " + _j.dumps(payload) + "\n\n"
+
+
+@app.get("/api/backtest/replay/stream")
+async def replay_stream(
+    date: str = "",
+    period: str = "60d",
+    sl_points: float = 30.0,
+    trailing_sl: float = 15.0,
+    rr_ratio: float = 2.0,
+    max_trades: int = 3,
+    strategy: str = "smart_router",
+    data_source: str = "yahoo",
+    quantity: int = 750,
+):
+    """SSE stream: replay day candle-by-candle with live progress."""
+    from backtester import replay_day
+    import queue, threading
+
+    q: queue.Queue = queue.Queue()
+
+    def _run():
+        try:
+            result = replay_day(
+                date_str=date, period=period, strategy_id=strategy,
+                sl_points=sl_points, trailing_sl=trailing_sl, rr_ratio=rr_ratio,
+                max_trades=max_trades, data_source=data_source, quantity=quantity,
+                on_progress=lambda p: q.put(("progress", p)),
+            )
+            q.put(("done", result))
+        except Exception as exc:
+            q.put(("error", str(exc)))
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    async def _generate():
+        while True:
+            try:
+                kind, payload = await asyncio.to_thread(q.get, timeout=120)
+            except Exception:
+                yield _sse({"phase": "error", "msg": "timeout"})
+                break
+            if kind == "progress":
+                yield _sse(payload)
+            elif kind == "done":
+                frames  = [dataclasses.asdict(f) for f in payload.get("frames", [])]
+                trades  = [dataclasses.asdict(t) for t in payload.get("trades", [])]
+                summary = payload.get("summary", {})
+                avail   = payload.get("available_dates", [])
+                yield _sse({"phase": "done", "pct": 100, "frames": frames,
+                            "trades": trades, "summary": summary,
+                            "available_dates": avail})
+                break
+            else:
+                yield _sse({"phase": "error", "msg": str(payload)})
+                break
+
+    return StreamingResponse(_generate(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/backtest/stream")
+async def backtest_stream(
+    period: str = "60d",
+    sl_points: float = 30.0,
+    trailing_sl: float = 15.0,
+    rr_ratio: float = 2.0,
+    max_trades: int = 3,
+    strategy: str = "smart_router",
+    data_source: str = "yahoo",
+    quantity: int = 750,
+):
+    """SSE stream: full backtest with live day-by-day progress."""
+    from backtester import run_backtest
+    import queue, threading
+
+    q: queue.Queue = queue.Queue()
+
+    def _run():
+        try:
+            result = run_backtest(
+                period=period, interval="5m", quantity=quantity,
+                sl_points=sl_points, trailing_sl=trailing_sl, rr_ratio=rr_ratio,
+                max_trades_per_day=max_trades, strategy_id=strategy,
+                data_source=data_source,
+                on_progress=lambda p: q.put(("progress", p)),
+            )
+            q.put(("done", result))
+        except Exception as exc:
+            q.put(("error", str(exc)))
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    async def _generate():
+        while True:
+            try:
+                kind, payload = await asyncio.to_thread(q.get, timeout=120)
+            except Exception:
+                yield _sse({"phase": "error", "msg": "timeout"})
+                break
+            if kind == "progress":
+                yield _sse(payload)
+            elif kind == "done":
+                trades = [dataclasses.asdict(t) for t in payload.trades]
+                cumul  = 0.0
+                equity = []
+                for t in payload.trades:
+                    cumul += t.pnl_points
+                    equity.append({"date": t.date, "time": t.exit_time,
+                                   "cumulative": round(cumul, 2)})
+                summary = dataclasses.asdict(payload)
+                summary.pop("trades", None)
+                yield _sse({"phase": "done", "pct": 100, "trades": trades,
+                            "equity_curve": equity, "summary": summary})
+                break
+            else:
+                yield _sse({"phase": "error", "msg": str(payload)})
+                break
+
+    return StreamingResponse(_generate(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
 
 
 @app.post("/api/backtest/replay")
