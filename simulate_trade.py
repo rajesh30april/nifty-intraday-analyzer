@@ -283,23 +283,47 @@ def run():
     hdr("PHASE 4 — Exit & P&L")
 
     reason, exit_px = final_exit or ("⏰ Time exit 15:15", entry_price)
-    pnl_pts = (entry_price - exit_px) if direction == "short" else (exit_px - entry_price)
-    pnl_rs  = pnl_pts * 75
+    pnl_pts  = (entry_price - exit_px) if direction == "short" else (exit_px - entry_price)
+
+    # ── Real P&L calculation ──────────────────────────────────────
+    # Nifty options P&L = option premium change × quantity
+    # We don't have real option prices here, so we use delta approximation:
+    #   1-OTM option delta ≈ 0.35
+    #   Premium change ≈ Nifty pts × delta
+    QTY        = 780           # 12 lots × 65 units (from DEFAULT_QUANTITY)
+    DELTA      = 0.35          # 1-OTM PE/CE delta approximation
+    LOT_SIZE   = 65            # units per lot as configured
+    LOTS       = QTY // LOT_SIZE
+
+    option_pts = round(pnl_pts * DELTA, 1)        # option premium change
+    pnl_full   = round(option_pts * QTY, 0)       # full position P&L
+    pnl_per_lot= round(option_pts * LOT_SIZE, 0)  # per lot
 
     trade(f"🏁 EXIT — {reason}")
-    trade(f"   Entry      : ₹{entry_price:,.2f}")
-    trade(f"   Exit       : ₹{exit_px:,.2f}")
-    trade(f"   P&L        : {'+' if pnl_pts>=0 else ''}{pnl_pts:.1f} pts"
-          f"  /  {'+' if pnl_rs>=0 else ''}₹{pnl_rs:,.0f}  (1 lot ≈ 75 units)")
-    trade(f"   Trail moves: {sl_updates}×")
-    trade(f"   SL-M order : Cancelled before exit ✅  (no double-fill)")
+    trade(f"   Nifty move : {'+' if pnl_pts>=0 else ''}{pnl_pts:.1f} pts")
+    trade(f"   Option Δ  : {DELTA} (1-OTM approx)  →  premium moved ~₹{option_pts:.1f}")
+    print()
+    trade(f"   Quantity  : {QTY} units  ({LOTS} lots × {LOT_SIZE})")
+    trade(f"   Per lot   : {'+' if pnl_per_lot>=0 else ''}₹{pnl_per_lot:,.0f}  ({LOT_SIZE} units)")
+    trade(f"   FULL P&L  : {'+' if pnl_full>=0 else ''}₹{pnl_full:,.0f}  (all {LOTS} lots)")
+    print()
+    trade(f"   Trail SL  : {sl_updates} moves (locked in profit)")
+    trade(f"   SL-M order: Cancelled before exit ✅")
 
     print()
     bar = "━" * 52
-    if pnl_rs > 0:
-        print(f"  {G}{bar}\n   🟢  TRADE WIN   +₹{pnl_rs:,.0f}\n  {bar}{RST}")
-    elif pnl_rs < 0:
-        print(f"  {R}{bar}\n   🔴  TRADE LOSS   ₹{pnl_rs:,.0f}\n  {bar}{RST}")
+    if pnl_full > 0:
+        print(f"  {G}{bar}")
+        print(f"  {G}   🟢  TRADE WIN")
+        print(f"  {G}   Per lot : +₹{pnl_per_lot:,.0f}")
+        print(f"  {G}   TOTAL   : +₹{pnl_full:,.0f}  ({LOTS} lots)")
+        print(f"  {G}{bar}{RST}")
+    elif pnl_full < 0:
+        print(f"  {R}{bar}")
+        print(f"  {R}   🔴  TRADE LOSS")
+        print(f"  {R}   Per lot : ₹{pnl_per_lot:,.0f}")
+        print(f"  {R}   TOTAL   : ₹{pnl_full:,.0f}  ({LOTS} lots)")
+        print(f"  {R}{bar}{RST}")
     else:
         print(f"  {Y}   ⚪  BREAK EVEN{RST}")
 
@@ -324,8 +348,10 @@ def run():
         ("Final SL",    f"₹{stop_loss:,.2f}  (trailed {sl_updates}×)"),
         ("Target",      f"₹{target:,.2f}  (RR {RR:.0f}:1)"),
         ("Exit",        f"{reason} @ ₹{exit_px:,.2f}"),
-        ("P&L pts",     f"{'+' if pnl_pts>=0 else ''}{pnl_pts:.1f}"),
-        ("P&L ₹",       f"{'+' if pnl_rs>=0 else ''}₹{pnl_rs:,.0f}  (1 lot)"),
+        ("Nifty move",  f"{'+' if pnl_pts>=0 else ''}{pnl_pts:.1f} pts"),
+        ("Option Δ",    f"{DELTA} → premium moved ~₹{option_pts:.1f}"),
+        ("Per lot P&L", f"{'+' if pnl_per_lot>=0 else ''}₹{pnl_per_lot:,.0f}  ({LOT_SIZE} units)"),
+        ("TOTAL P&L",   f"{'+' if pnl_full>=0 else ''}₹{pnl_full:,.0f}  ({LOTS} lots × {LOT_SIZE})"),
     ]
     for k, v in rows:
         print(f"  {DIM}{k:<14}{RST}  {W}{v}{RST}")
