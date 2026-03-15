@@ -125,18 +125,19 @@ async function runBacktest() {
     resultsEl.classList.add('hidden');
 
     // Collect form values
-    const period = document.getElementById('bt-period').value;
-    const slPoints = document.getElementById('bt-sl').value;
+    const period    = document.getElementById('bt-period').value;
+    const slPoints  = document.getElementById('bt-sl').value;
     const trailingSl = document.getElementById('bt-trail').value;
-    const rrRatio = document.getElementById('bt-rr').value;
+    const rrRatio   = document.getElementById('bt-rr').value;
     const maxTrades = document.getElementById('bt-max-trades').value;
-    const strategy = document.getElementById('bt-strategy').value;
+    const strategy  = document.getElementById('bt-strategy').value;
+    const quantity  = document.getElementById('bt-qty')?.value || '780';
     const dataSource = _currentDataSource;
 
     const params = new URLSearchParams({
         period, sl_points: slPoints, trailing_sl: trailingSl,
         rr_ratio: rrRatio, max_trades: maxTrades, strategy,
-        data_source: dataSource,
+        quantity, data_source: dataSource,
     });
 
     // Update loading message based on source

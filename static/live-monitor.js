@@ -91,6 +91,15 @@ function _handleEvent(d) {
     _setText('lm-conf',   d.confidence + '%');
     _setText('lm-candle-time', 'candle ' + d.candle_time);
 
+    // ── SL / R:R / Qty from backtest settings (shared inputs) ────
+    const slVal  = document.getElementById('bt-sl')?.value  || '30';
+    const rrVal  = document.getElementById('bt-rr')?.value  || '2';
+    const qtyVal = document.getElementById('bt-qty')?.value || '780';
+    const lots   = Math.round(parseInt(qtyVal) / 75);   // approx lots (lot size 75)
+    _setText('lm-sl-val',  slVal + ' pts');
+    _setText('lm-rr-val',  '1:' + rrVal);
+    _setText('lm-qty-val', qtyVal + ' (~' + lots + 'L)');
+
     // Signal banner
     const sigBar  = document.getElementById('lm-signal-bar');
     const sigText = document.getElementById('lm-signal-text');

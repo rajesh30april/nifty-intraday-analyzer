@@ -115,11 +115,13 @@ def run_backtest(
     interval: str = "5m",
     sl_points: float = DEFAULT_SL_POINTS,
     trailing_sl: float = DEFAULT_TRAILING_SL,
+    trailing_sl_points: float | None = None,   # alias accepted from API
     rr_ratio: float = DEFAULT_RR_RATIO,
     max_trades_per_day: int = 3,
     use_router: bool = True,
     strategy_id: str = "smart_router",
     data_source: str = "yahoo",
+    quantity: int = QUANTITY,
 ) -> BacktestResult:
     """Run backtest on historical data.
 
@@ -151,16 +153,20 @@ def run_backtest(
         days_tested=len(trading_days),
     )
 
+    # Accept trailing_sl_points as alias for trailing_sl (from API)
+    effective_trail = trailing_sl_points if trailing_sl_points is not None else trailing_sl
+
     for day, day_df in trading_days:
         _backtest_day(
             day_df, str(day), result,
             full_df=df,
             sl_points=sl_points,
-            trailing_sl=trailing_sl,
+            trailing_sl=effective_trail,
             rr_ratio=rr_ratio,
             max_trades=max_trades_per_day,
             use_router=use_router,
             strategy_id=strategy_id,
+            quantity=quantity,
         )
 
     # Calculate summary stats
@@ -179,6 +185,7 @@ def _backtest_day(
     max_trades: int,
     use_router: bool = True,
     strategy_id: str = "smart_router",
+    quantity: int = QUANTITY,
 ):
     """Backtest a single trading day."""
     trades_today = 0
@@ -333,6 +340,7 @@ def _backtest_day(
             df.index[-1].strftime("%H:%M"),
             entry_price, last_price, stop_loss, target,
             pnl_pts, "Day End", conditions_met,
+            quantity=quantity,
         )
         result.trades.append(trade)
 
@@ -348,6 +356,7 @@ def _make_trade(
     date: str, direction: str, entry_time: str, exit_time: str,
     entry_price: float, exit_price: float, sl: float, target: float,
     pnl_pts: float, reason: str, conditions: list[str],
+    quantity: int = QUANTITY,
 ) -> BacktestTrade:
     return BacktestTrade(
         date=date,
@@ -359,7 +368,7 @@ def _make_trade(
         stop_loss=round(sl, 2),
         target=round(target, 2),
         pnl_points=pnl_pts,
-        pnl_rupees=round(pnl_pts * QUANTITY, 2),
+        pnl_rupees=round(pnl_pts * quantity, 2),
         exit_reason=reason,
         conditions_met=conditions,
     )
@@ -379,7 +388,7 @@ def _calculate_stats(result: BacktestResult):
     result.losers = len(losses)
     result.win_rate = round(len(wins) / len(pnls) * 100, 1) if pnls else 0
     result.total_pnl_points = round(sum(pnls), 2)
-    result.total_pnl_rupees = round(sum(pnls) * QUANTITY, 2)
+    result.total_pnl_rupees = round(sum(t.pnl_rupees for t in result.trades), 2)
     result.max_win = round(max(wins), 2) if wins else 0
     result.max_loss = round(min(losses), 2) if losses else 0
     result.avg_win = round(sum(wins) / len(wins), 2) if wins else 0

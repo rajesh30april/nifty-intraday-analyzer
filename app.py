@@ -1530,6 +1530,7 @@ async def run_backtest_api(
     max_trades: int = 3,
     strategy: str = "smart_router",
     data_source: str = "yahoo",
+    quantity: int = 780,
 ):
     """Run a backtest with given parameters, strategy, and data source."""
     from backtester import run_backtest, BacktestResult
@@ -1539,6 +1540,7 @@ async def run_backtest_api(
         result = run_backtest(
             period=period,
             interval="5m",
+            quantity=quantity,
             sl_points=sl_points,
             trailing_sl=trailing_sl,
             rr_ratio=rr_ratio,
