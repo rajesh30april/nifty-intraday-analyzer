@@ -1556,12 +1556,14 @@ async def auto_trader_configure(
     qty_mode:           str   | None = Query(None),
     manual_qty:         int   | None = Query(None),
     capital:            float | None = Query(None),
+    strike_offset:      int   | None = Query(None),
 ):
-    """Update runtime trade settings (SL, trail, R:R, qty) without restarting."""
+    """Update runtime trade settings (SL, trail, R:R, qty, strike) without restarting."""
     result = configure_auto_trader(
         sl_points=sl_points, trailing_sl_points=trailing_sl_points,
         rr_ratio=rr_ratio, qty_mode=qty_mode,
         manual_qty=manual_qty, capital=capital,
+        strike_offset=strike_offset,
     )
     return {"success": True, **result}
 

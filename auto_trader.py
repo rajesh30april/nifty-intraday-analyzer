@@ -100,6 +100,7 @@ class TraderState:
     capital:            float = DEFAULT_CAPITAL      # ₹ available for qty calc
     qty_mode:           str   = "manual"            # 'manual' | 'capital'
     manual_qty:         int   = DEFAULT_QUANTITY    # used when qty_mode=manual
+    strike_offset:      int   = 0                   # 0=ATM, 1=1-OTM, 2=2-OTM (steps of 50)
     recovery_mode: bool = False    # True if state was restored after a crash
     recovery_message: str = ""     # Human-readable description of what was recovered
     recovery_type: str = ""        # 'open' = trade still live | 'closed' = already exited | 'clean' = no trade
@@ -131,7 +132,8 @@ def _save_state_snapshot():
         "qty_mode":           state.qty_mode,
         "manual_qty":         state.manual_qty,
         "capital":            state.capital,
-        "active_trade":    {
+        "strike_offset":      state.strike_offset,
+        "active_trade": {
             "id":          active.id,
             "timestamp":   active.timestamp,
             "direction":   active.direction,
@@ -210,6 +212,7 @@ def _recover_state(snapshot_file: Path | None = None):
     state.qty_mode           = snap.get("qty_mode",           "manual")
     state.manual_qty         = snap.get("manual_qty",         DEFAULT_QUANTITY)
     state.capital            = snap.get("capital",            DEFAULT_CAPITAL)
+    state.strike_offset      = snap.get("strike_offset",      0)   # default ATM
 
     # ── Restore historical trades ─────────────────────────────
     for t in snap.get("trades_today", []):
@@ -390,8 +393,10 @@ def _get_option_symbol(nifty_price: float, direction: Direction) -> tuple[str, i
     """
     atm_strike = round(nifty_price / 50) * 50
     option_type = "CE" if direction == Direction.LONG else "PE"
-    # 1 strike OTM for cheaper premium + more lots
-    strike = atm_strike + 50 if direction == Direction.LONG else atm_strike - 50
+
+    # strike_offset=0 → ATM, 1 → 1-OTM, 2 → 2-OTM (configurable from UI)
+    offset = state.strike_offset * 50   # each step = 50 points
+    strike = atm_strike + offset if direction == Direction.LONG else atm_strike - offset
 
     expiry_date = _get_nearest_expiry_date()
     expiry_str  = expiry_date.strftime("%Y-%m-%d")   # Kite format: "2026-03-13"
@@ -429,10 +434,10 @@ def _get_option_symbol(nifty_price: float, direction: Direction) -> tuple[str, i
     symbol     = instrument["tradingsymbol"]
     token      = instrument["instrument_token"]
 
+    offset_label = {0: "ATM", 1: "1-OTM", 2: "2-OTM"}.get(state.strike_offset, f"{state.strike_offset}-OTM")
     print(f"🎯 Strike Selection:")
-    print(f"   Nifty: {nifty_price:.0f} | ATM: {atm_strike} | Picked: {strike} {option_type}")
+    print(f"   Nifty: {nifty_price:.0f} | ATM: {atm_strike} | Offset: {offset_label} | Picked: {strike} {option_type}")
     print(f"   Expiry: {expiry_str} | Symbol: {symbol} | Token: {token}")
-    print(f"   Why: OTM = cheaper premium = more lots per ₹{state.capital:.0f}")
 
     return symbol, token
 
@@ -1003,6 +1008,7 @@ def get_trader_status() -> dict:
         "qty_mode":           state.qty_mode,
         "manual_qty":         state.manual_qty,
         "capital":            state.capital,
+        "strike_offset":      state.strike_offset,
     }
 
 
@@ -1010,9 +1016,10 @@ def configure_auto_trader(
     sl_points:          float | None = None,
     trailing_sl_points: float | None = None,
     rr_ratio:           float | None = None,
-    qty_mode:           str   | None = None,   # 'manual' | 'capital'
+    qty_mode:           str   | None = None,
     manual_qty:         int   | None = None,
     capital:            float | None = None,
+    strike_offset:      int   | None = None,   # 0=ATM, 1=1-OTM, 2=2-OTM
 ) -> dict:
     """Update runtime trade settings without restarting."""
     if sl_points          is not None: state.sl_points          = sl_points
@@ -1021,6 +1028,7 @@ def configure_auto_trader(
     if qty_mode           is not None: state.qty_mode           = qty_mode
     if manual_qty         is not None: state.manual_qty         = manual_qty
     if capital            is not None: state.capital            = capital
+    if strike_offset      is not None: state.strike_offset      = max(0, min(2, strike_offset))
     _save_state_snapshot()
     return {
         "sl_points":          state.sl_points,
@@ -1029,6 +1037,7 @@ def configure_auto_trader(
         "qty_mode":           state.qty_mode,
         "manual_qty":         state.manual_qty,
         "capital":            state.capital,
+        "strike_offset":      state.strike_offset,
     }
 
 

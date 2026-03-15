@@ -484,6 +484,33 @@
                 <!-- ── Trade Settings Panel ── -->
                 <div id="at-settings-panel" class="hidden mt-2 bg-gray-900 border border-gray-600 rounded-xl p-3">
                   <p class="text-[10px] text-gray-400 mb-2 font-semibold uppercase tracking-wide">⚙️ Trade Settings — applied on next entry</p>
+
+                  <!-- ── Strike Picker ── -->
+                  <div class="mb-3">
+                    <label class="text-[10px] text-gray-400 block mb-1">Which option to buy?</label>
+                    <div class="flex gap-1">
+                      <button id="at-strike-0" onclick="setAtStrike(0)"
+                        class="flex-1 text-xs px-2 py-2 rounded-l-lg font-bold border border-gray-600 bg-[#0053e2] text-white transition"
+                        title="ATM: highest delta (~0.50), most liquid — best for intraday">
+                        ATM
+                        <div class="text-[9px] font-normal opacity-70">delta ~0.50</div>
+                      </button>
+                      <button id="at-strike-1" onclick="setAtStrike(1)"
+                        class="flex-1 text-xs px-2 py-2 border-t border-b border-gray-600 bg-gray-700 text-gray-300 transition"
+                        title="1-OTM: cheaper, more lots but lower delta (~0.35)">
+                        1-OTM
+                        <div class="text-[9px] font-normal opacity-70">delta ~0.35</div>
+                      </button>
+                      <button id="at-strike-2" onclick="setAtStrike(2)"
+                        class="flex-1 text-xs px-2 py-2 rounded-r-lg font-bold border border-gray-600 bg-gray-700 text-gray-300 transition"
+                        title="2-OTM: cheapest, most lots but low delta (~0.20) — big move needed">
+                        2-OTM
+                        <div class="text-[9px] font-normal opacity-70">delta ~0.20</div>
+                      </button>
+                    </div>
+                    <!-- Live example based on current Nifty price -->
+                    <div id="at-strike-example" class="mt-1 text-[10px] text-gray-500 font-mono"></div>
+                  </div>
                   <div class="grid grid-cols-2 md:grid-cols-5 gap-2 items-end">
 
                     <div>

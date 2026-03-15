@@ -29,7 +29,11 @@ function syncAtSettingsFromStatus(data) {
     if (data.manual_qty !== undefined)
         set('at-manual-qty', Math.max(1, Math.round(data.manual_qty / LOT_SIZE)));
     set('at-capital', data.capital);
-    if (data.qty_mode) _applyQtyModeUI(data.qty_mode, false);
+    if (data.qty_mode)      _applyQtyModeUI(data.qty_mode, false);
+    if (data.strike_offset !== undefined) {
+        _atStrikeOffset = data.strike_offset;
+        _applyStrikeUI(data.strike_offset);
+    }
     _updateLotsHint();
     _updateCapitalEstimate();
 }
@@ -40,6 +44,43 @@ async function _syncAtSettingsFromServer() {
         const data = await resp.json();
         syncAtSettingsFromStatus(data);
     } catch (e) { /* silent */ }
+}
+
+// ── Strike offset picker ────────────────────────────────────────
+let _atStrikeOffset = 0;   // 0=ATM, 1=1-OTM, 2=2-OTM
+
+function setAtStrike(offset) {
+    _atStrikeOffset = offset;
+    _applyStrikeUI(offset);
+    applyAtSettings();
+}
+
+function _applyStrikeUI(offset) {
+    [0, 1, 2].forEach(i => {
+        const btn = document.getElementById(`at-strike-${i}`);
+        if (!btn) return;
+        const active = i === offset;
+        btn.className = btn.className
+            .replace(/bg-\[#0053e2\]|bg-gray-700/g, active ? 'bg-[#0053e2]' : 'bg-gray-700')
+            .replace(/text-white|text-gray-300/g,   active ? 'text-white'   : 'text-gray-300');
+    });
+    _updateStrikeExample(offset);
+}
+
+function _updateStrikeExample(offset) {
+    const el = document.getElementById('at-strike-example');
+    if (!el) return;
+    const niftyEl    = document.getElementById('lm-price');
+    const niftyPrice = parseFloat(niftyEl?.textContent?.replace(/[^0-9.]/g, '')) || 23500;
+    const atm        = Math.round(niftyPrice / 50) * 50;
+    const ceStrike   = atm + offset * 50;
+    const peStrike   = atm - offset * 50;
+    const label      = ['ATM', '1-OTM', '2-OTM'][offset];
+    const delta      = [0.50, 0.35, 0.20][offset];
+    el.innerHTML = `Nifty ≈ ${niftyPrice.toFixed(0)} → ` +
+        `<span class="text-green-400">LONG = ${ceStrike} CE</span> | ` +
+        `<span class="text-red-400">SHORT = ${peStrike} PE</span> ` +
+        `<span class="text-gray-600">(${label}, delta ≈ ${delta})</span>`;
 }
 
 // ── Qty mode toggle ──────────────────────────────────────────────
@@ -127,6 +168,7 @@ async function applyAtSettings() {
     const params = new URLSearchParams({
         sl_points: sl, trailing_sl_points: trail, rr_ratio: rr,
         qty_mode: mode, manual_qty: manQty, capital,
+        strike_offset: _atStrikeOffset,
     });
 
     try {
@@ -149,4 +191,5 @@ async function applyAtSettings() {
 document.addEventListener('DOMContentLoaded', () => {
     _updateLotsHint();
     _updateCapitalEstimate();
+    _applyStrikeUI(_atStrikeOffset);
 });
