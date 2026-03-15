@@ -14,6 +14,13 @@ MARKET_OPEN_TIME  = dt_time(9, 15)
 MARKET_CLOSE_TIME = dt_time(15, 30)
 
 
+# ── ORB quality thresholds ───────────────────────────────────────────────────
+# Range too narrow → noise, slippage kills R:R
+# Range too wide   → SL too far, option premium too expensive
+ORB_MIN_RANGE = 30   # pts — below this it's a doji session, skip
+ORB_MAX_RANGE = 100  # pts — above this SL is too large for intraday
+
+
 def evaluate_orb(
     df: pd.DataFrame,
     orb_minutes: int = 15,
@@ -23,10 +30,11 @@ def evaluate_orb(
 
     Entry conditions:
     1. At least 15 minutes have passed since market open
-    2. Price breaks above ORB high (long) or below ORB low (short)
-    3. Breakout candle closes beyond the ORB level (not just a wick)
-    4. Volume on breakout candle > 1.2x average volume
-    5. Price is on the right side of VWAP (above for long, below for short)
+    2. ORB range quality: 30–100 pts (not too narrow, not too wide)
+    3. Price breaks above ORB high (long) or below ORB low (short)
+    4. Breakout candle closes beyond the ORB level (not just a wick)
+    5. Volume on breakout candle > 1.2x average volume
+    6. Price is on the right side of VWAP (above for long, below for short)
     """
     conditions = []
 
@@ -79,6 +87,16 @@ def evaluate_orb(
     orb_high  = float(orb_candles["high"].max())
     orb_low   = float(orb_candles["low"].min())
     orb_range = orb_high - orb_low
+
+    # ── Range quality guard ────────────────────────────────────────────────────
+    # Bail early before building conditions — a bad range poisons all signals.
+    range_ok = ORB_MIN_RANGE <= orb_range <= ORB_MAX_RANGE
+    if not range_ok:
+        reason = (
+            f"ORB range {orb_range:.0f} pts is "
+            f"{'too narrow (< {ORB_MIN_RANGE} pts — noise/slippage)' if orb_range < ORB_MIN_RANGE else 'too wide (> {ORB_MAX_RANGE} pts — SL too large)'}"
+        )
+        return StrategySignal(should_enter=False, reason=reason)
 
     curr    = df.iloc[-1]
     price   = float(curr["close"])

@@ -26,6 +26,32 @@ from market_regime import detect_regime, MarketRegime
 from strategies.registry import all_strategies, StrategyInfo
 from strategy import StrategySignal
 
+# VIX regime bands — India VIX as of 2025
+# Low VIX  (<14)  : dead market, tight ranges → scalping / reversion
+# Normal   (14-20): balanced → all strategies
+# High VIX (>20)  : fear, gaps, big moves → breakout / gap strategies win
+_VIX_LOW    = 14.0
+_VIX_HIGH   = 20.0
+
+
+def _vix_category_boost(strategy_category: str, vix: float) -> float:
+    """Return VIX-based multiplier for a strategy category.
+
+    Complements regime_fit (which uses ADX). VIX adds the fear dimension.
+    """
+    if vix < _VIX_LOW:
+        # Sleepy market → scalping and reversion work, breakouts fake out
+        boosts = {"scalping": 1.2, "reversal": 1.15, "breakout": 0.8,
+                  "momentum": 0.85, "trend": 0.9, "adaptive": 1.0}
+    elif vix > _VIX_HIGH:
+        # Fearful market → big gaps, real breakouts, fade the panic
+        boosts = {"breakout": 1.25, "reversal": 1.15, "momentum": 1.1,
+                  "scalping": 0.75, "trend": 1.0, "adaptive": 1.0}
+    else:
+        # Normal VIX → no VIX-based distortion
+        boosts = {}
+    return boosts.get(strategy_category, 1.0)
+
 
 # ── Regime fit multipliers per strategy category ─────────────────
 # Strategy categories → how well they fit each regime
@@ -71,6 +97,22 @@ _TIME_BONUS: dict[str, list[tuple[dt_time, dt_time, float]]] = {
         (dt_time(9, 15), dt_time(9, 30), 0.7),   # early — levels not tested yet
         (dt_time(9, 30), dt_time(14, 0), 1.2),   # mid-session sweet spot
         (dt_time(14, 0), dt_time(15, 30), 1.0),  # still valid
+    ],
+    # FCR fires right after 9:20 — prime window is 9:20–10:00 (early momentum)
+    "fcr": [
+        (dt_time(9, 15), dt_time(9, 20), 0.0),   # first candle still forming
+        (dt_time(9, 20), dt_time(10, 0), 1.5),   # sweet spot — early breakout
+        (dt_time(10, 0), dt_time(12, 0), 1.1),   # still valid, slightly lower bonus
+        (dt_time(12, 0), dt_time(14, 30), 0.9),  # fading relevance midday
+        (dt_time(14, 30), dt_time(15, 30), 0.0), # too late, no new entries
+    ],
+    # PDH/PDL valid all day but sweet spot is morning + post-lunch breakout
+    "pdhl_breakout": [
+        (dt_time(9, 15), dt_time(9, 25), 0.8),   # too early — level not confirmed
+        (dt_time(9, 25), dt_time(11, 0), 1.3),   # morning breakout window
+        (dt_time(11, 0), dt_time(13, 30), 1.1),  # midday — still valid
+        (dt_time(13, 30), dt_time(14, 30), 1.2), # post-lunch breakouts common
+        (dt_time(14, 30), dt_time(15, 30), 0.0), # too late
     ],
 }
 
@@ -132,6 +174,14 @@ def evaluate_all(df: pd.DataFrame) -> MetaRouterResult:
     regime = regime_result.regime
     current_time = df.index[-1].time()
 
+    # Fetch VIX once per evaluate_all call (uses the 5-min cached value from app.py)
+    try:
+        from auto_trader import premium_estimate as _pe  # noqa: PLC0415
+        _vix_cache = getattr(_pe, "_cache", {})
+        current_vix = float(_vix_cache.get("vix", 16.0))
+    except Exception:
+        current_vix = 16.0  # sensible fallback
+
     strategies = all_strategies()
     candidates: list[dict] = []
 
@@ -155,8 +205,9 @@ def evaluate_all(df: pd.DataFrame) -> MetaRouterResult:
 
         t_mult    = _time_bonus(strat.id, current_time)
         r_fit     = _regime_fit(strat.category, regime)
+        v_boost   = _vix_category_boost(strat.category, current_vix)
         raw_conf  = signal.confidence or 0.0
-        composite = raw_conf * r_fit * t_mult
+        composite = raw_conf * r_fit * t_mult * v_boost
 
         candidates.append({
             "id":          strat.id,
@@ -166,6 +217,7 @@ def evaluate_all(df: pd.DataFrame) -> MetaRouterResult:
             "confidence":  round(raw_conf, 1),
             "regime_fit":  r_fit,
             "time_mult":   t_mult,
+            "vix_boost":   v_boost,
             "composite":   round(composite, 1),
             "should_enter": signal.should_enter,
             "direction":   signal.direction,
@@ -182,11 +234,13 @@ def evaluate_all(df: pd.DataFrame) -> MetaRouterResult:
 
     if chosen:
         sig = chosen["signal"]
+        vix_tag = f"VIX={current_vix:.1f}"
         sig.reason = (
             f"[META: {regime.value.upper()}] → {chosen['emoji']} {chosen['name']} "
             f"| score={chosen['composite']:.0f} "
-            f"(conf={chosen['confidence']:.0f}% × regime={chosen['regime_fit']} × time={chosen['time_mult']}) "
-            f"| {sig.reason}"
+            f"(conf={chosen['confidence']:.0f}% × regime={chosen['regime_fit']} "
+            f"× time={chosen['time_mult']} × vix={chosen.get('vix_boost', 1.0)}) "
+            f"| {vix_tag} | {sig.reason}"
         )
         return MetaRouterResult(
             regime=regime.value,

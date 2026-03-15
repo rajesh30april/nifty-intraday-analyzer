@@ -18,7 +18,13 @@ from strategies.registry import register, StrategyInfo
 
 
 # ── Tunable parameters ───────────────────────────────────────────
-MIN_BODY_POINTS   = 15    # first candle body must be >= this to count as "big"
+# Body size: use ATR-relative threshold, not hardcoded points.
+# 15 pts on Nifty 23,400 = 0.06% — basically noise on a normal day.
+# We require body >= ATR_BODY_RATIO × 14-period ATR of recent candles.
+# ATR for Nifty 5-min typically ranges 20–60 pts depending on VIX.
+# 0.4 × ATR(14) ≈ 30–50 pts on a normal day — meaningful opening move.
+ATR_BODY_RATIO    = 0.40  # body must be >= 40% of recent ATR(14)
+MIN_BODY_FLOOR    = 20    # absolute floor (pts) — never go below this
 LEVEL_TOLERANCE   = 25    # pts within which a price is "at" a level
 CLUSTER_TOUCHES   = 2     # min touches in 5-day history to call it a cluster
 CLUSTER_ZONE      = 30    # pts — how close two touches must be to be in same zone
@@ -113,14 +119,22 @@ def evaluate_ocf(df: pd.DataFrame) -> StrategySignal:
     if current_time < dt_time(9, 20):
         return StrategySignal(should_enter=False, reason="Wait for 9:20 candle")
 
-    # ── Condition 1: Big opening candle ──────────────────────────
-    big_candle = body1 >= MIN_BODY_POINTS
+    # ── Condition 1: Big opening candle (ATR-relative) ─────────────
+    # Use ATR of the PREVIOUS candles (not today) so we're comparing the
+    # opening candle against the recent volatility baseline, not itself.
+    import indicators as _ind
+    atr_raw    = _ind.atr(df["high"], df["low"], df["close"], period=14).dropna()
+    recent_atr = float(atr_raw.iloc[-1]) if not atr_raw.empty else 50.0
+    min_body    = max(MIN_BODY_FLOOR, ATR_BODY_RATIO * recent_atr)
+
+    big_candle = body1 >= min_body
     conditions.append(StrategyCondition(
         name="Big Opening Candle",
         met=big_candle,
         detail=(
-            f"9:15 body={body1:.1f} pts "
-            f"({'✅ big' if big_candle else f'❌ need >={MIN_BODY_POINTS}pts'}), "
+            f"9:15 body={body1:.1f} pts | threshold={min_body:.0f} pts "
+            f"(ATR={recent_atr:.0f} × {ATR_BODY_RATIO}) "
+            f"{'✅ big' if big_candle else '❌ too small'}, "
             f"direction={'⬆ BULL' if dir1 == 'bull' else '⬇ BEAR'}"
         ),
     ))

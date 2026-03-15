@@ -19,3 +19,5 @@ import strategies.bb_squeeze           # noqa: F401 — Bollinger Band Squeeze
 import strategies.camarilla_pivots     # noqa: F401 — Camarilla Pivot Points
 import strategies.candlestick_patterns # noqa: F401 — Candlestick Patterns (Engulfing, Star, Hammer)
 import strategies.chart_patterns       # noqa: F401 — Chart Patterns (Flag, Double Top, Triangle)
+import strategies.pdhl_breakout        # noqa: F401 — Previous Day High/Low Breakout
+import strategies.first_candle_range   # noqa: F401 — First Candle Range (FCR)
