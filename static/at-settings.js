@@ -140,30 +140,64 @@ function _updateLotsHint() {
     if (cEl)   cEl.textContent   = `~₹${approxCost.toLocaleString('en-IN')}`;
 }
 
-function _updateCapitalEstimate() {
-    const capital    = parseFloat(document.getElementById('at-capital')?.value || '96000');
-    const niftyEl    = document.getElementById('lm-price');   // live Nifty price widget
-    const niftyPrice = parseFloat(niftyEl?.textContent?.replace(/[^0-9.]/g, '')) || 23500;
+// ── Premium estimate cache (avoid spamming the API on every keystroke) ──
+let _premiumEstCache = null;
+let _premiumEstCacheTs = 0;
+const PREMIUM_EST_TTL_MS = 5 * 60 * 1000;   // 5 minutes
 
-    // We pick 1-OTM strike at entry (cheaper than ATM).
-    // OTM premium ≈ 0.20–0.25% of spot. Use 0.22% as mid estimate.
-    // At entry, the app fetches the REAL live LTP via Kite — this is just
-    // a preview so you know roughly how many lots to expect.
-    const estPremiumOTM = Math.round(niftyPrice * 0.0022);   // OTM estimate
-    const estPremiumATM = Math.round(niftyPrice * 0.0035);   // ATM for reference
-    const lots          = Math.max(1, Math.floor(capital / (estPremiumOTM * LOT_SIZE)));
-    const units         = lots * LOT_SIZE;
-    const approxCost    = lots * estPremiumOTM * LOT_SIZE;
+/** Render the capital-mode estimate using a given premium (₹/unit). */
+function _renderCapitalEstimate(capital, estPremium, vixPct, dte, offset) {
+    const lots      = Math.max(1, Math.floor(capital / (estPremium * LOT_SIZE)));
+    const units     = lots * LOT_SIZE;
+    const approxCost= lots * estPremium * LOT_SIZE;
+    const offsetLabel = ['ATM', '1-OTM', '2-OTM'][offset] || 'ATM';
 
     const lotsEl  = document.getElementById('at-capital-qty-est');
     const unitsEl = document.getElementById('at-capital-units-est');
     const detailEl= document.getElementById('at-capital-detail');
-    if (lotsEl)   lotsEl.textContent  = lots;
+    if (lotsEl)   lotsEl.textContent = lots;
     if (unitsEl)  unitsEl.textContent = units;
-    if (detailEl) detailEl.innerHTML  =
-        `₹${capital.toLocaleString('en-IN')} ÷ (≈₹${estPremiumOTM} OTM premium × ${LOT_SIZE} units) ` +
-        `<span class="text-gray-600">= ${lots} lots | spends ~₹${approxCost.toLocaleString('en-IN')}</span>`;
+    if (detailEl) detailEl.innerHTML =
+        `₹${capital.toLocaleString('en-IN')} ÷ (≈₹${estPremium} ${offsetLabel} premium × ${LOT_SIZE} units) ` +
+        `<span class="text-gray-600">= ${lots} lots | spends ~₹${approxCost.toLocaleString('en-IN')}</span>` +
+        (vixPct ? `<br><span class="text-gray-600 text-[9px]">📊 India VIX: ${vixPct}% | DTE: ${dte}d → B-S estimate</span>` :
+                  `<br><span class="text-gray-600 text-[9px]">⚠️ VIX unavailable — using fallback estimate</span>`);
 }
+
+async function _updateCapitalEstimate() {
+    const capital    = parseFloat(document.getElementById('at-capital')?.value || '96000');
+    const niftyEl    = document.getElementById('lm-price');
+    const niftyPrice = parseFloat(niftyEl?.textContent?.replace(/[^0-9.]/g, '')) || 23500;
+    const offset     = _atStrikeOffset || 0;
+
+    // Show a quick fallback first (0.22% heuristic) while API loads
+    const fallbackPremium = Math.round(niftyPrice * 0.0022);
+    _renderCapitalEstimate(capital, fallbackPremium, null, null, offset);
+
+    // Use cached result if fresh enough
+    const now = Date.now();
+    if (_premiumEstCache && (now - _premiumEstCacheTs) < PREMIUM_EST_TTL_MS
+        && _premiumEstCache.spot === Math.round(niftyPrice / 100) * 100) {
+        const c = _premiumEstCache;
+        _renderCapitalEstimate(capital, c.est_premium, c.iv_pct, c.dte, offset);
+        return;
+    }
+
+    try {
+        const resp = await fetch(
+            `/api/premium-estimate?spot=${niftyPrice}&offset=${offset}`);
+        if (!resp.ok) throw new Error('API error');
+        const data = await resp.json();
+        _premiumEstCache   = { ...data, spot: Math.round(niftyPrice / 100) * 100 };
+        _premiumEstCacheTs = now;
+        _renderCapitalEstimate(capital, data.est_premium, data.iv_pct, data.dte, offset);
+    } catch (_) {
+        // Keep fallback already shown — no double update needed
+    }
+}
+
+// Keep sync alias for places that call the function without await
+function _updateCapitalEstimateSync() { _updateCapitalEstimate(); }
 
 // ── Apply settings to server ─────────────────────────────────────
 async function applyAtSettings() {

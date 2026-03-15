@@ -1592,6 +1592,74 @@ async def auto_trader_status():
     return {"success": True, **status}
 
 
+@app.get("/api/premium-estimate")
+async def premium_estimate(spot: float = 23500.0, offset: int = 0):
+    """Return a Black-Scholes-based ATM / OTM premium estimate.
+
+    Uses India VIX (^INDIAVIX via yfinance, cached 5 min) and days-to-expiry
+    to the nearest weekly Thursday expiry so the preview in the settings panel
+    is grounded in reality, not a hardcoded 0.22% magic number.
+
+    offset: 0 = ATM, 1 = 1-OTM, 2 = 2-OTM  (mirrors state.strike_offset)
+    """
+    import math
+    import yfinance as yf
+    from datetime import date, timedelta
+
+    # ── India VIX (cached 5 min) ──────────────────────────────────
+    _now = _time.time()
+    cache = getattr(premium_estimate, "_cache", {})
+    if _now - cache.get("ts", 0) > 300:   # 5-minute TTL
+        try:
+            vix_ticker = yf.Ticker("^INDIAVIX")
+            hist = vix_ticker.history(period="1d", interval="1m")
+            vix_val = float(hist["Close"].iloc[-1]) if not hist.empty else 15.0
+        except Exception:
+            vix_val = 15.0   # sensible Nifty default when market closed
+        cache = {"ts": _now, "vix": vix_val}
+        premium_estimate._cache = cache
+    iv = cache["vix"] / 100.0   # e.g. 14.5 VIX → 0.145 annualised vol
+
+    # ── Days to nearest weekly expiry (Thursday) ──────────────────
+    today = date.today()
+    days_to_thu = (3 - today.weekday()) % 7  # 0=Mon … 6=Sun; Thu=3
+    if days_to_thu == 0:
+        # If it's Thursday and past 3:30 PM, use next Thursday
+        import datetime as _dt
+        if _dt.datetime.now().hour >= 15:
+            days_to_thu = 7
+    dte = max(days_to_thu, 1)   # never 0 (causes div-by-zero)
+
+    # ── Black-Scholes ATM approximation ──────────────────────────
+    # ATM call ≈ Spot × IV × √(T) × 0.4  (Brenner-Subrahmanyam, 1988)
+    T = dte / 365.0
+    atm_premium = spot * iv * math.sqrt(T) * 0.4
+
+    # ── OTM discount by delta ratio ───────────────────────────────
+    # delta falls from ~0.50 (ATM) to ~0.35 (1-OTM) to ~0.22 (2-OTM)
+    # Premium scales roughly proportionally with delta for small offsets.
+    otm_discounts = {0: 1.0, 1: 0.65, 2: 0.40}
+    discount = otm_discounts.get(offset, 0.65)
+    est_premium = round(atm_premium * discount)
+
+    strike_offset_pts = offset * 50   # 50-point Nifty step per OTM level
+    atm_strike = round(spot / 50) * 50
+    picked_strike = atm_strike + strike_offset_pts  # CE direction for display
+
+    return {
+        "spot":          spot,
+        "iv_pct":        round(cache["vix"], 2),    # India VIX value used
+        "dte":           dte,
+        "offset":        offset,
+        "atm_strike":    int(atm_strike),
+        "picked_strike": int(picked_strike),
+        "atm_premium":   round(atm_premium),
+        "est_premium":   est_premium,              # the one to use for lot calc
+        "formula":       f"₹{spot}×{round(iv*100,1)}%÷100×√({dte}/365)×0.4×{discount}",
+        "note":          "Uses live India VIX + DTE to nearest Thursday expiry",
+    }
+
+
 @app.post("/api/auto-trader/start")
 async def auto_trader_start(strategy: str = "smart_router"):
     """Start the auto-trader with a selected strategy."""
