@@ -429,6 +429,39 @@ function renderAutoTrader(data) {
         if (noPos)  noPos.classList.remove('hidden');
         const activeEl = document.getElementById('at-active');
         if (activeEl) { activeEl.textContent = 'None'; activeEl.className = 'text-xs font-bold text-gray-500'; }
+
+        // ── Show WHY there's no position (not just a static message) ──
+        const noPosMsg = document.getElementById('at-no-pos-msg');
+        if (noPosMsg) {
+            const block  = data.block_reason || null;
+            const allMet = data.conditions?.length > 0 && data.conditions.every(c => c.met);
+
+            if (block && block.toLowerCase().includes('past exit time')) {
+                noPosMsg.textContent  = '⏰ Past exit time (15:15) — no new entries today';
+                noPosMsg.className    = 'text-[10px] text-yellow-500';
+            } else if (block && block.toLowerCase().includes('kill switch')) {
+                noPosMsg.textContent  = '🚨 Kill switch active — trading paused';
+                noPosMsg.className    = 'text-[10px] text-red-400';
+            } else if (block && block.toLowerCase().includes('loss')) {
+                noPosMsg.textContent  = '🛑 Daily loss limit hit — no new entries';
+                noPosMsg.className    = 'text-[10px] text-red-400';
+            } else if (block && block.toLowerCase().includes('max orders')) {
+                noPosMsg.textContent  = '🛑 Max orders reached for today';
+                noPosMsg.className    = 'text-[10px] text-red-400';
+            } else if (block) {
+                noPosMsg.textContent  = `⚠️ Blocked: ${block}`;
+                noPosMsg.className    = 'text-[10px] text-yellow-500';
+            } else if (allMet) {
+                noPosMsg.textContent  = '✅ Signal ready — entry pending next candle';
+                noPosMsg.className    = 'text-[10px] text-green-400 animate-pulse';
+            } else if (!data.is_running) {
+                noPosMsg.textContent  = '⏸ Auto-trader not running';
+                noPosMsg.className    = 'text-[10px] text-gray-500';
+            } else {
+                noPosMsg.textContent  = 'Waiting for entry signal…';
+                noPosMsg.className    = 'text-[10px] text-gray-600';
+            }
+        }
     }
 
     // ── CRASH RECOVERY BANNER ──────────────────────────────────

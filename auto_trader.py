@@ -87,6 +87,7 @@ class TraderState:
     last_conditions: list[dict] = field(default_factory=list)  # strategy conditions
     kill_switch: bool = False  # Emergency stop
     selected_strategy: str = "smart_router"  # default strategy
+    last_block_reason: str | None = None       # why last signal was blocked
     recovery_mode: bool = False   # True if state was restored after a crash
     recovery_message: str = ""    # Human-readable description of what was recovered
 
@@ -629,9 +630,13 @@ def evaluate_and_act(df, current_price: float):
     safe, safety_msg = _check_safety()
     if not safe:
         state.last_signal_reason = f"{signal.reason} | ⚠️ {safety_msg}"
+        state.last_block_reason  = safety_msg   # ← UI uses this for no-pos message
         return
 
+    state.last_block_reason = None   # clear any previous block
+
     if not signal.should_enter or signal.direction is None:
+        state.last_block_reason = None
         return
 
     # All conditions met — enter trade!
@@ -846,6 +851,7 @@ def get_trader_status() -> dict:
         "sl_points": SL_POINTS,
         "trailing_sl_points": TRAILING_SL_POINTS,
         "selected_strategy": state.selected_strategy,
+        "block_reason":     state.last_block_reason,
         "recovery_mode":    state.recovery_mode,
         "recovery_message": state.recovery_message,
     }
