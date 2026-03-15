@@ -64,7 +64,8 @@ function _updateMaxTradesBadge(val) {
 }
 
 // ── Strike offset picker ────────────────────────────────────────
-let _atStrikeOffset = 0;   // 0=ATM, 1=1-OTM, 2=2-OTM
+let _atStrikeOffset  = 0;      // 0=ATM, 1=1-OTM, 2=2-OTM
+let _lastKnownSpot   = null;   // updated whenever we fetch live-tick
 
 function setAtStrike(offset) {
     _atStrikeOffset = offset;
@@ -87,8 +88,8 @@ function _applyStrikeUI(offset) {
 function _updateStrikeExample(offset) {
     const el = document.getElementById('at-strike-example');
     if (!el) return;
-    const niftyEl    = document.getElementById('lm-price');
-    const niftyPrice = parseFloat(niftyEl?.textContent?.replace(/[^0-9.]/g, '')) || 23500;
+    const rawText    = document.getElementById('lm-price')?.textContent || '';
+    const niftyPrice = parseFloat(rawText.replace(/[^0-9.]/g, '')) || _lastKnownSpot || 23500;
     const atm        = Math.round(niftyPrice / 50) * 50;
     const ceStrike   = atm + offset * 50;
     const peStrike   = atm - offset * 50;
@@ -192,9 +193,23 @@ function _renderCapitalEstimate(capital, estPremium, vixPct, dte, offset, source
 
 async function _updateCapitalEstimate() {
     const capital    = parseFloat(document.getElementById('at-capital')?.value || '96000');
-    const niftyEl    = document.getElementById('lm-price');
-    const niftyPrice = parseFloat(niftyEl?.textContent?.replace(/[^0-9.]/g, '')) || 23500;
     const offset     = _atStrikeOffset || 0;
+
+    // Read spot from live-monitor element — but it starts as '--' until the
+    // first tick arrives. If it's not a real number yet, fetch from API.
+    const rawText    = document.getElementById('lm-price')?.textContent || '';
+    let   niftyPrice = parseFloat(rawText.replace(/[^0-9.]/g, ''));
+    if (!niftyPrice || niftyPrice < 10000) {
+        // lm-price not populated yet — fetch directly from live-tick API
+        try {
+            const r = await fetch('/api/live-tick');
+            const d = await r.json();
+            niftyPrice = d.last_price || _lastKnownSpot || 23500;
+        } catch (_) {
+            niftyPrice = _lastKnownSpot || 23500;
+        }
+    }
+    _lastKnownSpot = niftyPrice;   // cache for synchronous callers
 
     // Show a quick fallback first while API loads
     const fallbackPremium = Math.round(niftyPrice * 0.0022);
