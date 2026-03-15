@@ -66,7 +66,8 @@ class Trade:
     exit_reason: str | None = None
     pnl: float = 0.0
     status: str = OrderStatus.PENDING
-    order_id: str | None = None  # Zerodha order ID
+    order_id: str | None = None     # Zerodha entry order ID
+    sl_order_id: str | None = None  # Zerodha SL-M order ID (exchange-level guard)
     paper: bool = True
 
 
@@ -119,6 +120,7 @@ def _save_state_snapshot():
             "stop_loss":   active.stop_loss,
             "target":      active.target,
             "order_id":    active.order_id,
+            "sl_order_id": active.sl_order_id,
             "paper":       active.paper,
             "status":      active.status,
         } if active else None,
@@ -215,7 +217,9 @@ def _recover_state(snapshot_file: Path | None = None):
             direction=at["direction"], instrument=at["instrument"],
             entry_price=at["entry_price"], quantity=at["quantity"],
             stop_loss=at["stop_loss"], target=at["target"],
-            order_id=at.get("order_id"), paper=paper_mode,
+            order_id=at.get("order_id"),
+            sl_order_id=at.get("sl_order_id"),   # restore SL order for cancel-on-exit
+            paper=paper_mode,
             status=OrderStatus.FILLED,
         )
         state.active_trade = recovered_trade
@@ -442,11 +446,114 @@ def _place_order(symbol: str, direction: Direction,
         return None
 
 
+def _get_option_ltp(symbol: str) -> float | None:
+    """Fetch last traded price of an option from Zerodha."""
+    try:
+        clean = symbol.replace("NFO:", "")
+        quote = kite_manager.kite.quote([f"NFO:{clean}"])
+        ltp = quote.get(f"NFO:{clean}", {}).get("last_price")
+        return float(ltp) if ltp else None
+    except Exception as e:
+        print(f"⚠️  LTP fetch failed for {symbol}: {e}")
+        return None
+
+
+def _place_sl_order(trade: "Trade", sl_trigger_price: float) -> str | None:
+    """Place a Stop-Loss Market (SL-M) order at the exchange for crash safety.
+
+    The trigger is the option price corresponding to SL being hit.
+    Uses the option LTP at entry × a loss ratio to derive the option-level SL.
+    In paper mode returns a fake order ID.
+    """
+    if trade.paper:
+        fake_id = f"SL-PAPER-{datetime.now().strftime('%H%M%S')}"
+        print(f"📝 [PAPER SL] SL-M placed @ trigger ₹{sl_trigger_price:.2f} | ID: {fake_id}")
+        return fake_id
+
+    try:
+        clean = trade.instrument.replace("NFO:", "")
+        # SL order is the OPPOSITE direction (exit the position)
+        transaction = (
+            kite_manager.kite.TRANSACTION_TYPE_SELL
+            if trade.direction == "long"
+            else kite_manager.kite.TRANSACTION_TYPE_BUY
+        )
+        order_id = kite_manager.kite.place_order(
+            variety=kite_manager.kite.VARIETY_REGULAR,
+            exchange="NFO",
+            tradingsymbol=clean,
+            transaction_type=transaction,
+            quantity=trade.quantity,
+            product=kite_manager.kite.PRODUCT_MIS,
+            order_type=kite_manager.kite.ORDER_TYPE_SLM,   # Stop-Loss Market
+            trigger_price=round(sl_trigger_price, 1),
+        )
+        print(f"🛡 [LIVE] SL-M order placed @ ₹{sl_trigger_price:.2f} | ID: {order_id}")
+        return str(order_id)
+    except Exception as e:
+        print(f"⚠️  SL-M order failed (will use in-app guard as fallback): {e}")
+        return None
+
+
+def _cancel_sl_order(trade: "Trade") -> None:
+    """Cancel the standing SL-M order at the exchange."""
+    if not trade.sl_order_id or trade.paper:
+        return
+    if trade.sl_order_id.startswith("SL-PAPER"):
+        return
+    try:
+        kite_manager.kite.cancel_order(
+            variety=kite_manager.kite.VARIETY_REGULAR,
+            order_id=trade.sl_order_id,
+        )
+        print(f"🗑 SL-M order {trade.sl_order_id} cancelled")
+    except Exception as e:
+        print(f"⚠️  Could not cancel SL order {trade.sl_order_id}: {e}")
+    finally:
+        trade.sl_order_id = None
+
+
+def _update_exchange_sl(trade: "Trade", new_nifty_sl: float) -> None:
+    """Cancel old SL-M order and place new one when trailing SL moves.
+
+    new_nifty_sl: new SL level in Nifty spot points.
+    We derive the option trigger price proportionally from the current LTP.
+    """
+    ltp = _get_option_ltp(trade.instrument) if not trade.paper else None
+    if ltp is None and not trade.paper:
+        # Can't derive option SL without LTP — skip exchange update
+        # In-app tick guard still protects us
+        print("⚠️  Skipping exchange SL update — LTP unavailable")
+        return
+
+    # Derive option-level SL trigger:
+    # Use current option LTP × SL_POINTS/TRAILING_SL_POINTS ratio as a proxy.
+    # A simpler, more robust approach: option SL = ltp × 0.5 (50% of current premium).
+    # This is a conservative floor — ensures we don't over-stay a losing option.
+    if ltp:
+        option_sl_trigger = round(ltp * 0.50, 1)   # 50% drop = exit
+        option_sl_trigger = max(option_sl_trigger, 1.0)  # minimum ₹1
+    else:
+        option_sl_trigger = 1.0  # paper fallback
+
+    _cancel_sl_order(trade)
+    new_id = _place_sl_order(trade, option_sl_trigger)
+    if new_id:
+        trade.sl_order_id = new_id
+        print(f"🔄 Exchange SL updated → ₹{new_nifty_sl:.0f} (Nifty) "
+              f"| option trigger ₹{option_sl_trigger:.2f}")
+
+
 def _exit_position(reason: str, current_price: float):
     """Exit active trade."""
     trade = state.active_trade
     if not trade:
         return
+
+    # ── Cancel exchange SL-M before placing exit order ────────────
+    # CRITICAL: if SL-M is still open at exchange and we also place an
+    # exit order, both could fill → double-exit (short-sell problem).
+    _cancel_sl_order(trade)
 
     exit_direction = Direction.SHORT if trade.direction == "long" else Direction.LONG
 
@@ -591,6 +698,24 @@ def _enter_trade(direction: Direction, price: float):
     mode = "📝 PAPER" if trade.paper else "🟢 LIVE"
     print(f"🚀 [{mode}] ENTRY {direction.value.upper()} {DEFAULT_QUANTITY}x {symbol} "
           f"@ ₹{price} | SL: ₹{sl} | Target: ₹{target}")
+
+    # ── Place SL-M order at exchange immediately after entry ──────
+    # This protects the position even if the app crashes.
+    # Option LTP is fetched to derive the option-level SL trigger price.
+    option_ltp = _get_option_ltp(symbol) if not state.is_paper_mode else None
+    if option_ltp:
+        # SL trigger = option LTP × 0.5  (50% drop in premium = exit)
+        # This is conservative — premium can drop fast in F&O
+        sl_trigger = max(round(option_ltp * 0.50, 1), 1.0)
+    else:
+        sl_trigger = 1.0   # paper / LTP unavailable — symbolic
+
+    sl_order_id = _place_sl_order(trade, sl_trigger)
+    trade.sl_order_id = sl_order_id
+
+    print(f"🛡 Exchange SL-M set @ option ₹{sl_trigger:.2f} "
+          f"(Nifty SL: ₹{sl:.0f}) | SL order: {sl_order_id}")
+
     _save_trade_log()
     _save_state_snapshot()   # ← crash recovery: snapshot immediately on entry
 
@@ -619,11 +744,13 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
         if new_sl > trade.stop_loss:
             trade.stop_loss = round(new_sl, 2)
             _save_state_snapshot()   # SL moved — persist latest SL for crash recovery
+            _update_exchange_sl(trade, trade.stop_loss)  # update exchange SL-M order
     else:
         new_sl = state.lowest_price_since_entry + TRAILING_SL_POINTS
         if new_sl < trade.stop_loss:
             trade.stop_loss = round(new_sl, 2)
             _save_state_snapshot()   # SL moved — persist latest SL for crash recovery
+            _update_exchange_sl(trade, trade.stop_loss)  # update exchange SL-M order
 
     # Check stop-loss hit
     if is_long and current_price <= trade.stop_loss:
