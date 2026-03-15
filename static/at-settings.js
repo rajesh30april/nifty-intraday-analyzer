@@ -146,22 +146,48 @@ let _premiumEstCacheTs = 0;
 const PREMIUM_EST_TTL_MS = 5 * 60 * 1000;   // 5 minutes
 
 /** Render the capital-mode estimate using a given premium (₹/unit). */
-function _renderCapitalEstimate(capital, estPremium, vixPct, dte, offset) {
-    const lots      = Math.max(1, Math.floor(capital / (estPremium * LOT_SIZE)));
-    const units     = lots * LOT_SIZE;
-    const approxCost= lots * estPremium * LOT_SIZE;
-    const offsetLabel = ['ATM', '1-OTM', '2-OTM'][offset] || 'ATM';
+function _renderCapitalEstimate(capital, estPremium, vixPct, dte, offset, source, ceLtp, peLtp, ceSym, peSym) {
+    const lots       = Math.max(1, Math.floor(capital / (estPremium * LOT_SIZE)));
+    const units      = lots * LOT_SIZE;
+    const approxCost = lots * estPremium * LOT_SIZE;
+    const offsetLabel= ['ATM', '1-OTM', '2-OTM'][offset] || 'ATM';
+    const isLive     = source === 'live_kite';
 
     const lotsEl  = document.getElementById('at-capital-qty-est');
     const unitsEl = document.getElementById('at-capital-units-est');
     const detailEl= document.getElementById('at-capital-detail');
     if (lotsEl)   lotsEl.textContent = lots;
     if (unitsEl)  unitsEl.textContent = units;
+
+    // Main premium tag
+    const premiumTag = isLive
+        ? `<span class="text-green-700 font-semibold">🟢 ₹${estPremium} LIVE</span>`
+        : `<span class="text-gray-700">≈₹${estPremium}</span>`;
+
+    // CE / PE live price pills (shown when Kite is authenticated)
+    let pricePills = '';
+    if (ceLtp || peLtp) {
+        const cePill = ceLtp
+            ? `<span class="inline-block bg-blue-50 text-blue-700 text-[9px] font-mono px-1.5 py-0.5 rounded">📈 ${ceSym?.replace('NIFTY','')}: ₹${ceLtp}</span>`
+            : '';
+        const pePill = peLtp
+            ? `<span class="inline-block bg-orange-50 text-orange-700 text-[9px] font-mono px-1.5 py-0.5 rounded">📉 ${peSym?.replace('NIFTY','')}: ₹${peLtp}</span>`
+            : '';
+        pricePills = `<br><span class="inline-flex gap-1 mt-0.5">${cePill}${pePill}</span>`;
+    }
+
+    // Footer source tag
+    const footerTag = isLive
+        ? `<span class="text-green-700 text-[9px]">🟢 Live Kite price (ltp API) — exact count</span>`
+        : vixPct
+            ? `<span class="text-gray-400 text-[9px]">📊 B-S estimate | VIX ${vixPct}% | ${dte}d to expiry — log in to Kite for real price</span>`
+            : `<span class="text-orange-500 text-[9px]">⚠️ VIX unavailable — rough fallback (log in to Kite for real price)</span>`;
+
     if (detailEl) detailEl.innerHTML =
-        `₹${capital.toLocaleString('en-IN')} ÷ (≈₹${estPremium} ${offsetLabel} premium × ${LOT_SIZE} units) ` +
-        `<span class="text-gray-600">= ${lots} lots | spends ~₹${approxCost.toLocaleString('en-IN')}</span>` +
-        (vixPct ? `<br><span class="text-gray-600 text-[9px]">📊 India VIX: ${vixPct}% | DTE: ${dte}d → B-S estimate</span>` :
-                  `<br><span class="text-gray-600 text-[9px]">⚠️ VIX unavailable — using fallback estimate</span>`);
+        `₹${capital.toLocaleString('en-IN')} ÷ (${premiumTag} ${offsetLabel} × ${LOT_SIZE} units) ` +
+        `<span class="text-gray-600">= ${lots} lots | ≈₹${approxCost.toLocaleString('en-IN')}</span>` +
+        pricePills +
+        `<br>${footerTag}`;
 }
 
 async function _updateCapitalEstimate() {
@@ -170,29 +196,42 @@ async function _updateCapitalEstimate() {
     const niftyPrice = parseFloat(niftyEl?.textContent?.replace(/[^0-9.]/g, '')) || 23500;
     const offset     = _atStrikeOffset || 0;
 
-    // Show a quick fallback first (0.22% heuristic) while API loads
+    // Show a quick fallback first while API loads
     const fallbackPremium = Math.round(niftyPrice * 0.0022);
-    _renderCapitalEstimate(capital, fallbackPremium, null, null, offset);
+    _renderCapitalEstimate(capital, fallbackPremium, null, null, offset, 'fallback');
 
-    // Use cached result if fresh enough
-    const now = Date.now();
-    if (_premiumEstCache && (now - _premiumEstCacheTs) < PREMIUM_EST_TTL_MS
-        && _premiumEstCache.spot === Math.round(niftyPrice / 100) * 100) {
-        const c = _premiumEstCache;
-        _renderCapitalEstimate(capital, c.est_premium, c.iv_pct, c.dte, offset);
+    // ── Cache check — MUST include offset, not just spot ─────────────
+    // Bug fix: old code keyed only on spot → switching ATM→2-OTM served
+    // the ATM premium but labelled it 2-OTM, giving completely wrong lots.
+    // Also: live_kite results have a shorter TTL (30s) so price stays fresh.
+    const now    = Date.now();
+    const c      = _premiumEstCache;
+    const isLive = c?.source === 'live_kite';
+    const ttl    = isLive ? 30_000 : PREMIUM_EST_TTL_MS;   // 30s live, 5m BS
+    const spotKey= Math.round(niftyPrice / 100) * 100;
+
+    if (c && (now - _premiumEstCacheTs) < ttl
+          && c.spot === spotKey
+          && c.offset === offset) {               // ← THE FIX
+        _renderCapitalEstimate(
+            capital, c.est_premium, c.iv_pct, c.dte,
+            offset, c.source, c.ce_ltp, c.pe_ltp, c.ce_symbol, c.pe_symbol
+        );
         return;
     }
 
     try {
-        const resp = await fetch(
-            `/api/premium-estimate?spot=${niftyPrice}&offset=${offset}`);
+        const resp = await fetch(`/api/premium-estimate?spot=${niftyPrice}&offset=${offset}`);
         if (!resp.ok) throw new Error('API error');
         const data = await resp.json();
-        _premiumEstCache   = { ...data, spot: Math.round(niftyPrice / 100) * 100 };
+        _premiumEstCache   = { ...data, spot: spotKey, offset };   // store offset too
         _premiumEstCacheTs = now;
-        _renderCapitalEstimate(capital, data.est_premium, data.iv_pct, data.dte, offset);
+        _renderCapitalEstimate(
+            capital, data.est_premium, data.iv_pct, data.dte,
+            offset, data.source, data.ce_ltp, data.pe_ltp, data.ce_symbol, data.pe_symbol
+        );
     } catch (_) {
-        // Keep fallback already shown — no double update needed
+        // Keep fallback already shown
     }
 }
 

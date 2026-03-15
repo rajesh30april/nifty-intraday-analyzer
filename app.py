@@ -1636,11 +1636,11 @@ def _fetch_india_vix_from_nse(fallback: float = 15.0) -> float:
 
 @app.get("/api/premium-estimate")
 async def premium_estimate(spot: float = 23500.0, offset: int = 0):
-    """Return a Black-Scholes-based ATM / OTM premium estimate.
+    """Return the best available premium estimate for lot-size preview.
 
-    Uses India VIX (fetched live from NSE allIndices API, cached 5 min)
-    and days-to-expiry to the nearest Nifty 50 weekly Tuesday expiry
-    so the preview in the settings panel is grounded in reality.
+    Priority:
+      1. Live Kite LTP for the exact option strike  (when authenticated)
+      2. Black-Scholes ATM approximation using India VIX  (fallback)
 
     offset: 0 = ATM, 1 = 1-OTM, 2 = 2-OTM  (mirrors state.strike_offset)
     """
@@ -1686,17 +1686,75 @@ async def premium_estimate(spot: float = 23500.0, offset: int = 0):
     atm_strike = round(spot / 50) * 50
     picked_strike = atm_strike + strike_offset_pts  # CE direction for display
 
+    # ── Attempt live Kite LTP for CE + PE in a single batch call ──────
+    # kite.ltp() returns only last_price — the lightest possible API call.
+    # We fetch both CE and PE together (one HTTP round-trip) so the UI
+    # can show the real price for whichever direction the user picks.
+    live_ce_ltp = None
+    live_pe_ltp = None
+    ce_symbol   = None
+    pe_symbol   = None
+
+    if kite_manager.is_authenticated:
+        try:
+            from auto_trader import _get_nfo_instruments
+            from datetime import date as _date, timedelta as _td
+            import datetime as _dt2
+
+            _today = _date.today()
+            _days  = (1 - _today.weekday()) % 7   # days to nearest Tuesday
+            if _days == 0 and _dt2.datetime.now().hour >= 15:
+                _days = 7
+            expiry_date = _today + _td(days=max(_days, 1))
+
+            instruments = _get_nfo_instruments()
+            nifty_opts  = [
+                i for i in instruments
+                if i["name"] == "NIFTY" and i["expiry"] == expiry_date
+            ]
+
+            def _find_sym(itype, strike):
+                for i in nifty_opts:
+                    if i["instrument_type"] == itype and int(i["strike"]) == int(strike):
+                        return i["tradingsymbol"]
+                return None
+
+            pe_strike  = atm_strike - strike_offset_pts   # PE is below ATM
+            ce_symbol  = _find_sym("CE", picked_strike)
+            pe_symbol  = _find_sym("PE", pe_strike)
+
+            symbols_to_fetch = [s for s in [ce_symbol, pe_symbol] if s]
+            ltps = kite_manager.get_options_ltp_batch(symbols_to_fetch)
+
+            if ce_symbol and ce_symbol in ltps:
+                live_ce_ltp = round(ltps[ce_symbol])
+            if pe_symbol and pe_symbol in ltps:
+                live_pe_ltp = round(ltps[pe_symbol])
+
+        except Exception:
+            pass   # silently fall back to BS estimate
+
+    # Use live CE price as the primary estimate (CE = LONG direction);
+    # fall back to BS estimate only when Kite is not available.
+    est_premium = live_ce_ltp if live_ce_ltp else est_premium
+    source      = "live_kite" if (live_ce_ltp or live_pe_ltp) else "bs_estimate"
+
     return {
         "spot":          spot,
-        "iv_pct":        round(cache["vix"], 2),    # India VIX value used
+        "iv_pct":        round(cache["vix"], 2),
         "dte":           dte,
         "offset":        offset,
         "atm_strike":    int(atm_strike),
         "picked_strike": int(picked_strike),
         "atm_premium":   round(atm_premium),
-        "est_premium":   est_premium,              # the one to use for lot calc
+        "est_premium":   est_premium,      # always use this for lot calc
+        "source":        source,           # "live_kite" or "bs_estimate"
+        "ce_symbol":     ce_symbol,        # e.g. NIFTY25031823550CE
+        "pe_symbol":     pe_symbol,        # e.g. NIFTY25031823450PE
+        "ce_ltp":        live_ce_ltp,      # real CE price (or null)
+        "pe_ltp":        live_pe_ltp,      # real PE price (or null)
         "formula":       f"₹{spot}×{round(iv*100,1)}%÷100×√({dte}/365)×0.4×{discount}",
-        "note":          "Uses live India VIX + DTE to nearest Tuesday expiry (Nifty 50 weekly)",
+        "note":          "Live Kite LTP (ltp() API) when authenticated, B-S fallback otherwise",
     }
 
 

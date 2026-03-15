@@ -126,26 +126,38 @@ class KiteManager:
             return None
 
     def get_option_ltp(self, tradingsymbol: str) -> float | None:
-        """Fetch the Last Traded Price of an NFO option.
+        """Fetch the Last Traded Price of a single NFO option via kite.ltp().
 
-        Returns the LTP or None if unauthenticated / API error.
-        Used at entry time so capital-mode lot sizing uses the
-        REAL option price, not a 0.35% rough estimate.
+        Uses the lightweight ltp() API (returns only last price, no depth/OI).
+        Returns the LTP float or None if unauthenticated / API error.
         """
-        if not self.is_authenticated:
-            return None
-        key = f"NFO:{tradingsymbol}"
+        result = self.get_options_ltp_batch([tradingsymbol])
+        return result.get(tradingsymbol)
+
+    def get_options_ltp_batch(self, tradingsymbols: list[str]) -> dict[str, float]:
+        """Fetch LTPs for multiple NFO options in a single kite.ltp() call.
+
+        Far more efficient than calling get_option_ltp() in a loop.
+        kite.ltp() is the lightest Kite API — returns only last_price.
+
+        Returns a dict {tradingsymbol: ltp_float} for all symbols that
+        returned a valid price. Missing symbols are omitted (not in dict).
+        """
+        if not self.is_authenticated or not tradingsymbols:
+            return {}
+        keys = [f"NFO:{sym}" for sym in tradingsymbols]
         try:
-            quotes = self.kite.quote([key])
-            data   = quotes.get(key, {})
-            ltp    = data.get("last_price")
-            if ltp and ltp > 0:
-                print(f"📊 Live LTP for {tradingsymbol}: ₹{ltp}")
-                return float(ltp)
-            return None
+            raw = self.kite.ltp(keys)   # single HTTP round-trip for all
+            result = {}
+            for sym, key in zip(tradingsymbols, keys):
+                ltp = raw.get(key, {}).get("last_price")
+                if isinstance(ltp, (int, float)) and ltp > 0:
+                    result[sym] = float(ltp)
+                    print(f"📊 LTP {sym}: ₹{ltp}")
+            return result
         except Exception as e:
-            print(f"⚠️ Option LTP fetch failed ({tradingsymbol}): {e}")
-            return None
+            print(f"⚠️ Batch LTP fetch failed: {e}")
+            return {}
 
     def get_historical_data(
         self,
