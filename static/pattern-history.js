@@ -1,221 +1,84 @@
-// ── Pattern History Tab (60-day sliding window scan) ─────────────
+// ── Pattern Finder (on-demand, single-day) ───────────────────────
+// Flow:
+//   1. User picks date + filters → clicks "Find Patterns"
+//   2. /api/day-chart?date=YYYY-MM-DD fetched → 5m candles + patterns
+//   3. Pattern cards rendered (clickable)
+//   4. Click card → detail view with zoomed candlestick chart
 
-let _phPatterns  = [];
-let _phDays      = [];
-let _phSelectedDay = null;
-let _phFilters   = { tf: 'all', bias: 'all' };
-let _phChart     = null;
-let _phSeries    = null;
-let _phLoaded    = false;
+let _phCandles    = [];   // 5m candles for the loaded day
+let _phPatterns   = [];   // detected patterns for the loaded day
+let _phLoadedDate = null; // YYYY-MM-DD that is currently loaded
+let _phDetailChart = null;
+let _phDetailSeries = null;
 
-// Called when user switches to the patterns tab
+// ── Tab open ─────────────────────────────────────────────────────
 function onPatternsTabOpen() {
-    if (!_phLoaded) phLoadAll();
+    // Set date input to today if not already set
+    const inp = document.getElementById('ph-date-input');
+    if (inp && !inp.value) {
+        const today = new Date().toISOString().slice(0, 10);
+        inp.value = today;
+    }
 }
 
-async function phLoadAll() {
-    const wrap    = document.getElementById('ph-day-wrap');
-    const loading = document.getElementById('ph-loading');
-    if (!wrap || !loading) return;
+// ── Scan a single day ────────────────────────────────────────────
+async function phScanDay() {
+    const dateInp = document.getElementById('ph-date-input');
+    const date    = dateInp?.value || new Date().toISOString().slice(0, 10);
 
-    wrap.classList.add('hidden');
-    loading.classList.remove('hidden');
+    _phShowLoading(`Scanning ${date} for patterns…`);
 
     try {
-        const r = await fetch('/api/patterns-history?period=60d&timeframes=5m,15m,1h');
+        const r = await fetch(`/api/day-chart?date=${date}`);
         const d = await r.json();
-        if (!d.success) {
-            loading.innerHTML = `<p class="text-red-500 font-bold">❌ ${d.error}</p>`;
-            return;
-        }
+        if (!d.success) throw new Error(d.error || 'Scan failed');
 
-        _phPatterns = d.patterns || [];
-        _phLoaded   = true;
+        _phCandles    = d.candles    || [];
+        _phPatterns   = d.patterns   || [];
+        _phLoadedDate = d.date       || date;
 
-        // Stats
-        const el = id => document.getElementById(id);
-        el('ph-total').textContent = d.total;
-        el('ph-bull').textContent  = d.bullish_count;
-        el('ph-bear').textContent  = d.bearish_count;
-
-        // Unique trading days newest-first
-        const daySet = new Set(_phPatterns.map(p => p.end_date).filter(Boolean));
-        _phDays = [...daySet].sort().reverse();
-
-        _phBuildDayStrip();
-        _phRenderTable();
-
-        loading.classList.add('hidden');
-        wrap.classList.remove('hidden');
-
-        // Auto-select newest day
-        if (_phDays.length) phSelectDay(_phDays[0]);
-
+        _phRenderList();
     } catch (e) {
-        loading.innerHTML = `<p class="text-red-500 font-bold">❌ ${e.message}</p>`;
+        _phShowError(e.message);
     }
 }
 
-// ── Day strip ────────────────────────────────────────────────────
-function _phBuildDayStrip() {
-    const strip = document.getElementById('ph-day-strip');
-    if (!strip) return;
-    strip.innerHTML = _phDays.map(day => {
-        const cnt   = _phPatterns.filter(p => p.end_date === day).length;
-        const label = _phFmtDay(day);
-        return `<button class="ph-day-btn" data-day="${day}" onclick="phSelectDay('${day}')">
-            <div>${label}</div>
-            <div style="font-size:9px;opacity:.65;text-align:center">${cnt} pat${cnt !== 1 ? 's' : ''}</div>
-        </button>`;
-    }).join('');
-}
+// ── List view ─────────────────────────────────────────────────────
+function _phRenderList() {
+    _phShowView('list');
 
-async function phSelectDay(day) {
-    _phSelectedDay = day;
+    const filtered = _phApplyFilters(_phPatterns);
+    const bull     = filtered.filter(p => p.bias === 'bullish').length;
+    const bear     = filtered.filter(p => p.bias === 'bearish').length;
+    const fmtDate  = new Date(_phLoadedDate + 'T00:00:00')
+        .toLocaleDateString('en-IN', { weekday:'short', day:'2-digit', month:'short', year:'numeric' });
 
-    // Highlight button
-    document.querySelectorAll('.ph-day-btn').forEach(b =>
-        b.classList.toggle('active', b.dataset.day === day));
-    const active = document.querySelector(`.ph-day-btn[data-day="${day}"]`);
-    if (active) active.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    _setEl('ph-total',       filtered.length);
+    _setEl('ph-bull',        bull);
+    _setEl('ph-bear',        bear);
+    _setEl('ph-result-date', `📅 ${fmtDate}`);
+    _setEl('ph-vis-count',   `${filtered.length} of ${_phPatterns.length} patterns`);
 
-    // Update day info label
-    const cnt = _phPatterns.filter(p => p.end_date === day).length;
-    const info = document.getElementById('ph-day-info');
-    if (info) info.textContent = `${cnt} pattern${cnt !== 1 ? 's' : ''} detected`;
+    document.getElementById('ph-results').classList.remove('hidden');
 
-    // Chart title
-    const title = document.getElementById('ph-chart-title');
-    if (title) title.textContent = `📈 5-Min Chart — ${_phFmtDay(day)}`;
-
-    // Fetch candles + patterns for this day
-    const chartLoad = document.getElementById('ph-chart-loading');
-    if (chartLoad) chartLoad.classList.remove('hidden');
-
-    try {
-        const r = await fetch(`/api/day-chart?date=${day}`);
-        const d = await r.json();
-        _phBuildChart(d.success ? (d.candles || []) : [], d.success ? (d.patterns || []) : []);
-    } catch (e) {
-        _phBuildChart([], []);
-    } finally {
-        if (chartLoad) chartLoad.classList.add('hidden');
-    }
-
-    _phRenderDayCards();
-}
-
-// ── Chart ────────────────────────────────────────────────────────
-function _phBuildChart(candles, patterns) {
-    const container = document.getElementById('ph-price-chart');
-    if (!container) return;
-    container.innerHTML = '';
-
-    if (!candles.length) {
-        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#9ca3af;font-size:13px">No candle data for this day</div>';
-        return;
-    }
-
-    if (_phChart) { try { _phChart.remove(); } catch(e) {} _phChart = null; }
-
-    _phChart = LightweightCharts.createChart(container, {
-        layout:  { background: { color: '#ffffff' }, textColor: '#374151' },
-        grid:    { vertLines: { color: '#f8fafc' },  horzLines: { color: '#f8fafc' } },
-        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-        rightPriceScale: { borderColor: '#e2e8f0' },
-        timeScale: { borderColor: '#e2e8f0', timeVisible: true, secondsVisible: false },
-        width:  container.clientWidth,
-        height: 340,
-    });
-
-    _phSeries = _phChart.addCandlestickSeries({
-        upColor: '#2a8703', downColor: '#ea1100',
-        borderUpColor: '#2a8703', borderDownColor: '#ea1100',
-        wickUpColor:   '#2a8703', wickDownColor:   '#ea1100',
-    });
-    _phSeries.setData(candles);
-
-    // Pattern markers
-    const markers = [];
-    patterns.forEach(p => {
-        const ts = p.end_time || p.start_time;
-        if (!ts) return;
-        const unix = Math.floor(new Date(ts).getTime() / 1000);
-        const snap = _phSnapCandle(candles, unix);
-        if (!snap) return;
-        markers.push({
-            time:     snap,
-            position: p.bias === 'bullish' ? 'belowBar' : 'aboveBar',
-            color:    p.bias === 'bullish' ? '#2a8703'  : '#ea1100',
-            shape:    p.bias === 'bullish' ? 'arrowUp'  : 'arrowDown',
-            text:     `${p.emoji || ''} ${p.name}`,
-            size:     Math.max(1, Math.round(p.confidence * 2)),
-        });
-    });
-    markers.sort((a, b) => a.time - b.time);
-    _phSeries.setMarkers(markers);
-    _phChart.timeScale().fitContent();
-
-    new ResizeObserver(() => {
-        if (_phChart) _phChart.resize(container.clientWidth, 340);
-    }).observe(container);
-}
-
-function _phSnapCandle(candles, unix) {
-    if (!candles.length) return null;
-    return candles.reduce((best, c) =>
-        Math.abs(c.time - unix) < Math.abs(best.time - unix) ? c : best
-    ).time;
-}
-
-// ── Filters ──────────────────────────────────────────────────────
-function phFilter(group, val, btn) {
-    _phFilters[group] = val;
-    document.querySelectorAll(`[data-g="${group}"]`).forEach(b => {
-        b.classList.remove('active');
-        b.style.cssText = (b.dataset.v === '15m' && group === 'tf')
-            ? 'border-color:#16a34a;color:#15803d;background:#f0fdf4' : '';
-    });
-    btn.classList.add('active');
-    btn.style.cssText = '';
-    _phRenderDayCards();
-    _phRenderTable();
-}
-
-function _phApplyFilters(list) {
-    return list.filter(p => {
-        if (_phFilters.tf   !== 'all' && p.timeframe !== _phFilters.tf)   return false;
-        if (_phFilters.bias !== 'all' && p.bias      !== _phFilters.bias) return false;
-        return true;
-    });
-}
-
-// ── Cards for selected day ────────────────────────────────────────
-function _phRenderDayCards() {
     const grid  = document.getElementById('ph-cards');
     const empty = document.getElementById('ph-cards-empty');
-    const countEl = document.getElementById('ph-vis-count');
-    if (!grid) return;
-
-    const dayPats  = _phPatterns.filter(p => p.end_date === _phSelectedDay);
-    const filtered = _phApplyFilters(dayPats);
-
-    if (countEl) countEl.textContent = `${filtered.length} pattern${filtered.length !== 1 ? 's' : ''} on this day`;
 
     if (!filtered.length) {
         grid.innerHTML = '';
         grid.classList.add('hidden');
-        if (empty) empty.classList.remove('hidden');
+        empty.classList.remove('hidden');
         return;
     }
-    if (empty) empty.classList.add('hidden');
+    empty.classList.add('hidden');
     grid.classList.remove('hidden');
     grid.innerHTML = filtered.map((p, i) => _phCard(p, i)).join('');
 }
 
 function _phCard(p, i) {
-    const isBull = p.bias === 'bullish', isBear = p.bias === 'bearish';
-    const border = isBull ? 'border-green-200' : isBear ? 'border-red-200' : 'border-gray-200';
+    const isBull = p.bias === 'bullish';
+    const isBear = p.bias === 'bearish';
+    const border  = isBull ? '#bbf7d0' : isBear ? '#fecaca' : '#e5e7eb';
     const biasChip = isBull
         ? '<span class="chip bg-green-100 text-green-700">🟢 Bullish</span>'
         : isBear
@@ -226,77 +89,321 @@ function _phCard(p, i) {
         : p.pattern_type === 'continuation'
         ? '<span class="chip bg-blue-100 text-blue-700">→ Cont.</span>'
         : '<span class="chip bg-purple-100 text-purple-700">⟳ Structure</span>';
-    const tfStyle = p.timeframe === '15m'
-        ? 'background:#dcfce7;color:#15803d;font-weight:900'
-        : p.timeframe === '5m' ? 'background:#dbeafe;color:#1d4ed8' : 'background:#f3e8ff;color:#7e22ce';
     const conf = Math.round(p.confidence * 100);
     const confColor = conf >= 75 ? '#2a8703' : conf >= 50 ? '#0053e2' : '#f59e0b';
     const timeStr = p.end_time
-        ? new Date(p.end_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
-    const levels = Object.entries(p.key_levels || {}).slice(0, 3)
-        .map(([k, v]) => `<span class="text-gray-400">${k}:</span> <b>${Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</b>`)
-        .join(' · ');
+        ? new Date(p.end_time).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' }) : '';
 
     return `
-    <div class="bg-white border ${border} rounded-xl p-3 shadow-sm" style="animation:fadeUp .25s ${i * 30}ms both">
+    <div class="bg-white rounded-xl p-3 shadow-sm border-2 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all"
+         style="border-color:${border};animation:fadeUp .2s ${i*30}ms both"
+         onclick="phOpenDetail(${i})" role="button" tabindex="0"
+         onkeydown="if(event.key==='Enter')phOpenDetail(${i})">
         <div class="flex items-start justify-between mb-2">
             <div class="flex items-center gap-2">
                 <span class="text-xl">${p.emoji || '📊'}</span>
                 <div>
                     <div class="font-black text-gray-800 text-sm leading-tight">${p.name}</div>
-                    <div class="text-[10px] text-gray-400">${timeStr}</div>
+                    <div class="text-[10px] text-gray-400">${timeStr} · ${p.timeframe}</div>
                 </div>
             </div>
-            <span class="chip" style="${tfStyle}">${p.timeframe}</span>
+            <svg class="w-4 h-4 text-gray-300 mt-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
         </div>
         <div class="flex gap-1 flex-wrap mb-2">${biasChip} ${typeChip}</div>
-        <div class="mb-2">
+        <div>
             <div class="flex justify-between text-[10px] text-gray-400 mb-1">
-                <span>Confidence</span><span class="font-black" style="color:${confColor}">${conf}%</span>
+                <span>Confidence</span>
+                <span class="font-black" style="color:${confColor}">${conf}%</span>
             </div>
             <div class="conf-bar"><div class="conf-fill" style="width:${conf}%;background:${confColor}"></div></div>
         </div>
-        <p class="text-[11px] text-gray-500 leading-relaxed line-clamp-2 mb-1">${p.description}</p>
-        ${levels ? `<div class="text-[10px] border-t border-gray-100 pt-1">${levels}</div>` : ''}
+        <p class="text-[11px] text-gray-500 mt-2 line-clamp-2">${p.description || ''}</p>
     </div>`;
 }
 
-// ── Full 60-day table ─────────────────────────────────────────────
-function _phRenderTable() {
-    const tbody  = document.getElementById('ph-table');
-    const countEl = document.getElementById('ph-tbl-count');
-    if (!tbody) return;
-
+// ── Detail view ───────────────────────────────────────────────────
+function phOpenDetail(idx) {
     const filtered = _phApplyFilters(_phPatterns);
-    if (countEl) countEl.textContent = `${filtered.length} of ${_phPatterns.length}`;
+    const p = filtered[idx];
+    if (!p) return;
 
-    tbody.innerHTML = filtered.map(p => {
-        const biasColor = p.bias === 'bullish' ? 'color:#2a8703' : p.bias === 'bearish' ? 'color:#ea1100' : 'color:#6b7280';
-        const timeStr   = p.end_time
-            ? new Date(p.end_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—';
-        const conf = Math.round(p.confidence * 100);
-        const confColor = conf >= 75 ? '#2a8703' : conf >= 50 ? '#0053e2' : '#f59e0b';
-        const tfStyle   = p.timeframe === '15m'
-            ? 'background:#dcfce7;color:#15803d'
-            : p.timeframe === '5m' ? 'background:#dbeafe;color:#1d4ed8' : 'background:#f3e8ff;color:#7e22ce';
-        return `<tr class="hover:bg-gray-50 cursor-pointer" onclick="phSelectDay('${p.end_date}')">
-            <td class="px-3 py-1.5 font-bold text-gray-800">${p.emoji || ''} ${p.name}</td>
-            <td class="px-3 py-1.5 text-gray-500">${p.date_label || '—'}</td>
-            <td class="px-3 py-1.5 text-gray-500">${timeStr}</td>
-            <td class="px-3 py-1.5"><span class="chip" style="${tfStyle}">${p.timeframe}</span></td>
-            <td class="px-3 py-1.5 font-bold" style="${biasColor}">${p.bias}</td>
-            <td class="px-3 py-1.5">
-                <div style="display:flex;align-items:center;gap:6px">
-                    <div class="conf-bar" style="width:48px"><div class="conf-fill" style="width:${conf}%;background:${confColor}"></div></div>
-                    <span class="font-bold" style="color:${confColor};font-size:10px">${conf}%</span>
+    _phShowView('detail');
+
+    const isBull = p.bias === 'bullish';
+    const isBear = p.bias === 'bearish';
+    const conf   = Math.round(p.confidence * 100);
+    const confColor = conf >= 75 ? '#2a8703' : conf >= 50 ? '#0053e2' : '#f59e0b';
+    const timeStr = p.end_time
+        ? new Date(p.end_time).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' }) : 'N/A';
+    const fmtDate = new Date(_phLoadedDate + 'T00:00:00')
+        .toLocaleDateString('en-IN', { weekday:'short', day:'2-digit', month:'short' });
+
+    // Breadcrumb
+    _setEl('ph-detail-breadcrumb', `${fmtDate} · ${p.name}`);
+
+    // Header card
+    const biasStyle = isBull ? 'bg-green-50 border-green-300 text-green-800'
+                    : isBear ? 'bg-red-50 border-red-300 text-red-800'
+                    : 'bg-gray-50 border-gray-300 text-gray-700';
+    const biasLabel = isBull ? '🟢 Bullish' : isBear ? '🔴 Bearish' : '⚪ Neutral';
+    document.getElementById('ph-detail-header').innerHTML = `
+        <div class="flex flex-wrap items-center gap-4">
+            <span class="text-4xl">${p.emoji || '📊'}</span>
+            <div class="flex-1 min-w-0">
+                <h2 class="text-xl font-black text-gray-900">${p.name}</h2>
+                <div class="flex flex-wrap gap-2 mt-1 text-xs">
+                    <span class="font-semibold text-gray-500">⏱ ${timeStr}</span>
+                    <span class="font-semibold text-gray-500">· TF: ${p.timeframe}</span>
+                    <span class="font-semibold text-gray-500">· Type: ${p.pattern_type || '—'}</span>
                 </div>
-            </td>
-        </tr>`;
-    }).join('');
+            </div>
+            <div class="flex flex-col items-end gap-2">
+                <span class="px-3 py-1 rounded-full font-bold text-sm border ${biasStyle}">${biasLabel}</span>
+                <div class="text-right">
+                    <div class="text-[10px] text-gray-400">Confidence</div>
+                    <div class="text-xl font-black" style="color:${confColor}">${conf}%</div>
+                </div>
+            </div>
+        </div>`;
+
+    // Chart title
+    _setEl('ph-detail-chart-title', `📈 ${p.name} — ${timeStr} (${fmtDate})`);
+
+    // Key levels
+    const levelsEl = document.getElementById('ph-detail-levels');
+    const levels   = Object.entries(p.key_levels || {});
+    if (levels.length) {
+        levelsEl.innerHTML = levels.map(([k, v]) => {
+            const isSupport  = k.toLowerCase().includes('support');
+            const isResist   = k.toLowerCase().includes('resist');
+            const isBreakout = k.toLowerCase().includes('break');
+            const color = isSupport  ? '#2a8703'
+                        : isResist   ? '#ea1100'
+                        : isBreakout ? '#0053e2' : '#6b7280';
+            const icon  = isSupport ? '🟢' : isResist ? '🔴' : isBreakout ? '⚡' : '📍';
+            return `<div class="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
+                <span class="text-xs text-gray-500 capitalize">${icon} ${k.replace(/_/g,' ')}</span>
+                <span class="font-black text-sm" style="color:${color}">₹${Number(v).toLocaleString('en-IN',{maximumFractionDigits:0})}</span>
+            </div>`;
+        }).join('');
+    } else {
+        levelsEl.innerHTML = '<p class="text-xs text-gray-400">No key levels detected</p>';
+    }
+
+    // Trade idea
+    const tradeEl = document.getElementById('ph-detail-trade-body');
+    if (isBull) {
+        const sl  = levels.find(([k]) => k.toLowerCase().includes('support'));
+        const tgt = levels.find(([k]) => k.toLowerCase().includes('resist') || k.toLowerCase().includes('target'));
+        tradeEl.innerHTML = `
+            <div class="space-y-2 text-sm">
+                <div class="flex items-center gap-2 text-green-700 font-bold">📈 Look for LONG entry</div>
+                <div class="text-xs text-gray-600">Wait for price to break out above the pattern high on volume.</div>
+                ${sl  ? `<div class="text-xs"><span class="text-gray-400">🛡 Stop Loss:</span> <b>₹${Number(sl[1]).toLocaleString('en-IN',{maximumFractionDigits:0})}</b></div>` : ''}
+                ${tgt ? `<div class="text-xs"><span class="text-gray-400">🎯 Target:</span> <b>₹${Number(tgt[1]).toLocaleString('en-IN',{maximumFractionDigits:0})}</b></div>` : ''}
+                <div class="text-[10px] text-gray-400 pt-1">⚠️ Always confirm with volume &amp; market context</div>
+            </div>`;
+    } else if (isBear) {
+        const sl  = levels.find(([k]) => k.toLowerCase().includes('resist'));
+        const tgt = levels.find(([k]) => k.toLowerCase().includes('support') || k.toLowerCase().includes('target'));
+        tradeEl.innerHTML = `
+            <div class="space-y-2 text-sm">
+                <div class="flex items-center gap-2 text-red-700 font-bold">📉 Look for SHORT entry</div>
+                <div class="text-xs text-gray-600">Wait for price to break below the pattern low on volume.</div>
+                ${sl  ? `<div class="text-xs"><span class="text-gray-400">🛡 Stop Loss:</span> <b>₹${Number(sl[1]).toLocaleString('en-IN',{maximumFractionDigits:0})}</b></div>` : ''}
+                ${tgt ? `<div class="text-xs"><span class="text-gray-400">🎯 Target:</span> <b>₹${Number(tgt[1]).toLocaleString('en-IN',{maximumFractionDigits:0})}</b></div>` : ''}
+                <div class="text-[10px] text-gray-400 pt-1">⚠️ Always confirm with volume &amp; market context</div>
+            </div>`;
+    } else {
+        tradeEl.innerHTML = '<p class="text-xs text-gray-400">No directional bias — wait for confirmation.</p>';
+    }
+
+    // Full description
+    _setEl('ph-detail-desc', p.description || 'No description available.');
+
+    // Build zoomed chart
+    _phBuildDetailChart(p);
 }
 
-// ── Helpers ───────────────────────────────────────────────────────
-function _phFmtDay(d) {
-    const dt = new Date(d + 'T00:00:00');
-    return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', weekday: 'short' });
+function phBackToList() {
+    _phShowView('list');
+    if (_phDetailChart) {
+        try { _phDetailChart.remove(); } catch(e) {}
+        _phDetailChart  = null;
+        _phDetailSeries = null;
+    }
 }
+
+// ── Zoomed chart around pattern ──────────────────────────────────
+function _phBuildDetailChart(p) {
+    const container = document.getElementById('ph-detail-chart');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!_phCandles.length) {
+        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#9ca3af">No candle data</div>';
+        return;
+    }
+
+    const PADDING  = 10;
+    const patStart = p.start_time ? Math.floor(new Date(p.start_time).getTime() / 1000) : null;
+    const patEnd   = p.end_time   ? Math.floor(new Date(p.end_time).getTime()   / 1000) : null;
+
+    let startIdx = 0;
+    let endIdx   = _phCandles.length - 1;
+
+    if (patStart) {
+        const si = _phCandles.findIndex(c => c.time >= patStart);
+        startIdx = Math.max(0, (si === -1 ? 0 : si) - PADDING);
+    }
+    if (patEnd) {
+        const ei = _phCandles.findIndex(c => c.time >= patEnd);
+        endIdx   = Math.min(_phCandles.length - 1, (ei === -1 ? _phCandles.length - 1 : ei) + PADDING);
+    }
+
+    const win = _phCandles.slice(startIdx, endIdx + 1);
+    if (!win.length) {
+        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#9ca3af">Could not locate pattern window</div>';
+        return;
+    }
+
+    if (_phDetailChart) {
+        try { _phDetailChart.remove(); } catch(e) {}
+        _phDetailChart = null;
+    }
+
+    _phDetailChart = LightweightCharts.createChart(container, {
+        layout:  { background: { color: '#ffffff' }, textColor: '#374151' },
+        grid:    { vertLines: { color: '#f1f5f9' }, horzLines: { color: '#f1f5f9' } },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        rightPriceScale: { borderColor: '#e2e8f0' },
+        timeScale: { borderColor: '#e2e8f0', timeVisible: true, secondsVisible: false },
+        width:  container.clientWidth,
+        height: 400,
+    });
+
+    // Base candles (greyed context before/after)
+    _phDetailSeries = _phDetailChart.addCandlestickSeries({
+        upColor:       '#d1fae5', downColor:       '#fee2e2',
+        borderUpColor: '#6ee7b7', borderDownColor: '#fca5a5',
+        wickUpColor:   '#6ee7b7', wickDownColor:   '#fca5a5',
+    });
+    _phDetailSeries.setData(win);
+
+    // Pattern candles highlighted (yellow/orange = Spark!)
+    if (patStart && patEnd) {
+        const patCandles = win.filter(c => c.time >= patStart && c.time <= patEnd);
+        if (patCandles.length) {
+            _phDetailChart.addCandlestickSeries({
+                upColor:        '#2a8703', downColor:        '#ea1100',
+                borderUpColor:  '#2a8703', borderDownColor:  '#ea1100',
+                wickUpColor:    '#2a8703', wickDownColor:    '#ea1100',
+            }).setData(patCandles);
+        }
+    }
+
+    // Arrow marker at pattern end
+    if (patEnd) {
+        const snapTime = _phSnapCandle(win, patEnd);
+        if (snapTime) {
+            _phDetailSeries.setMarkers([{
+                time:     snapTime,
+                position: p.bias === 'bullish' ? 'belowBar' : 'aboveBar',
+                color:    p.bias === 'bullish' ? '#2a8703'  : '#ea1100',
+                shape:    p.bias === 'bullish' ? 'arrowUp'  : 'arrowDown',
+                text:     `${p.emoji || ''} ${p.name}`,
+                size:     2,
+            }]);
+        }
+    }
+
+    // Horizontal key-level lines
+    const levels = Object.entries(p.key_levels || {});
+    levels.forEach(([key, val]) => {
+        const price = parseFloat(val);
+        if (isNaN(price)) return;
+        const isSupport = key.toLowerCase().includes('support');
+        const isResist  = key.toLowerCase().includes('resist');
+        const color = isSupport ? '#2a8703' : isResist ? '#ea1100' : '#0053e2';
+        _phDetailChart.addLineSeries({
+            color,
+            lineWidth:        1,
+            lineStyle:        2,
+            priceLineVisible: false,
+            lastValueVisible: true,
+            title: key.replace(/_/g, ' '),
+        }).setData(win.map(c => ({ time: c.time, value: price })));
+    });
+
+    _phDetailChart.timeScale().fitContent();
+
+    new ResizeObserver(() => {
+        if (_phDetailChart) _phDetailChart.resize(container.clientWidth, 400);
+    }).observe(container);
+}
+
+// ── Filters (re-render without re-fetching) ───────────────────────
+function _phApplyFilters(list) {
+    const tf   = document.getElementById('ph-tf-select')?.value   || 'all';
+    const bias = document.getElementById('ph-bias-select')?.value || 'all';
+    return list.filter(p => {
+        if (tf   !== 'all' && p.timeframe !== tf)   return false;
+        if (bias !== 'all' && p.bias      !== bias) return false;
+        return true;
+    });
+}
+
+// ── UI helpers ────────────────────────────────────────────────────
+function _phShowView(view) {
+    const listEl   = document.getElementById('ph-list-view');
+    const detailEl = document.getElementById('ph-detail-view');
+    const loadEl   = document.getElementById('ph-loading');
+    const promptEl = document.getElementById('ph-prompt');
+
+    if (view === 'detail') {
+        if (listEl)   listEl.classList.add('hidden');
+        if (detailEl) detailEl.classList.remove('hidden');
+    } else {
+        if (detailEl) detailEl.classList.add('hidden');
+        if (listEl)   listEl.classList.remove('hidden');
+        if (loadEl)   loadEl.classList.add('hidden');
+        if (promptEl) promptEl.classList.add('hidden');
+    }
+}
+
+function _phShowLoading(msg) {
+    const loadEl    = document.getElementById('ph-loading');
+    const promptEl  = document.getElementById('ph-prompt');
+    const resultsEl = document.getElementById('ph-results');
+    if (promptEl)  promptEl.classList.add('hidden');
+    if (resultsEl) resultsEl.classList.add('hidden');
+    if (loadEl) {
+        loadEl.classList.remove('hidden');
+        const msgEl = document.getElementById('ph-loading-msg');
+        if (msgEl) msgEl.textContent = msg || 'Loading…';
+    }
+}
+
+function _phShowError(msg) {
+    const loadEl = document.getElementById('ph-loading');
+    if (loadEl) loadEl.innerHTML = `
+        <p class="text-red-500 font-bold">❌ ${msg}</p>
+        <button onclick="_phShowLoading(); document.getElementById('ph-prompt').classList.remove('hidden'); document.getElementById('ph-loading').classList.add('hidden')" class="mt-2 text-xs text-blue-500 underline">Go back</button>`;
+}
+
+function _setEl(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+}
+
+function _phSnapCandle(candles, unix) {
+    if (!candles.length) return null;
+    return candles.reduce((best, c) =>
+        Math.abs(c.time - unix) < Math.abs(best.time - unix) ? c : best
+    ).time;
+}
+
+// ── Backwards compat stubs ────────────────────────────────────────
+function phLoadAll()   { phScanDay(); }
+function phSelectDay() {}

@@ -154,47 +154,76 @@ async def patterns_page(request: Request):
 
 @app.get("/api/day-chart")
 async def day_chart(date: str = ""):
-    """Return 5m candles + patterns for a single trading day."""
+    """Return 5m candles + patterns (5m, 15m, 1h) for a single trading day."""
     try:
+        from pattern_detector import detect_all_patterns
+
+        # Fetch 5m data (source for candles + 5m patterns)
         df5 = await asyncio.to_thread(fetch_intraday_data, period="60d", interval="5m")
         if df5.empty:
             return safe_json_response({"success": False, "error": "No data"})
 
-        # Filter to the requested date
         target = pd.Timestamp(date).date() if date else df5.index[-1].date()
-        day_df = df5[df5.index.date == target]
+        day_df5 = df5[df5.index.date == target]
 
-        if day_df.empty:
+        if day_df5.empty:
             return safe_json_response({"success": False, "error": f"No data for {target}"})
 
-        candles = []
-        for ts, row in day_df.iterrows():
-            candles.append({
+        # Build 5m candle list for the chart
+        candles = [
+            {
                 "time":  int(ts.timestamp()),
                 "open":  round(float(row["open"]),  2),
                 "high":  round(float(row["high"]),  2),
                 "low":   round(float(row["low"]),   2),
                 "close": round(float(row["close"]), 2),
-            })
-
-        # Detect patterns on this day's candles
-        from pattern_detector import detect_all_patterns
-        pat_result = await asyncio.to_thread(detect_all_patterns, day_df, timeframe="5m")
-        patterns = [
-            {
-                "name":         p.name,
-                "pattern_type": p.pattern_type,
-                "bias":         p.bias,
-                "confidence":   round(p.confidence, 2),
-                "timeframe":    p.timeframe,
-                "start_time":   p.start_time,
-                "end_time":     p.end_time,
-                "description":  p.description,
-                "key_levels":   p.key_levels or {},
-                "emoji":        p.name and PATTERN_EMOJIS.get(p.name, "📊"),
             }
-            for p in pat_result.get("patterns", [])
+            for ts, row in day_df5.iterrows()
         ]
+
+        def _serialize_patterns(pat_result, tf):
+            return [
+                {
+                    "name":         p.name,
+                    "pattern_type": p.pattern_type,
+                    "bias":         p.bias,
+                    "confidence":   round(p.confidence, 2),
+                    "timeframe":    tf,
+                    "start_time":   p.start_time,
+                    "end_time":     p.end_time,
+                    "description":  p.description,
+                    "key_levels":   p.key_levels or {},
+                    "emoji":        PATTERN_EMOJIS.get(p.name, "📊"),
+                }
+                for p in pat_result.get("patterns", [])
+            ]
+
+        # ── Detect 5m patterns ───────────────────────────────────
+        r5 = await asyncio.to_thread(detect_all_patterns, day_df5, timeframe="5m")
+        patterns = _serialize_patterns(r5, "5m")
+
+        # ── Detect 15m patterns ──────────────────────────────────
+        try:
+            df15  = await asyncio.to_thread(fetch_intraday_data, period="60d", interval="15m")
+            day15 = df15[df15.index.date == target]
+            if not day15.empty:
+                r15 = await asyncio.to_thread(detect_all_patterns, day15, timeframe="15m")
+                patterns += _serialize_patterns(r15, "15m")
+        except Exception:
+            pass   # 15m optional — don't fail the whole request
+
+        # ── Detect 1h patterns ───────────────────────────────────
+        try:
+            df1h  = await asyncio.to_thread(fetch_intraday_data, period="60d", interval="1h")
+            day1h = df1h[df1h.index.date == target]
+            if not day1h.empty:
+                r1h = await asyncio.to_thread(detect_all_patterns, day1h, timeframe="1h")
+                patterns += _serialize_patterns(r1h, "1h")
+        except Exception:
+            pass   # 1h optional
+
+        # Sort by end_time so cards appear chronologically
+        patterns.sort(key=lambda p: p["end_time"] or "")
 
         return safe_json_response({
             "success":  True,

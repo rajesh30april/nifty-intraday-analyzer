@@ -124,7 +124,7 @@
                     <span>📚</span><span>Learn</span>
                 </div>
                 <div class="sidebar-item" data-page="patterns" onclick="switchPage('patterns')">
-                    <span>📊</span><span>Pattern History</span>
+                    <span>📊</span><span>Pattern Finder</span>
                     <span class="ml-auto text-[9px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.5 rounded">60d</span>
                 </div>
             </div>
@@ -880,104 +880,146 @@
                 </div>
             </div><!-- /page-learn -->
 
-            <!-- ====== PAGE: Pattern History ====== -->
+            <!-- ====== PAGE: Pattern Finder ====== -->
             <div id="page-patterns" class="page-section">
-                <!-- Stats row -->
-                <div class="flex flex-wrap gap-3 mb-4">
-                    <div class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2 flex items-center gap-2">
-                        <span class="text-2xl font-black text-[#0053e2]" id="ph-total">—</span>
-                        <span class="text-xs text-gray-500 font-semibold">Total Patterns</span>
-                    </div>
-                    <div class="bg-green-50 border border-green-200 rounded-xl px-4 py-2 flex items-center gap-2">
-                        <span class="text-2xl font-black text-green-600" id="ph-bull">—</span>
-                        <span class="text-xs text-gray-500 font-semibold">🟢 Bullish</span>
-                    </div>
-                    <div class="bg-red-50 border border-red-200 rounded-xl px-4 py-2 flex items-center gap-2">
-                        <span class="text-2xl font-black text-red-600" id="ph-bear">—</span>
-                        <span class="text-xs text-gray-500 font-semibold">🔴 Bearish</span>
-                    </div>
-                    <div class="bg-green-700 text-white rounded-xl px-4 py-2 flex items-center gap-2">
-                        <span>💡</span>
-                        <div>
-                            <div class="text-[10px] text-green-200 font-semibold">Best for Intraday Nifty 50</div>
-                            <div class="text-xs font-black">15-Min charts</div>
-                        </div>
-                    </div>
-                    <button onclick="phLoadAll()" class="ml-auto bg-[#0053e2] hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition">🔄 Scan 60 Days</button>
-                </div>
 
-                <!-- Loading state -->
-                <div id="ph-loading" class="hidden flex flex-col items-center justify-center py-20 gap-3">
-                    <div class="w-10 h-10 border-4 border-[#0053e2] border-t-transparent rounded-full animate-spin"></div>
-                    <p class="text-gray-500 font-semibold">Scanning 60 days… (5m · 15m · 1h)</p>
-                </div>
+                <!-- ── VIEW A: LIST ──────────────────────────────────── -->
+                <div id="ph-list-view">
 
-                <!-- Day picker -->
-                <div id="ph-day-wrap" class="hidden">
-                    <div class="bg-white rounded-xl border shadow-sm p-3 mb-4">
-                        <div class="flex items-center gap-2 mb-2">
-                            <span class="text-xs font-bold text-gray-500">📅 Select Day</span>
-                            <span class="text-xs text-gray-400" id="ph-day-info"></span>
-                        </div>
-                        <div id="ph-day-strip" class="flex gap-2 overflow-x-auto pb-1" style="scrollbar-width:thin"></div>
-                    </div>
-
-                    <!-- Chart -->
-                    <div class="bg-white rounded-xl border shadow-sm overflow-hidden mb-4">
-                        <div class="px-4 py-2 border-b flex items-center justify-between">
+                    <!-- Search bar -->
+                    <div class="bg-white rounded-xl border shadow-sm p-4 mb-4">
+                        <div class="flex flex-wrap items-end gap-3">
                             <div>
-                                <h3 class="font-bold text-gray-800 text-sm" id="ph-chart-title">📈 5-Min Chart</h3>
-                                <p class="text-xs text-gray-400">🟢 Bullish below bar · 🔴 Bearish above bar</p>
+                                <label class="block text-[10px] font-bold text-gray-400 uppercase mb-1">📅 Date</label>
+                                <input id="ph-date-input" type="date" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none"/>
                             </div>
-                            <span id="ph-chart-loading" class="hidden text-xs text-gray-400 animate-pulse">Loading…</span>
-                        </div>
-                        <div id="ph-price-chart" style="height:340px;"></div>
-                    </div>
-
-                    <!-- Filters -->
-                    <div class="bg-white rounded-xl border shadow-sm px-4 py-2 mb-4 flex flex-wrap items-center gap-3">
-                        <span class="text-[10px] font-bold text-gray-400 uppercase">TF</span>
-                        <button class="ph-filter active" data-g="tf" data-v="all"  onclick="phFilter('tf','all',this)">All</button>
-                        <button class="ph-filter"        data-g="tf" data-v="5m"   onclick="phFilter('tf','5m',this)">5m</button>
-                        <button class="ph-filter"        data-g="tf" data-v="15m"  onclick="phFilter('tf','15m',this)" style="border-color:#16a34a;color:#15803d;background:#f0fdf4">✅ 15m</button>
-                        <button class="ph-filter"        data-g="tf" data-v="1h"   onclick="phFilter('tf','1h',this)">1h</button>
-                        <div class="w-px h-4 bg-gray-200"></div>
-                        <span class="text-[10px] font-bold text-gray-400 uppercase">Bias</span>
-                        <button class="ph-filter active" data-g="bias" data-v="all"     onclick="phFilter('bias','all',this)">All</button>
-                        <button class="ph-filter"        data-g="bias" data-v="bullish" onclick="phFilter('bias','bullish',this)">🟢 Bullish</button>
-                        <button class="ph-filter"        data-g="bias" data-v="bearish" onclick="phFilter('bias','bearish',this)">🔴 Bearish</button>
-                        <span class="ml-auto text-xs text-gray-400" id="ph-vis-count"></span>
-                    </div>
-
-                    <!-- Cards for selected day -->
-                    <div id="ph-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4"></div>
-                    <div id="ph-cards-empty" class="hidden bg-white rounded-xl border p-10 text-center mb-4">
-                        <p class="text-gray-400 font-semibold">🔍 No patterns match filters for this day</p>
-                    </div>
-
-                    <!-- Full table -->
-                    <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
-                        <div class="px-4 py-2 border-b flex items-center justify-between">
-                            <h3 class="font-bold text-gray-800 text-sm">📋 All 60-Day Patterns</h3>
-                            <span class="text-xs text-gray-400" id="ph-tbl-count"></span>
-                        </div>
-                        <div class="overflow-x-auto max-h-72">
-                            <table class="w-full text-xs">
-                                <thead class="bg-gray-50 text-gray-500 font-bold sticky top-0">
-                                    <tr>
-                                        <th class="px-3 py-2 text-left">Pattern</th>
-                                        <th class="px-3 py-2 text-left">Date</th>
-                                        <th class="px-3 py-2 text-left">Time</th>
-                                        <th class="px-3 py-2 text-left">TF</th>
-                                        <th class="px-3 py-2 text-left">Bias</th>
-                                        <th class="px-3 py-2 text-left">Conf</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="ph-table" class="divide-y divide-gray-50"></tbody>
-                            </table>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-400 uppercase mb-1">⏱ Timeframe</label>
+                                <select id="ph-tf-select" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none">
+                                    <option value="5m">5 min</option>
+                                    <option value="15m" selected>15 min ✅</option>
+                                    <option value="1h">1 hour</option>
+                                    <option value="all">All timeframes</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-400 uppercase mb-1">🎯 Bias</label>
+                                <select id="ph-bias-select" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none">
+                                    <option value="all">All</option>
+                                    <option value="bullish">🟢 Bullish</option>
+                                    <option value="bearish">🔴 Bearish</option>
+                                </select>
+                            </div>
+                            <button id="ph-scan-btn" onclick="phScanDay()" class="bg-[#0053e2] hover:bg-blue-700 text-white px-5 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2">
+                                <span>🔍</span><span>Find Patterns</span>
+                            </button>
+                            <div class="ml-auto bg-green-700 text-white rounded-xl px-4 py-2 flex items-center gap-2">
+                                <span>💡</span>
+                                <div>
+                                    <div class="text-[10px] text-green-200">Best for Nifty 50</div>
+                                    <div class="text-xs font-black">15-Min charts</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div><!-- /ph-day-wrap -->
+
+                    <!-- Loading spinner -->
+                    <div id="ph-loading" class="hidden flex flex-col items-center justify-center py-20 gap-3">
+                        <div class="w-10 h-10 border-4 border-[#0053e2] border-t-transparent rounded-full animate-spin"></div>
+                        <p class="text-gray-500 font-semibold" id="ph-loading-msg">Fetching patterns…</p>
+                    </div>
+
+                    <!-- Empty / prompt state -->
+                    <div id="ph-prompt" class="flex flex-col items-center justify-center py-20 gap-3">
+                        <span class="text-5xl">📊</span>
+                        <p class="text-gray-500 font-semibold text-center">Select a date and click <b>Find Patterns</b><br>to scan for candlestick &amp; chart patterns</p>
+                    </div>
+
+                    <!-- Results -->
+                    <div id="ph-results" class="hidden">
+                        <!-- Stats strip -->
+                        <div class="flex flex-wrap gap-3 mb-4">
+                            <div class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2 flex items-center gap-2">
+                                <span class="text-xl font-black text-[#0053e2]" id="ph-total">0</span>
+                                <span class="text-xs text-gray-500 font-semibold">Patterns Found</span>
+                            </div>
+                            <div class="bg-green-50 border border-green-200 rounded-xl px-4 py-2 flex items-center gap-2">
+                                <span class="text-xl font-black text-green-600" id="ph-bull">0</span>
+                                <span class="text-xs text-gray-500 font-semibold">🟢 Bullish</span>
+                            </div>
+                            <div class="bg-red-50 border border-red-200 rounded-xl px-4 py-2 flex items-center gap-2">
+                                <span class="text-xl font-black text-red-600" id="ph-bear">0</span>
+                                <span class="text-xs text-gray-500 font-semibold">🔴 Bearish</span>
+                            </div>
+                            <div class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 flex items-center gap-2">
+                                <span class="text-sm text-gray-600" id="ph-result-date">—</span>
+                            </div>
+                            <span class="ml-auto text-xs text-gray-400 self-center" id="ph-vis-count"></span>
+                        </div>
+
+                        <!-- Cards -->
+                        <div id="ph-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4"></div>
+                        <div id="ph-cards-empty" class="hidden bg-white rounded-xl border p-10 text-center mb-4">
+                            <p class="text-gray-400 font-semibold">🔍 No patterns match the selected filters</p>
+                        </div>
+                    </div>
+
+                </div><!-- /ph-list-view -->
+
+                <!-- ── VIEW B: DETAIL ─────────────────────────────────── -->
+                <div id="ph-detail-view" class="hidden">
+                    <!-- Back button + header -->
+                    <div class="flex items-center gap-3 mb-4">
+                        <button onclick="phBackToList()" class="flex items-center gap-1 text-[#0053e2] hover:text-blue-800 font-bold text-sm transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                            Back to results
+                        </button>
+                        <div class="h-4 w-px bg-gray-300"></div>
+                        <span id="ph-detail-breadcrumb" class="text-sm text-gray-500"></span>
+                    </div>
+
+                    <!-- Pattern header card -->
+                    <div id="ph-detail-header" class="bg-white rounded-xl border shadow-sm p-4 mb-4">
+                        <!-- filled by JS -->
+                    </div>
+
+                    <!-- Zoomed candlestick chart -->
+                    <div class="bg-white rounded-xl border shadow-sm overflow-hidden mb-4">
+                        <div class="px-4 py-3 border-b flex items-center justify-between">
+                            <div>
+                                <h3 class="font-bold text-gray-800 text-sm" id="ph-detail-chart-title">📈 Pattern Window</h3>
+                                <p class="text-xs text-gray-400">10 candles before · pattern highlighted · 10 candles after</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span id="ph-detail-chart-loading" class="hidden text-xs text-gray-400 animate-pulse">Loading…</span>
+                                <span class="text-xs text-gray-400">5-min candles</span>
+                            </div>
+                        </div>
+                        <div id="ph-detail-chart" style="height:400px"></div>
+                    </div>
+
+                    <!-- Key levels + trade idea -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <!-- Key levels -->
+                        <div class="bg-white rounded-xl border shadow-sm p-4">
+                            <h4 class="font-bold text-gray-800 text-sm mb-3">📍 Key Levels</h4>
+                            <div id="ph-detail-levels" class="space-y-2"></div>
+                        </div>
+                        <!-- Trade idea -->
+                        <div id="ph-detail-trade" class="bg-white rounded-xl border shadow-sm p-4">
+                            <h4 class="font-bold text-gray-800 text-sm mb-3">💡 Trade Idea</h4>
+                            <div id="ph-detail-trade-body"></div>
+                        </div>
+                    </div>
+
+                    <!-- Full description -->
+                    <div class="bg-white rounded-xl border shadow-sm p-4">
+                        <h4 class="font-bold text-gray-800 text-sm mb-2">📝 Pattern Description</h4>
+                        <p id="ph-detail-desc" class="text-sm text-gray-600 leading-relaxed"></p>
+                    </div>
+
+                </div><!-- /ph-detail-view -->
+
             </div><!-- /page-patterns -->
 
 
@@ -997,7 +1039,7 @@
 <script src="/static/backtest.js?v=5"></script>
 <script src="/static/replay.js?v=2"></script>
     <script src="/static/learn.js?v=3"></script>
-    <script src="/static/pattern-history.js?v=1"></script>
+    <script src="/static/pattern-history.js?v=2"></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             await checkStatus();
