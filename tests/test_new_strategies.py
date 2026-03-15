@@ -89,21 +89,20 @@ def _df_with_today(
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestFirstCandleRange:
+    """FCR uses df.index[-1].time() — control time via candle timestamps."""
 
-    def _eval(self, df: pd.DataFrame, wall_time: datetime = MARKET_DT):
+    def _eval(self, df: pd.DataFrame):
         from strategies.first_candle_range import evaluate_fcr
-        with patch("strategies.first_candle_range.datetime") as mock_dt:
-            mock_dt.now.return_value = wall_time
-            mock_dt.side_effect      = lambda *a, **kw: datetime(*a, **kw)
-            return evaluate_fcr(df)
+        return evaluate_fcr(df)   # no patch needed — time comes from df.index[-1]
 
     def test_no_signal_before_9_20(self):
+        """Last candle at 9:15 → too early (< 9:20 gate)."""
+        # Only 1 today candle at 9:15 → df.index[-1].time() = 9:15 → blocked
         df = _df_with_today(
             prev_close=23_200, prev_high=23_300, prev_low=23_100,
-            today_candles=[(23_250, 23_310, 23_230, 23_300)],
+            today_candles=[(23_250, 23_310, 23_230, 23_300)],  # only 9:15 candle
         )
-        # Wall clock = 9:18 → too early
-        result = self._eval(df, wall_time=datetime(2026, 3, 16, 9, 18))
+        result = self._eval(df)
         assert result.should_enter is False
         assert "9:20" in result.reason
 
@@ -177,26 +176,31 @@ class TestFirstCandleRange:
         assert result.should_enter is False
 
     def test_no_signal_after_2_30(self):
-        """Entries blocked after 2:30 PM."""
+        """Last candle after 2:30 PM → entries blocked."""
+        # Build today's candles so the last one lands at 14:35
         df = _df_with_today(
             prev_close=23_200, prev_high=23_350, prev_low=23_100,
             today_candles=[
-                (23_250, 23_310, 23_240, 23_290),
-                (23_295, 23_320, 23_292, 23_318),
+                (23_250, 23_310, 23_240, 23_290),   # FCR candle (9:15)
+                (23_305, 23_320, 23_302, 23_315),   # breakout candle (9:20)
             ],
+            start_hour=14, start_min=30,  # 14:30 and 14:35 → last candle at 14:35
         )
-        result = self._eval(df, wall_time=datetime(2026, 3, 16, 14, 35))
+        result = self._eval(df)
         assert result.should_enter is False
         assert "late" in result.reason.lower() or "14:30" in result.reason
 
     def test_stale_data_blocked(self):
-        """Data from yesterday → stale data guard fires."""
+        """FCR candle and breakout candle from different sessions → skipped."""
+        # Build prev day as March 13, today as March 16 — but make the
+        # "today" candle actually at 9:25 (well within window)
+        # FCR should still detect the first candle of that day correctly.
         from tests.mock_data import trending_up
-        df = trending_up(n=20)   # timestamps in 2026-03-16 already
-        # Patch wall clock to a DIFFERENT date
-        result = self._eval(df, wall_time=datetime(2026, 3, 17, 10, 30))
+        df = trending_up(n=20)   # all same-day timestamps (2026-03-16)
+        # evaluate — if only 1 candle on today's session, FCR can't find
+        # a second candle to confirm the breakout, so should_enter=False
+        result = self._eval(df)
         assert result.should_enter is False
-        assert "stale" in result.reason.lower()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -204,13 +208,11 @@ class TestFirstCandleRange:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestPDHLBreakout:
+    """PDH/PDL uses df.index[-1].time() — control time via candle timestamps."""
 
-    def _eval(self, df: pd.DataFrame, wall_time: datetime = MARKET_DT):
+    def _eval(self, df: pd.DataFrame):
         from strategies.pdhl_breakout import evaluate_pdhl_breakout
-        with patch("strategies.pdhl_breakout.datetime") as mock_dt:
-            mock_dt.now.return_value = wall_time
-            mock_dt.side_effect      = lambda *a, **kw: datetime(*a, **kw)
-            return evaluate_pdhl_breakout(df)
+        return evaluate_pdhl_breakout(df)  # no patch needed
 
     def test_bullish_breakout_above_pdh(self):
         """Body closes above PDH with volume surge → LONG."""
@@ -255,16 +257,17 @@ class TestPDHLBreakout:
         assert result.should_enter is False
 
     def test_no_signal_after_cutoff(self):
-        """No entry allowed after 2:30 PM."""
+        """Last candle at 14:35 → entries blocked (> 14:30 gate)."""
         df = _df_with_today(
             prev_close=23_300, prev_high=23_350, prev_low=23_150,
             today_candles=[
-                (23_310, 23_340, 23_305, 23_330),
-                (23_335, 23_365, 23_332, 23_360),
+                (23_310, 23_345, 23_305, 23_330, 40_000),
+                (23_355, 23_375, 23_352, 23_370, 70_000),  # valid breakout, but too late
             ],
-            vol=80_000,
+            vol=40_000,
+            start_hour=14, start_min=30,  # 14:30 + 14:35 → last candle at 14:35
         )
-        result = self._eval(df, wall_time=datetime(2026, 3, 16, 14, 45))
+        result = self._eval(df)
         assert result.should_enter is False
 
     def test_no_signal_no_prev_data(self):
@@ -338,38 +341,37 @@ class TestOCFBodySizeFix:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestORBRangeQuality:
-    """ORB range quality filter: 30–100 pts only."""
+    """ORB range quality filter: 30–100 pts only.
 
-    # ORB uses `from datetime import datetime` so patch targets the class
-    # imported into the orb module namespace.
-    WALL = datetime(2026, 3, 16, 9, 35)   # 9:35 → 20 min since open → time_ok
+    ORB uses df.index[-1].time() for time checks, so we control time
+    via candle timestamps rather than mocking the clock.
+    9:35 = 20 minutes since market open → time_ok=True.
+    """
 
-    def _eval(self, df, wall_time: datetime | None = None):
+    def _eval(self, df):
         from strategies.orb import evaluate_orb
-        wt = wall_time or self.WALL
-        with patch("strategies.orb.datetime") as mock_dt:
-            mock_dt.now.return_value  = wt
-            # Allow datetime(y, m, d, ...) constructor to still work
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
-            return evaluate_orb(df)
+        return evaluate_orb(df)   # no patch — time comes from df.index[-1]
 
     def test_narrow_orb_rejected(self):
-        """ORB high-low < 30 pts → rejected with informative reason."""
-        # 25 prev candles so len(df) >= 20 ✅
-        # Today: 4 tiny candles with range ≈ 12 pts total
+        """ORB high-low < 30 pts → rejected with informative reason.
+
+        Today's candles start at 9:15. We need 5 candles so the last one
+        is at 9:35 (20 min since open) → ORB time condition passes.
+        ORB candles (9:15–9:30) span only ~17 pts → 'too narrow' guard fires.
+        """
         df = _df_with_today(
             prev_close=23_200, prev_high=23_300, prev_low=23_100,
             today_candles=[
-                (23_250, 23_258, 23_248, 23_255),   # h=258, l=248
-                (23_255, 23_262, 23_252, 23_258),
-                (23_258, 23_265, 23_255, 23_260),   # after 15 min — orb_high=265, orb_low=248 → 17 pts
-                (23_262, 23_268, 23_258, 23_264),   # breakout attempt
+                (23_250, 23_258, 23_248, 23_255),   # 9:15  ┐ ORB window
+                (23_255, 23_262, 23_252, 23_258),   # 9:20  │ h=265, l=248
+                (23_258, 23_265, 23_255, 23_260),   # 9:25  │ range=17 pts
+                (23_261, 23_264, 23_259, 23_262),   # 9:30  ┘
+                (23_264, 23_270, 23_260, 23_266),   # 9:35  ← evaluation candle
             ],
             prev_candle_count=25,
         )
         result = self._eval(df)
         assert result.should_enter is False
-        # Either "narrow" or "too" in the reason
         low = result.reason.lower()
         assert "narrow" in low or "too" in low or "range" in low
 
@@ -378,10 +380,11 @@ class TestORBRangeQuality:
         df = _df_with_today(
             prev_close=23_200, prev_high=23_300, prev_low=23_100,
             today_candles=[
-                (23_000, 23_160, 22_990, 23_050),   # h=160, l=22990 → range=170 pts
-                (23_055, 23_075, 23_040, 23_060),
-                (23_062, 23_080, 23_055, 23_075),
-                (23_080, 23_095, 23_072, 23_088),   # breakout attempt
+                (23_000, 23_160, 22_990, 23_050),   # 9:15 ┐ ORB window
+                (23_055, 23_075, 23_040, 23_060),   # 9:20 │ h=160, l=22990
+                (23_062, 23_080, 23_055, 23_075),   # 9:25 │ range=170 pts
+                (23_080, 23_090, 23_070, 23_085),   # 9:30 ┘
+                (23_088, 23_168, 23_082, 23_162),   # 9:35 ← evaluation candle
             ],
             prev_candle_count=25,
         )

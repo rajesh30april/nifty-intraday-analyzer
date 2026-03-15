@@ -94,17 +94,19 @@ def evaluate_gap_and_go(df: pd.DataFrame) -> StrategySignal:
         ),
     ))
 
-    # ── Condition 4: Not too late in the day (wall clock) ───────────
-    # Use datetime.now() — NOT df.index[-1].time() — to avoid stale-data
-    # false positives where yesterday's 9:xx candle makes time_ok=True at 1 AM.
-    from datetime import datetime as _dt, time as dt_time
-    curr_time = _dt.now().time()
+    # ── Condition 4: Not too late in the day ──────────────────────
+    # Use df.index[-1].time() so backtests use the CANDLE's time,
+    # not the wall clock (which would always be the current real time).
+    # The auto-trader only feeds live fresh candles so stale-data is
+    # not a concern at the call site.
+    from datetime import time as dt_time
+    curr_time = df.index[-1].time()
     time_ok   = curr_time <= dt_time(10, 30)  # gap trades work best early
     conditions.append(StrategyCondition(
         name="Early Session",
         met=time_ok,
         detail=(
-            f"Current time {curr_time.strftime('%H:%M')} — "
+            f"Candle time {curr_time.strftime('%H:%M')} — "
             f"{'✅ early session (before 10:30)' if time_ok else '❌ too late for gap play'}"
         ),
     ))

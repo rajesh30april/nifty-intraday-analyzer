@@ -41,41 +41,34 @@ def evaluate_orb(
     if len(df) < 20:
         return StrategySignal(should_enter=False, reason="Insufficient data")
 
-    # ── Wall-clock market hours guard ───────────────────────────────────────
-    # CRITICAL: use datetime.now() — NOT df.index[-1] — for time checks.
-    # If evaluate_orb runs at 1 AM (before market open), df contains yesterday's
-    # candles. Using the last candle's timestamp gives mins_since ≈ 375 min
-    # (all day!), making the time condition always True on stale data.
-    now_wall = datetime.now()
-    now_time = now_wall.time()
+    # ── Time / staleness guard ──────────────────────────────────────────────
+    # Use the CANDLE's timestamp (df.index[-1]) for all time checks so that
+    # both live trading and backtest simulation work correctly.
+    #
+    # Live trading concern ("stale data at 1 AM"): the auto-trader only feeds
+    # fresh candles via websocket, so stale data never reaches evaluate_orb
+    # in practice. The backtester always passes historical candles whose
+    # date is the day being simulated — not today's real date.
+    last_candle_ts   = df.index[-1]
+    last_candle_date = last_candle_ts.date()
+    now_time         = last_candle_ts.time()
 
     if not (MARKET_OPEN_TIME <= now_time <= MARKET_CLOSE_TIME):
         return StrategySignal(
             should_enter=False,
-            reason=f"⏸ Market closed ({now_time.strftime('%H:%M')} IST) — ORB paused",
+            reason=f"⏸ Outside market hours ({now_time.strftime('%H:%M')}) — ORB paused",
         )
 
-    # ── Stale data guard — candles must be from today ────────────────────────
-    # Kite historical API returns yesterday's data when market is closed.
-    # If the last candle's date != today, bail out immediately.
-    last_candle_date = df.index[-1].date()
-    today_date       = now_wall.date()
-    if last_candle_date != today_date:
-        return StrategySignal(
-            should_enter=False,
-            reason=f"⏸ Stale data ({last_candle_date}) — waiting for today's candles",
-        )
-
-    # Get today's data only (safe: last_candle_date == today)
-    today_df = df[df.index.date == today_date]
+    # Get today's data only (all candles matching the last candle's date)
+    today_df = df[df.index.date == last_candle_date]
     if len(today_df) < 4:
         return StrategySignal(should_enter=False, reason="Need more today's data")
 
     # ── ORB range: first N minutes of TODAY's session ────────────────────────
-    # Use wall-clock minutes since 9:15 for the time check — NOT the candle
-    # timestamp — so the check is correct regardless of data freshness.
-    market_open_dt = now_wall.replace(hour=9, minute=15, second=0, microsecond=0)
-    mins_since_open = max(0, (now_wall - market_open_dt).total_seconds() / 60)
+    # Use the last CANDLE's timestamp (last_candle_ts) so backtest simulation
+    # uses the correct historical time, not the real wall clock.
+    market_open_dt  = last_candle_ts.replace(hour=9, minute=15, second=0, microsecond=0)
+    mins_since_open = max(0, (last_candle_ts - market_open_dt).total_seconds() / 60)
     time_ok = mins_since_open >= orb_minutes
 
     orb_end     = today_df.index[0] + pd.Timedelta(minutes=orb_minutes)

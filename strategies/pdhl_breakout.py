@@ -17,7 +17,7 @@ Why PDH/PDL > ORB:
 """
 
 import pandas as pd
-from datetime import datetime, time as dt_time
+from datetime import time as dt_time
 from strategy import StrategySignal, StrategyCondition, Direction
 from strategies.registry import register, StrategyInfo
 
@@ -44,16 +44,18 @@ def evaluate_pdhl_breakout(df: pd.DataFrame) -> StrategySignal:
         return StrategySignal(should_enter=False, reason="Insufficient data")
 
     # ── Wall clock check ────────────────────────────────────────────────────
-    now = datetime.now()
-    if now.time() > MAX_ENTRY_HOUR:
+    # Use candle timestamp — NOT datetime.now() — so backtest replays work
+    # correctly on historical data (wall clock would be wrong in simulation).
+    if df.index[-1].time() > MAX_ENTRY_HOUR:
         return StrategySignal(
             should_enter=False,
             reason=f"Too late for PDH/PDL trade (after {MAX_ENTRY_HOUR.strftime('%H:%M')})",
         )
 
     # ── Identify previous day's range ───────────────────────────────────────
-    today       = now.date()
-    today_df    = df[df.index.date == today]
+    # "today" = date of the most recent candle (correct in both live & backtest)
+    today    = df.index[-1].date()
+    today_df = df[df.index.date == today]
     prev_df     = df[df.index.date < today]
 
     if prev_df.empty or today_df.empty:

@@ -23,7 +23,7 @@ Vs ORB:
 """
 
 import pandas as pd
-from datetime import datetime, time as dt_time
+from datetime import time as dt_time
 from strategy import StrategySignal, StrategyCondition, Direction
 from strategies.registry import register, StrategyInfo
 
@@ -52,8 +52,9 @@ def evaluate_fcr(df: pd.DataFrame) -> StrategySignal:
         return StrategySignal(should_enter=False, reason="Insufficient data")
 
     # ── Wall clock checks ────────────────────────────────────────────
-    now      = datetime.now()
-    now_time = now.time()
+    # Use candle timestamp — NOT datetime.now() — so backtest replays work
+    # correctly on historical data (wall clock would be wrong in simulation).
+    now_time = df.index[-1].time()
 
     if now_time < dt_time(9, 20):
         return StrategySignal(
@@ -66,15 +67,10 @@ def evaluate_fcr(df: pd.DataFrame) -> StrategySignal:
             reason=f"Too late for FCR trade (after {MAX_ENTRY_HOUR.strftime('%H:%M')})",
         )
 
-    # ── Stale data guard ─────────────────────────────────────────────
-    if df.index[-1].date() != now.date():
-        return StrategySignal(
-            should_enter=False,
-            reason="Stale data — waiting for today's candles",
-        )
-
     # ── Build today's dataset ────────────────────────────────────────
-    today    = now.date()
+    # "today" = the date of the most recent candle in df (works in both
+    # live and backtest since df.index[-1] IS the current evaluation candle).
+    today    = df.index[-1].date()
     today_df = df[df.index.date == today]
 
     if today_df.empty:
