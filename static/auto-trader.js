@@ -1,11 +1,17 @@
 // ── Auto-Trader Controls & Renderer ──────────────────────────────
 
 // Single source of truth
-let _atIsRunning  = false;
-let _atKillSwitch = false;
-let _atPollTimer  = null;
-let _atHadTrade   = false;   // tracks position state for entry/exit detection
-const AT_POLL_MS  = 6000;
+let _atIsRunning       = false;
+let _atKillSwitch      = false;
+let _atPollTimer       = null;
+let _atHadTrade        = false;   // tracks position state for entry/exit detection
+const AT_POLL_MS       = 6000;
+
+// ── Event log dedup trackers ──────────────────────────────────────
+let _atLastCondKey     = null;   // JSON key of which conditions were met last render
+let _atLastSignalText  = null;   // last signal summary logged
+let _atLastEvalTime    = null;   // last evaluation timestamp logged
+const AT_LOG_THROTTLE  = 60;     // minimum seconds between signal-summary logs
 
 // ── Toast system ─────────────────────────────────────────────────
 function showAtToast(type, title, body) {
@@ -65,9 +71,85 @@ function _atLogEvent(icon, title, detail) {
     while (log.children.length > 30) log.lastChild.remove();
 }
 
+// ── Smart event log: only writes on meaningful state changes ──────
+function _atMaybeLog(data) {
+    const conds    = data.conditions || [];
+    const signal   = (data.last_signal || '').replace(/<[^>]*>/g, '').trim(); // strip html
+    const evalTime = data.last_evaluation || null;
+
+    // Build a key from met/not-met states of each condition
+    const condKey = conds.map(c => `${c.name}:${c.met ? '1' : '0'}`).join('|');
+
+    // ── 1. Log individual condition flips ───────────────────────
+    if (_atLastCondKey !== null && condKey !== _atLastCondKey) {
+        const prev = Object.fromEntries(
+            (_atLastCondKey || '').split('|').map(s => {
+                const [n, v] = s.split(':');
+                return [n, v === '1'];
+            })
+        );
+        conds.forEach(c => {
+            const wasMet = prev[c.name];
+            if (wasMet === undefined) return; // new condition, skip
+            if (c.met && !wasMet) {
+                _atLogEvent('✅', c.name, c.detail || 'condition met');
+            } else if (!c.met && wasMet) {
+                _atLogEvent('❌', c.name, c.detail || 'condition lost');
+            }
+        });
+    }
+
+    // ── 2. Log signal summary when it changes ───────────────────
+    const signalChanged = signal && signal !== _atLastSignalText;
+    const evalChanged   = evalTime && evalTime !== _atLastEvalTime;
+
+    if (signalChanged || (evalChanged && signal)) {
+        // Throttle: don't log same signal type more than once per AT_LOG_THROTTLE sec
+        const nowSec = Date.now() / 1000;
+        const lastSec = _atLastSignalTime || 0;
+        if (signalChanged || (nowSec - lastSec >= AT_LOG_THROTTLE)) {
+            const metCount  = conds.filter(c => c.met).length;
+            const totalCond = conds.length;
+            const icon = metCount === totalCond && totalCond > 0 ? '🚦'
+                       : metCount === 0                          ? '⏳'
+                       : '📊';
+            // Only show first 120 chars of signal to keep log readable
+            const shortSig = signal.length > 120 ? signal.slice(0, 117) + '…' : signal;
+            _atLogEvent(icon, `Eval (${metCount}/${totalCond} conds met)`, shortSig);
+            _atLastSignalTime = nowSec;
+            _atLastSignalText = signal;
+        }
+    }
+
+    // ── 3. Log kill-switch / safety blocks ──────────────────────
+    if (data.kill_switch && !_atKillSwitchLogged) {
+        _atLogEvent('🔴', 'Kill Switch ACTIVE', 'No new orders will be placed');
+        _atKillSwitchLogged = true;
+    } else if (!data.kill_switch) {
+        _atKillSwitchLogged = false;
+    }
+
+    // ── 4. Log runner start/stop ─────────────────────────────────
+    if (!data.is_running && _atIsRunning) {
+        _atLogEvent('⏹', 'Auto-Trader stopped', '');
+    }
+
+    // Save state for next comparison
+    _atLastCondKey   = condKey || _atLastCondKey;
+    _atLastEvalTime  = evalTime || _atLastEvalTime;
+}
+
+// init these after the trackers block
+let _atLastSignalTime   = 0;
+let _atKillSwitchLogged = false;
+
 function _atClearLog() {
     const log = document.getElementById('at-event-log');
     if (log) log.innerHTML = '';
+    // Also reset trackers so next poll re-logs current state
+    _atLastCondKey    = null;
+    _atLastSignalText = null;
+    _atLastSignalTime = 0;
 }
 
 // ── Beep on trade events ─────────────────────────────────────────
@@ -133,6 +215,10 @@ async function startAutoTrader() {
             // The 6-second poller will pick up the running state.
             _setAtStatus('running');
             _atIsRunning = true;
+            // Reset dedup so the very first evaluation after start always logs
+            _atLastCondKey    = null;
+            _atLastSignalText = null;
+            _atLastSignalTime = 0;
             _atLogEvent('🟢', 'Auto-Trader started', `strategy: ${strategyId}`);
         } else {
             _setAtStatus('error', data.error || 'Failed to start');
@@ -288,6 +374,9 @@ function renderAutoTrader(data) {
         }
         sigEl.innerHTML = sigHTML;
     }
+
+    // ── Event log — write meaningful entries on state changes ────
+    _atMaybeLog(data);
 
     // ── LIVE POSITION BANNER ───────────────────────────────────
     const banner = document.getElementById('at-pos-banner');
