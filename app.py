@@ -46,7 +46,7 @@ from pattern_detector import detect_all_patterns
 from trend_health import analyze_trend_health
 from auto_trader import (
     get_trader_status, start_auto_trader, stop_auto_trader,
-    activate_kill_switch, configure_auto_trader,
+    activate_kill_switch, configure_auto_trader, sync_from_zerodha,
     state as trader_state, evaluate_and_act,
 )
 from pattern_scanner import scan_patterns, TIMEFRAME_META, PATTERN_EMOJIS
@@ -1988,11 +1988,20 @@ async def auto_trader_kill():
         result = activate_kill_switch()
         return {"success": True, **result}
     except Exception as e:
-        # Force kill even if error
         trader_state.is_running = False
         trader_state.kill_switch = True
         trader_state.active_trade = None
         return {"success": True, "status": "force_killed", "error": str(e)}
+
+
+@app.post("/api/auto-trader/sync-zerodha")
+async def auto_trader_sync_zerodha():
+    """Scan Zerodha positions and import any open NFO trade into app state.
+
+    Use this when the app was restarted with an open position already in Zerodha.
+    """
+    result = sync_from_zerodha()
+    return result
 
 
 @app.post("/api/auto-trader/evaluate")

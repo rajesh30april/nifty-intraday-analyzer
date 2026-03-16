@@ -15,6 +15,7 @@ Features:
 import os
 import json
 import threading
+from collections import deque
 from datetime import datetime, time as dt_time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -113,6 +114,18 @@ class TraderState:
 
 # ── Singleton State ─────────────────────────────────────────────
 state = TraderState()
+
+# ── Server-side persistent event log (survives page refresh) ──────
+_event_log: deque[dict] = deque(maxlen=120)
+
+def _log(icon: str, label: str, detail: str = "") -> None:
+    """Append an event to the server-side log."""
+    _event_log.append({
+        "ts":     datetime.now().strftime("%H:%M:%S"),
+        "icon":   icon,
+        "label":  label,
+        "detail": detail,
+    })
 
 
 # ── State Snapshot (crash recovery) ─────────────────────────────
@@ -750,6 +763,8 @@ def _exit_position(reason: str, current_price: float):
         f"({exit_premium - trade.entry_premium:+.2f})\n"
         f"   P&L: ₹{pnl:+,.2f} | Qty: {trade.quantity} units | Reason: {reason}"
     )
+    _log(emoji, f"EXIT {trade.direction.upper()}",
+         f"₹{pnl:+,.0f} | {reason} | Nifty ₹{current_price:.0f} | Opt ₹{exit_premium:.2f}")
 
     _save_trade_log()
     _save_state_snapshot()   # ← crash recovery: snapshot immediately on exit (no active_trade)
@@ -813,6 +828,10 @@ def evaluate_and_act(df, current_price: float):
         {"name": c.name, "met": c.met, "detail": c.detail}
         for c in signal.conditions
     ]
+    met = sum(1 for c in signal.conditions if c.met)
+    total = len(signal.conditions)
+    icon = "🚦" if met == total and total > 0 else "🔍"
+    _log(icon, f"Eval {met}/{total} conds", signal.reason[:80])
 
     # 5. Check safety before actually placing orders
     safe, safety_msg = _check_safety()
@@ -935,8 +954,11 @@ def _enter_trade(direction: Direction, price: float):
     state.pending_sl_exchange_update   = False
 
     mode = "📝 PAPER" if trade.paper else "🟢 LIVE"
+    lots = max(1, qty // 65)
     print(f"🚀 [{mode}] ENTRY {direction.value.upper()} {qty}x {symbol} "
           f"@ ₹{price} | SL: ₹{sl:.0f} (−{sl_pts}pts) | Target: ₹{target:.0f} (R:R 1:{rr})")
+    _log("🚀", f"ENTRY {direction.value.upper()}",
+         f"Nifty ₹{price:.0f} | SL ₹{sl:.0f} | Tgt ₹{target:.0f} | {lots}L ({qty}u) | Prem ₹{entry_premium:.2f}")
 
     # ── Place SL-M backstop at exchange immediately after entry ───
     # Crash protection: if app dies, exchange still holds this order.
@@ -977,14 +999,16 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
         new_sl = state.highest_price_since_entry - state.trailing_sl_points
         if new_sl > trade.stop_loss:
             trade.stop_loss = round(new_sl, 2)
-            state.pending_sl_exchange_update = True   # ← candle loop will sync
+            state.pending_sl_exchange_update = True
             _save_state_snapshot()
+            _log("🔼", "Trail SL moved UP", f"New SL ₹{trade.stop_loss:.0f} | Nifty ₹{current_price:.0f}")
     else:
         new_sl = state.lowest_price_since_entry + state.trailing_sl_points
         if new_sl < trade.stop_loss:
             trade.stop_loss = round(new_sl, 2)
-            state.pending_sl_exchange_update = True   # ← candle loop will sync
+            state.pending_sl_exchange_update = True
             _save_state_snapshot()
+            _log("🔽", "Trail SL moved DOWN", f"New SL ₹{trade.stop_loss:.0f} | Nifty ₹{current_price:.0f}")
 
     # Check stop-loss hit
     if is_long and current_price <= trade.stop_loss:
@@ -1122,6 +1146,8 @@ def get_trader_status() -> dict:
         "capital":            state.capital,
         "strike_offset":      state.strike_offset,
         "max_trades_per_day": state.max_trades_per_day,
+        # ── Server-side event log (last 40 events, newest first) ──
+        "event_log": list(reversed(list(_event_log)))[:40],
     }
 
 
@@ -1190,6 +1216,70 @@ def stop_auto_trader():
 
     print("🛑 Auto-Trader STOPPED")
     return {"status": "stopped"}
+
+
+def sync_from_zerodha() -> dict:
+    """Scan Zerodha positions and import any open NFO option into app state.
+
+    Use when the app was restarted with an open trade that isn't in the snapshot.
+    Returns a summary dict with success / imported trade details.
+    """
+    if not kite_manager.is_authenticated:
+        return {"success": False, "error": "Not authenticated with Zerodha"}
+    if state.active_trade:
+        return {"success": False, "error": "App already has an active trade. Exit it first."}
+    try:
+        positions = kite_manager.kite.positions()
+    except Exception as e:
+        return {"success": False, "error": f"Could not fetch positions: {e}"}
+
+    nfo_positions = [
+        p for p in positions.get("net", [])
+        if p.get("exchange") == "NFO"
+        and "NIFTY" in p.get("tradingsymbol", "")
+        and int(p.get("quantity", 0)) != 0
+    ]
+    if not nfo_positions:
+        return {"success": False, "error": "No open Nifty NFO positions found in Zerodha"}
+
+    pos = nfo_positions[0]   # take first open position
+    sym   = pos["tradingsymbol"]
+    qty   = abs(int(pos["quantity"]))
+    avg_price = float(pos.get("average_price") or pos.get("buy_price") or 0)
+
+    # Determine direction from option type (CE = we bought call = LONG, PE = LONG on PE = SHORT on Nifty)
+    direction_val = "long" if sym.endswith("CE") else "short"
+
+    # Spot price for SL/target calc
+    nifty_spot = state.last_nifty_price or 0
+
+    trade = Trade(
+        id           = f"sync-{datetime.now().strftime('%H%M%S')}",
+        timestamp    = datetime.now().isoformat(),
+        direction    = direction_val,
+        instrument   = f"NFO:{sym}",
+        entry_price  = nifty_spot,
+        entry_premium= avg_price,
+        quantity     = qty,
+        stop_loss    = nifty_spot + state.sl_points if direction_val == "short" else nifty_spot - state.sl_points,
+        target       = nifty_spot - state.sl_points * state.rr_ratio if direction_val == "short" else nifty_spot + state.sl_points * state.rr_ratio,
+        status       = OrderStatus.FILLED,
+        paper        = False,
+    )
+    state.active_trade              = trade
+    state.highest_price_since_entry = nifty_spot
+    state.lowest_price_since_entry  = nifty_spot
+    state.orders_placed            += 1
+    _save_state_snapshot()
+    _log("🔗", "Synced from Zerodha", f"{sym} | {qty}u | avg ₹{avg_price:.2f}")
+    return {
+        "success":    True,
+        "instrument": sym,
+        "direction":  direction_val,
+        "quantity":   qty,
+        "avg_price":  avg_price,
+        "note":       "SL/Target estimated from current settings — adjust if needed",
+    }
 
 
 def activate_kill_switch():

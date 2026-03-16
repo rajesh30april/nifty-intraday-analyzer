@@ -577,12 +577,60 @@ function renderAutoTrader(data) {
         }
     }
 
+    // ── SERVER-SIDE EVENT LOG ────────────────────────────────────
+    _renderServerEventLog(data.event_log || []);
+
     // ── CRASH RECOVERY BANNER ──────────────────────────────────
-    // ── CRASH RECOVERY BANNER — rendered per recovery_type ──────
     _renderRecoveryBanner(data);
 
     // ── Sync settings panel inputs from server state ─────────────
     if (typeof syncAtSettingsFromStatus === 'function') syncAtSettingsFromStatus(data);
+}
+
+function _renderServerEventLog(events) {
+    const el = document.getElementById('at-event-log');
+    if (!el || !events.length) return;
+    // Only re-render if new events arrived (compare first ts)
+    const firstTs = events[0]?.ts;
+    if (el.dataset.lastTs === firstTs) return;
+    el.dataset.lastTs = firstTs;
+    el.innerHTML = events.map(e => `
+        <div class="flex items-start gap-1.5 py-0.5 border-b border-gray-800">
+          <span class="text-[11px] shrink-0">${e.icon}</span>
+          <span class="text-[9px] text-gray-500 shrink-0 font-mono">${e.ts}</span>
+          <span class="text-[10px] font-bold text-gray-300 shrink-0">${e.label}</span>
+          <span class="text-[10px] text-gray-500 truncate">${e.detail}</span>
+        </div>`).join('');
+}
+
+// ── Sync existing Zerodha position into app ───────────────────────
+async function syncFromZerodha() {
+    const btn = document.getElementById('at-sync-zd-btn');
+    const msg = document.getElementById('at-sync-zd-msg');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Scanning Zerodha…'; }
+    try {
+        const resp = await fetch('/api/auto-trader/sync-zerodha', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            if (msg) {
+                msg.textContent  = `✅ Linked: ${data.instrument} | ${data.quantity}u | avg ₹${data.avg_price}`;
+                msg.className    = 'text-[10px] mt-1 text-green-400';
+                msg.classList.remove('hidden');
+            }
+            _atShowToast('🔗 Zerodha position linked to app!', 'info');
+            await pollAutoTraderStatus();
+        } else {
+            if (msg) {
+                msg.textContent  = `❌ ${data.error}`;
+                msg.className    = 'text-[10px] mt-1 text-red-400';
+                msg.classList.remove('hidden');
+            }
+        }
+    } catch (e) {
+        if (msg) { msg.textContent = '❌ Network error'; msg.classList.remove('hidden'); }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔗 Sync trade from Zerodha'; }
+    }
 }
 
 // ── Trade history ────────────────────────────────────────────────

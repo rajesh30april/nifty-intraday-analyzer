@@ -751,6 +751,12 @@
                   <div class="text-2xl mb-1">⏳</div>
                   <div class="text-xs text-gray-500 font-semibold">No open position</div>
                   <div id="at-no-pos-msg" class="text-[10px] text-gray-600">Waiting for entry signal…</div>
+                  <!-- Sync from Zerodha — for trades placed outside the app -->
+                  <button id="at-sync-zd-btn" onclick="syncFromZerodha()"
+                    class="mt-2 text-[10px] bg-gray-700 hover:bg-gray-600 border border-gray-500 text-gray-300 px-3 py-1 rounded-lg">
+                    🔗 Sync trade from Zerodha
+                  </button>
+                  <div id="at-sync-zd-msg" class="text-[10px] mt-1 hidden"></div>
                 </div>
 
                 <!-- Signal / conditions -->
