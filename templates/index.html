@@ -492,24 +492,41 @@
                   <!-- ── Strike Picker ── -->
                   <div class="mb-3">
                     <label class="text-[10px] text-gray-400 block mb-1">Which option to buy?</label>
-                    <div class="flex gap-1">
-                      <button id="at-strike-0" onclick="setAtStrike(0)"
-                        class="flex-1 text-xs px-2 py-2 rounded-l-lg font-bold border border-gray-600 bg-[#0053e2] text-white transition"
+                    <div class="flex gap-0.5">
+                      <button data-offset="-3" onclick="setAtStrike(-3)"
+                        class="strike-btn flex-1 text-[10px] px-1 py-2 rounded-l-lg font-bold border border-gray-600 bg-gray-700 text-gray-300 transition"
+                        title="ITM3: 150pts in-the-money — delta ~0.85, expensive but moves 1:1 with Nifty">
+                        ITM3<div class="text-[8px] font-normal opacity-60">δ~0.85</div>
+                      </button>
+                      <button data-offset="-2" onclick="setAtStrike(-2)"
+                        class="strike-btn flex-1 text-[10px] px-1 py-2 font-bold border-t border-b border-gray-600 bg-gray-700 text-gray-300 transition"
+                        title="ITM2: 100pts in-the-money — delta ~0.75">
+                        ITM2<div class="text-[8px] font-normal opacity-60">δ~0.75</div>
+                      </button>
+                      <button data-offset="-1" onclick="setAtStrike(-1)"
+                        class="strike-btn flex-1 text-[10px] px-1 py-2 font-bold border-t border-b border-gray-600 bg-gray-700 text-gray-300 transition"
+                        title="ITM1: 50pts in-the-money — delta ~0.65, good balance of cost vs delta">
+                        ITM1<div class="text-[8px] font-normal opacity-60">δ~0.65</div>
+                      </button>
+                      <button data-offset="0" onclick="setAtStrike(0)"
+                        class="strike-btn flex-1 text-[10px] px-1 py-2 font-bold border border-gray-600 bg-[#0053e2] text-white transition"
                         title="ATM: highest delta (~0.50), most liquid — best for intraday">
-                        ATM
-                        <div class="text-[9px] font-normal opacity-70">delta ~0.50</div>
+                        ATM<div class="text-[8px] font-normal opacity-70">δ~0.50</div>
                       </button>
-                      <button id="at-strike-1" onclick="setAtStrike(1)"
-                        class="flex-1 text-xs px-2 py-2 border-t border-b border-gray-600 bg-gray-700 text-gray-300 transition"
-                        title="1-OTM: cheaper, more lots but lower delta (~0.35)">
-                        1-OTM
-                        <div class="text-[9px] font-normal opacity-70">delta ~0.35</div>
+                      <button data-offset="1" onclick="setAtStrike(1)"
+                        class="strike-btn flex-1 text-[10px] px-1 py-2 font-bold border-t border-b border-gray-600 bg-gray-700 text-gray-300 transition"
+                        title="OTM1: 50pts out-of-money — delta ~0.35, cheaper premium">
+                        OTM1<div class="text-[8px] font-normal opacity-60">δ~0.35</div>
                       </button>
-                      <button id="at-strike-2" onclick="setAtStrike(2)"
-                        class="flex-1 text-xs px-2 py-2 rounded-r-lg font-bold border border-gray-600 bg-gray-700 text-gray-300 transition"
-                        title="2-OTM: cheapest, most lots but low delta (~0.20) — big move needed">
-                        2-OTM
-                        <div class="text-[9px] font-normal opacity-70">delta ~0.20</div>
+                      <button data-offset="2" onclick="setAtStrike(2)"
+                        class="strike-btn flex-1 text-[10px] px-1 py-2 font-bold border-t border-b border-gray-600 bg-gray-700 text-gray-300 transition"
+                        title="OTM2: 100pts out-of-money — delta ~0.25">
+                        OTM2<div class="text-[8px] font-normal opacity-60">δ~0.25</div>
+                      </button>
+                      <button data-offset="3" onclick="setAtStrike(3)"
+                        class="strike-btn flex-1 text-[10px] px-1 py-2 rounded-r-lg font-bold border border-gray-600 bg-gray-700 text-gray-300 transition"
+                        title="OTM3: 150pts out-of-money — delta ~0.15, lottery ticket — needs big move">
+                        OTM3<div class="text-[8px] font-normal opacity-60">δ~0.15</div>
                       </button>
                     </div>
                     <!-- Live example based on current Nifty price -->

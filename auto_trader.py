@@ -102,7 +102,7 @@ class TraderState:
     capital:            float = DEFAULT_CAPITAL      # ₹ available for qty calc
     qty_mode:           str   = "manual"            # 'manual' | 'capital'
     manual_qty:         int   = DEFAULT_QUANTITY    # used when qty_mode=manual
-    strike_offset:      int   = 0                   # 0=ATM, 1=1-OTM, 2=2-OTM (steps of 50)
+    strike_offset:      int   = 0                   # -3=ITM3,-2=ITM2,-1=ITM1,0=ATM,1=OTM1,2=OTM2,3=OTM3
     max_trades_per_day: int   = MAX_ORDERS_PER_DAY  # runtime-overridable (1-15)
     recovery_mode: bool = False    # True if state was restored after a crash
     recovery_message: str = ""     # Human-readable description of what was recovered
@@ -500,7 +500,8 @@ def _get_option_symbol(nifty_price: float, direction: Direction) -> tuple[str, i
     symbol     = instrument["tradingsymbol"]
     token      = instrument["instrument_token"]
 
-    offset_label = {0: "ATM", 1: "1-OTM", 2: "2-OTM"}.get(state.strike_offset, f"{state.strike_offset}-OTM")
+    _strike_labels = {-3:"ITM3",-2:"ITM2",-1:"ITM1",0:"ATM",1:"OTM1",2:"OTM2",3:"OTM3"}
+    offset_label = _strike_labels.get(state.strike_offset, f"OTM{abs(state.strike_offset)}")
     print(f"🎯 Strike Selection:")
     print(f"   Nifty: {nifty_price:.0f} | ATM: {atm_strike} | Offset: {offset_label} | Picked: {strike} {option_type}")
     print(f"   Expiry: {expiry_str} | Symbol: {symbol} | Token: {token}")
@@ -1133,7 +1134,7 @@ def configure_auto_trader(
     if qty_mode           is not None: state.qty_mode           = qty_mode
     if manual_qty         is not None: state.manual_qty         = manual_qty
     if capital            is not None: state.capital            = capital
-    if strike_offset      is not None: state.strike_offset      = max(0, min(2, strike_offset))
+    if strike_offset      is not None: state.strike_offset      = max(-3, min(3, strike_offset))
     if max_trades_per_day is not None: state.max_trades_per_day = max(1, min(15, max_trades_per_day))
     _save_state_snapshot()
     return {

@@ -604,10 +604,10 @@ class TestStrikeOffsetConfig:
 
     def test_configure_clamps_offset(self):
         at, _ = _fresh_auto_trader()
-        at.configure_auto_trader(strike_offset=5)
-        assert at.state.strike_offset == 2, "Max allowed offset is 2"
-        at.configure_auto_trader(strike_offset=-1)
-        assert at.state.strike_offset == 0, "Min allowed offset is 0"
+        at.configure_auto_trader(strike_offset=10)
+        assert at.state.strike_offset == 3, "Max allowed offset is 3 (OTM3)"
+        at.configure_auto_trader(strike_offset=-10)
+        assert at.state.strike_offset == -3, "Min allowed offset is -3 (ITM3)"
 
     def test_atm_offset_0_long(self):
         at, _ = _fresh_auto_trader()

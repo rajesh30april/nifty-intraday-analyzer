@@ -64,8 +64,19 @@ function _updateMaxTradesBadge(val) {
 }
 
 // ── Strike offset picker ────────────────────────────────────────
-let _atStrikeOffset  = 0;      // 0=ATM, 1=1-OTM, 2=2-OTM
-let _lastKnownSpot   = null;   // updated whenever we fetch live-tick
+// offset: -3=ITM3, -2=ITM2, -1=ITM1, 0=ATM, 1=OTM1, 2=OTM2, 3=OTM3
+let _atStrikeOffset  = 0;
+let _lastKnownSpot   = null;
+
+const STRIKE_META = {
+    '-3': { label: 'ITM3', delta: 0.85 },
+    '-2': { label: 'ITM2', delta: 0.75 },
+    '-1': { label: 'ITM1', delta: 0.65 },
+     '0': { label: 'ATM',  delta: 0.50 },
+     '1': { label: 'OTM1', delta: 0.35 },
+     '2': { label: 'OTM2', delta: 0.25 },
+     '3': { label: 'OTM3', delta: 0.15 },
+};
 
 function setAtStrike(offset) {
     _atStrikeOffset = offset;
@@ -74,10 +85,9 @@ function setAtStrike(offset) {
 }
 
 function _applyStrikeUI(offset) {
-    [0, 1, 2].forEach(i => {
-        const btn = document.getElementById(`at-strike-${i}`);
-        if (!btn) return;
-        const active = i === offset;
+    document.querySelectorAll('.strike-btn').forEach(btn => {
+        const btnOffset = parseInt(btn.dataset.offset);
+        const active    = btnOffset === offset;
         btn.className = btn.className
             .replace(/bg-\[#0053e2\]|bg-gray-700/g, active ? 'bg-[#0053e2]' : 'bg-gray-700')
             .replace(/text-white|text-gray-300/g,   active ? 'text-white'   : 'text-gray-300');
@@ -91,14 +101,15 @@ function _updateStrikeExample(offset) {
     const rawText    = document.getElementById('lm-price')?.textContent || '';
     const niftyPrice = parseFloat(rawText.replace(/[^0-9.]/g, '')) || _lastKnownSpot || 23500;
     const atm        = Math.round(niftyPrice / 50) * 50;
+    // CE: OTM = higher strike (+), ITM = lower strike (-)
+    // PE: OTM = lower strike  (-), ITM = higher strike (+)
     const ceStrike   = atm + offset * 50;
     const peStrike   = atm - offset * 50;
-    const label      = ['ATM', '1-OTM', '2-OTM'][offset];
-    const delta      = [0.50, 0.35, 0.20][offset];
+    const meta       = STRIKE_META[String(offset)] || { label: `${offset > 0 ? 'OTM' : 'ITM'}${Math.abs(offset)}`, delta: 0.50 };
     el.innerHTML = `Nifty ≈ ${niftyPrice.toFixed(0)} → ` +
         `<span class="text-green-400">LONG = ${ceStrike} CE</span> | ` +
         `<span class="text-red-400">SHORT = ${peStrike} PE</span> ` +
-        `<span class="text-gray-600">(${label}, delta ≈ ${delta})</span>`;
+        `<span class="text-gray-600">(${meta.label}, delta ≈ ${meta.delta})</span>`;
 }
 
 // ── Qty mode toggle ──────────────────────────────────────────────
