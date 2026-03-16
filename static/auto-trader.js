@@ -58,6 +58,14 @@ function showAtToast(type, title, body) {
     _atLogEvent(c.icon, title, body);
 }
 
+/** Convenience wrapper — _atShowToast(message, type)
+ *  Adapts the simple 2-arg call used across at-settings.js and
+ *  syncFromZerodha() to the full showAtToast(type, title, body) API.
+ */
+function _atShowToast(msg, type = 'info') {
+    showAtToast(type, msg, '');
+}
+
 // ── Event log ────────────────────────────────────────────────────
 // ts: optional ISO timestamp from server — use it so log shows actual
 //     candle-close time, not the random poll-detection time.
