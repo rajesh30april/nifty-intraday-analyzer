@@ -47,6 +47,7 @@ from trend_health import analyze_trend_health
 from auto_trader import (
     get_trader_status, start_auto_trader, stop_auto_trader,
     activate_kill_switch, configure_auto_trader, sync_from_zerodha,
+    refresh_active_option_ltp,
     state as trader_state, evaluate_and_act,
 )
 from pattern_scanner import scan_patterns, TIMEFRAME_META, PATTERN_EMOJIS
@@ -101,16 +102,32 @@ async def _auto_trader_loop():
             print(f"⚠️ Auto-trader loop error: {e}")
 
 
+async def _ltp_refresh_loop():
+    """Refresh active option LTP every 15s — keeps P&L live even when
+    auto-trader is stopped/in recovery. Runs in threadpool to avoid
+    blocking the event loop with synchronous Kite HTTP calls.
+    First iteration fires after 3s so P&L populates quickly on startup.
+    """
+    await asyncio.sleep(3)   # short initial delay — let server finish startup
+    while True:
+        if trader_state.active_trade:
+            await asyncio.to_thread(refresh_active_option_ltp)
+        await asyncio.sleep(15)
+
+
 @asynccontextmanager
 async def lifespan(_app):
-    """Startup: launch background task. Shutdown: cancel it."""
-    task = asyncio.create_task(_auto_trader_loop())
+    """Startup: launch background tasks. Shutdown: cancel them."""
+    task_trader = asyncio.create_task(_auto_trader_loop())
+    task_ltp    = asyncio.create_task(_ltp_refresh_loop())
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    task_trader.cancel()
+    task_ltp.cancel()
+    for t in (task_trader, task_ltp):
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="Nifty 50 Intraday Probability Analyzer", lifespan=lifespan)

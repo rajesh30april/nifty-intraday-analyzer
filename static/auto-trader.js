@@ -528,14 +528,23 @@ function renderAutoTrader(data) {
             }
         }
 
-        // Unrealized P&L
+        // Unrealized P&L — show ⏳ while option LTP hasn't loaded yet
         const upnlEl = document.getElementById('at-upnl');
         if (upnlEl) {
-            const pnl = t.pnl_unrealized ?? 0;
-            const src = t.current_o ? '' : ' ~';
-            upnlEl.textContent = `${src}₹${pnl >= 0 ? '+' : ''}${pnl.toLocaleString('en-IN')}`;
-            upnlEl.className   = `text-sm font-black ${pnl > 0 ? 'text-green-400' : pnl < 0 ? 'text-red-400' : 'text-gray-400'}`;
-            upnlEl.title       = t.current_option_ltp ? 'Based on live option LTP' : 'Approx based on Nifty move (option LTP loading)';
+            const hasLtp = t.current_option_ltp && t.current_option_ltp > 0;
+            const hasEp  = t.entry_premium      && t.entry_premium > 0;
+            if (!hasLtp || !hasEp) {
+                // LTP not yet fetched — background loop will populate in ≤15s
+                upnlEl.textContent = '⏳ loading…';
+                upnlEl.className   = 'text-sm font-black text-gray-500';
+                upnlEl.title       = 'Option LTP refreshing (background task runs every 15s)';
+            } else {
+                const pnl = t.pnl_unrealized ?? 0;
+                const src = hasLtp ? '' : ' ~';
+                upnlEl.textContent = `${src}₹${pnl >= 0 ? '+' : ''}${pnl.toLocaleString('en-IN')}`;
+                upnlEl.className   = `text-sm font-black ${pnl > 0 ? 'text-green-400' : pnl < 0 ? 'text-red-400' : 'text-gray-400'}`;
+                upnlEl.title       = 'Based on live option LTP';
+            }
         }
     } else {
         if (banner) banner.classList.add('hidden');

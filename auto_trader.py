@@ -1103,6 +1103,29 @@ def _save_trade_log():
 
 # ── Public API ────────────────────────────────────────────────
 
+def refresh_active_option_ltp() -> float | None:
+    """Fetch and cache live option LTP for the active trade.
+
+    Safe to call at any time — even when auto-trader is not running.
+    Used to keep unrealized P&L fresh during recovery / idle states.
+    Returns the fetched LTP or None on failure.
+    """
+    if not state.active_trade:
+        return None
+    if not kite_manager.is_authenticated:
+        return None
+    try:
+        sym = state.active_trade.instrument.replace("NFO:", "")
+        ltp = kite_manager.get_option_ltp(sym)
+        if ltp and ltp > 0:
+            state.last_option_ltp = ltp
+            print(f"📊 LTP refresh {sym}: ₹{ltp:.2f}")
+            return ltp
+    except Exception as e:
+        print(f"⚠️  LTP refresh failed: {e}")
+    return None
+
+
 def get_trader_status() -> dict:
     """Get current auto-trader state for dashboard."""
     active = state.active_trade
