@@ -637,7 +637,7 @@
                       <!-- How it works -->
                       <div class="mt-2 bg-gray-900 border border-gray-700 rounded-lg p-2 space-y-1">
                         <p class="text-[10px] text-gray-400 font-bold">🎯 How the app picks strike &amp; lots at entry:</p>
-                        <p class="text-[10px] text-gray-500">1. <span class="text-white">Strike:</span> ATM = nearest 50-point level to Nifty. App picks <span class="text-[#ffc220]">1-OTM</span> (ATM + 50 for CE, ATM − 50 for PE) — cheaper premium = more lots.</p>
+                        <p class="text-[10px] text-gray-500">1. <span class="text-white">Strike:</span> ATM = nearest 50-point level to Nifty spot. Pick <span class="text-[#ffc220]">ITM3→OTM3</span> above — ITM = deeper in the money (higher delta, costlier), OTM = out of the money (cheaper, more lots).</p>
                         <p class="text-[10px] text-gray-500">2. <span class="text-white">Real premium:</span> Fetches <span class="text-green-400">live LTP</span> of the chosen option from Zerodha at the moment of entry — not a formula guess.</p>
                         <p class="text-[10px] text-gray-500">3. <span class="text-white">Lots:</span> <code class="text-[#ffc220]">floor(₹capital ÷ (LTP × 65))</code> — uses every rupee efficiently.</p>
                         <p class="text-[10px] text-gray-600">Preview uses <strong>Black-Scholes</strong> with live India VIX + days-to-expiry. Actual lots use real Zerodha LTP at entry.</p>

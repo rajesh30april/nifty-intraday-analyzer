@@ -164,7 +164,8 @@ function _renderCapitalEstimate(capital, estPremium, vixPct, dte, offset, source
     const lots       = Math.max(1, Math.floor(capital / (estPremium * LOT_SIZE)));
     const units      = lots * LOT_SIZE;
     const approxCost = lots * estPremium * LOT_SIZE;
-    const offsetLabel= ['ATM', '1-OTM', '2-OTM'][offset] || 'ATM';
+    const _STRIKE_LABELS = {'-3':'ITM3','-2':'ITM2','-1':'ITM1','0':'ATM','1':'OTM1','2':'OTM2','3':'OTM3'};
+    const offsetLabel = _STRIKE_LABELS[String(offset)] || 'ATM';
     const isLive     = source === 'live_kite';
 
     const lotsEl  = document.getElementById('at-capital-qty-est');
@@ -205,7 +206,7 @@ function _renderCapitalEstimate(capital, estPremium, vixPct, dte, offset, source
     const footerTag = isLive
         ? `<span class="text-green-700 text-[9px]">🟢 Live Kite price (ltp API) — exact count</span>`
         : vixPct
-            ? `<span class="text-gray-400 text-[9px]">📊 B-S | VIX ${vixPct}% <span class="text-gray-300">(${vixBadge})</span> | ${dte}d to expiry</span>`
+            ? `<span class="text-gray-400 text-[9px]">📊 B-S | VIX ${vixPct}% <span class="text-gray-300">(${vixBadge})</span> | ${dte != null ? dte+'d' : '?'} to expiry</span>`
             : `<span class="text-gray-400 text-[9px]">📐 loading estimate…</span>`;
 
     if (detailEl) detailEl.innerHTML =
