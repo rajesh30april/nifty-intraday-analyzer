@@ -31,8 +31,28 @@ NIFTY_INSTRUMENT_TOKEN = 256265
 SESSION_FILE = Path(__file__).parent / ".kite_session.json"
 
 
+def _make_timeout_request(session, timeout: int):
+    """Wrap requests.Session.request to always inject a timeout.
+
+    The kite-connect library never sets a timeout, so API calls can hang
+    indefinitely when Kite is slow or the session has expired.
+    This wrapper caps every request at `timeout` seconds.
+    """
+    _original = session.request
+
+    def _request(*args, **kwargs):
+        kwargs.setdefault("timeout", timeout)
+        return _original(*args, **kwargs)
+
+    return _request
+
+
 class KiteManager:
     """Manages Kite Connect authentication and live data streaming."""
+
+    # Timeout (seconds) for all Kite REST API calls.  Prevents hangs when
+    # Kite is slow or the session has expired and the server stalls.
+    _KITE_TIMEOUT = 8
 
     def __init__(self):
         self.kite = KiteConnect(api_key=API_KEY)
@@ -40,9 +60,19 @@ class KiteManager:
         self.kite.reqsession.proxies.update(NO_PROXY_FOR_KITE)
         # Also clear any env-level proxy for this session
         self.kite.reqsession.trust_env = False
+        # Cap ALL Kite REST calls — no more infinite hangs
+        self.kite.reqsession.request = _make_timeout_request(
+            self.kite.reqsession, self._KITE_TIMEOUT
+        )
+
         self.access_token: str | None = None
         self.ticker: KiteTicker | None = None
         self.is_streaming = False
+
+        # Auth cache — profile() is slow; only re-verify every 60 s
+        self._auth_cache: bool | None = None
+        self._auth_cache_ts: float = 0.0
+        self._AUTH_TTL = 60.0   # seconds before re-calling kite.profile()
 
         # Latest tick data (updated by WebSocket)
         self.latest_tick: dict | None = None
@@ -79,15 +109,35 @@ class KiteManager:
 
     @property
     def is_authenticated(self) -> bool:
-        """Check if we have a valid session."""
+        """Check if we have a valid Kite session.
+
+        Caches the result of kite.profile() for _AUTH_TTL seconds so
+        we don't hammer the API (and block the event loop) on every poll.
+        """
         if not self.access_token:
+            self._auth_cache = False
             return False
+
+        now = time.monotonic()
+        if self._auth_cache is not None and (now - self._auth_cache_ts) < self._AUTH_TTL:
+            return self._auth_cache
+
+        # TTL expired — re-verify with a real API call (capped at _KITE_TIMEOUT)
         try:
             self.kite.profile()
+            self._auth_cache    = True
+            self._auth_cache_ts = now
             return True
         except Exception:
-            self.access_token = None
+            self.access_token   = None
+            self._auth_cache    = False
+            self._auth_cache_ts = now
             return False
+
+    def invalidate_auth_cache(self) -> None:
+        """Force re-verification on next is_authenticated check."""
+        self._auth_cache    = None
+        self._auth_cache_ts = 0.0
 
     def generate_session(self, request_token: str) -> dict:
         """Exchange request_token for access_token after OAuth callback."""
@@ -97,6 +147,9 @@ class KiteManager:
         self.access_token = data["access_token"]
         self.kite.set_access_token(self.access_token)
         self._save_session()
+        # New token — mark auth as valid immediately, skip profile() round-trip
+        self._auth_cache    = True
+        self._auth_cache_ts = time.monotonic()
         return data
 
     def get_margins(self) -> dict | None:

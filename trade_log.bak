@@ -5,8 +5,8 @@
   "paper_mode": false,
   "trades": [
     {
-      "id": "T-20260316-130106638832",
-      "timestamp": "2026-03-16T13:01:06.638836",
+      "id": "T-20260316-130910298452",
+      "timestamp": "2026-03-16T13:09:10.298457",
       "direction": "long",
       "instrument": "NIFTY20260317_23250CE",
       "entry_price": 23200.0,
