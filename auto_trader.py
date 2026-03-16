@@ -1032,6 +1032,39 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
 
 _tick_guard_lock = threading.Lock()
 
+
+def _tick_guard_sl_only(tick: dict) -> None:
+    """Minimal SL/time-exit guard used when auto-trader is paused.
+
+    Called when is_running=False but active_trade exists (e.g. synced
+    trade waiting for user to click Start, or mid-session pause).
+    Trails SL are NOT moved here — only hard exits on breach or time.
+    """
+    price = tick.get("last_price")
+    if not price or price <= 0:
+        return
+    acquired = _tick_guard_lock.acquire(blocking=False)
+    if not acquired:
+        return
+    try:
+        if not state.active_trade:
+            return
+        trade = state.active_trade
+        now   = datetime.now()
+        # Time-based exit
+        if now.time() >= EXIT_TIME:
+            _exit_position(f"⚡ Tick exit — time limit ({EXIT_TIME.strftime('%H:%M')})", price)
+            return
+        # Hard SL breach (no trail — just protect)
+        sl = trade.stop_loss
+        if trade.direction == "long"  and price <= sl:
+            _exit_position(f"⚡ Tick SL hit (paused guard) @ ₹{price:.0f}", price)
+        elif trade.direction == "short" and price >= sl:
+            _exit_position(f"⚡ Tick SL hit (paused guard) @ ₹{price:.0f}", price)
+    finally:
+        _tick_guard_lock.release()
+
+
 def tick_guard(tick: dict) -> None:
     """Real-time SL / target / trailing-SL protection on every Kite tick.
 
@@ -1039,19 +1072,36 @@ def tick_guard(tick: dict) -> None:
     Exit decisions run here — every ~1s tick — so we never overshoot SL
     by a whole candle.
 
+    NOTE: SL/target protection runs even when is_running=False, as long
+    as there is an active_trade. This covers the 'synced but not started'
+    state — your position is live in Zerodha so it must be protected.
+    Only the kill_switch hard-stops everything.
+
     This runs in the KiteTicker background thread so we use a lock
     to avoid racing with the 5-min candle loop.
     """
-    if not state.is_running or state.kill_switch:
+    if state.kill_switch:
+        return
+    # Always update live Nifty price (used by status endpoint)
+    price = tick.get("last_price")
+    if price and price > 0:
+        state.last_nifty_price = price
+    # Guard: only protect if there's an open position
+    if not state.active_trade:
+        return
+    # Guard: entry signals need is_running, but SL/exit protection does not
+    # (if trader is stopped mid-trade, still honour SL to protect capital)
+    if not state.is_running:
+        # Only do time-exit and SL-breach — NOT trailing (trail needs is_running)
+        _tick_guard_sl_only(tick)
         return
     if not state.active_trade:
         return   # nothing to protect
 
+    # price was already read and validated above — re-read here for clarity
     price = tick.get("last_price")
     if not price or price <= 0:
         return
-
-    state.last_nifty_price = price   # always update — used by status endpoint
 
     # Non-blocking: if the 5-min loop is already inside _manage_active_trade
     # just skip this tick — next one will catch it.

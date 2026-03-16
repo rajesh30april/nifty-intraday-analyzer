@@ -115,15 +115,35 @@ async def _ltp_refresh_loop():
         await asyncio.sleep(15)
 
 
+async def _maybe_start_ticker():
+    """Auto-start the Kite WebSocket ticker on server startup if we already
+    have a valid saved session — without waiting for the user to re-login.
+
+    Critical: tick_guard (real-time SL/target protection on every ~1s tick)
+    was previously only started inside the OAuth callback, meaning any
+    server restart would silently fall back to 5-min candle-only checks.
+    """
+    await asyncio.sleep(2)   # let server finish binding
+    from auto_trader import tick_guard
+    authenticated = await asyncio.to_thread(lambda: kite_manager.is_authenticated)
+    if authenticated and not kite_manager.is_streaming:
+        print("🔌 [Startup] Saved session found — auto-starting Kite WebSocket ticker")
+        await asyncio.to_thread(kite_manager.start_ticker, tick_guard)
+    elif not authenticated:
+        print("⚠️  [Startup] No valid Kite session — WebSocket not started. Login via UI.")
+
+
 @asynccontextmanager
 async def lifespan(_app):
     """Startup: launch background tasks. Shutdown: cancel them."""
     task_trader = asyncio.create_task(_auto_trader_loop())
     task_ltp    = asyncio.create_task(_ltp_refresh_loop())
+    task_ticker = asyncio.create_task(_maybe_start_ticker())
     yield
     task_trader.cancel()
     task_ltp.cancel()
-    for t in (task_trader, task_ltp):
+    task_ticker.cancel()
+    for t in (task_trader, task_ltp, task_ticker):
         try:
             await t
         except asyncio.CancelledError:
