@@ -113,6 +113,10 @@
                     <span>🤖</span><span>Auto-Trader</span>
                     <span id="sidebar-at-badge" class="badge bg-gray-200 text-gray-500">⏸</span>
                 </div>
+                <div class="sidebar-item" data-page="crude-trader" onclick="switchPage('crude-trader')">
+                    <span>🛢️</span><span>Crude Oil AT</span>
+                    <span id="sidebar-crude-badge" class="badge bg-gray-200 text-gray-500">⏸</span>
+                </div>
                 <div class="sidebar-item" data-page="live-monitor" onclick="switchPage('live-monitor')">
                     <span>📡</span><span>Live Monitor</span>
                     <span id="lm-sidebar-dot" class="ml-auto w-2 h-2 rounded-full bg-gray-300"></span>
@@ -1290,6 +1294,104 @@
 
 
             <!-- ═══════════════════════════════════════════════════════ -->
+            <!-- CRUDE OIL AUTO-TRADER                                   -->
+            <!-- ═══════════════════════════════════════════════════════ -->
+            <div id="page-crude-trader" class="page-section">
+
+              <!-- Toasts -->
+              <div id="crude-toasts" class="fixed top-4 right-4 z-[999] flex flex-col gap-2 pointer-events-none" style="width:320px"></div>
+
+              <!-- Header -->
+              <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <div>
+                  <h2 class="text-lg font-bold">🛢️ Crude Oil Auto-Trader</h2>
+                  <p class="text-xs text-gray-400">MCX Crude Oil options · ORB + Supertrend · 9:00 AM – 11:25 PM</p>
+                </div>
+                <div class="flex gap-2 items-center">
+                  <span id="crude-mode-badge" class="text-xs px-2 py-0.5 rounded font-bold bg-yellow-600">📝 PAPER</span>
+                  <span id="crude-status-dot" class="w-2.5 h-2.5 rounded-full bg-gray-400"></span>
+                </div>
+              </div>
+
+              <!-- Live Price Strip -->
+              <div class="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 mb-3 flex items-center gap-6 text-sm flex-wrap">
+                <div><div class="text-[10px] text-gray-400">MCX CRUDE</div>
+                  <div id="crude-spot" class="text-xl font-black text-[#ffc220]">--</div></div>
+                <div><div class="text-[10px] text-gray-400">OPTION LTP</div>
+                  <div id="crude-option-ltp" class="font-bold">--</div></div>
+                <div><div class="text-[10px] text-gray-400">UNREALISED P&amp;L</div>
+                  <div id="crude-pnl" class="font-bold">--</div></div>
+                <div><div class="text-[10px] text-gray-400">TODAY P&amp;L</div>
+                  <div id="crude-total-pnl" class="font-bold">--</div></div>
+                <div class="ml-auto text-right">
+                  <div class="text-[10px] text-gray-400">LAST SIGNAL</div>
+                  <div id="crude-signal" class="text-[11px] text-gray-300 max-w-[240px] truncate">--</div>
+          </div>
+              </div>
+
+              <!-- Controls -->
+              <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 mb-3">
+                <div class="flex gap-2 flex-wrap mb-3">
+                  <button onclick="crudeTrade('start')" id="crude-start-btn"
+                    class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-bold text-sm transition">▶ Start</button>
+                  <button onclick="crudeTrade('stop')" id="crude-stop-btn"
+                    class="bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded-lg font-bold text-sm transition">⏹ Stop</button>
+                  <button onclick="crudeTrade('kill')" id="crude-kill-btn"
+                    class="bg-red-700 hover:bg-red-600 px-4 py-2 rounded-lg font-bold text-sm transition">🚨 Kill &amp; Exit</button>
+                </div>
+
+                <!-- Settings row -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                  <label class="flex flex-col gap-1">
+                    <span class="text-gray-400">SL Points (₹/bbl)</span>
+                    <input id="crude-sl" type="number" value="50" min="10" max="300" step="5"
+                      class="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white" />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-gray-400">Trail Points</span>
+                    <input id="crude-trail" type="number" value="25" min="5" max="150" step="5"
+                      class="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white" />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-gray-400">R:R Ratio</span>
+                    <input id="crude-rr" type="number" value="2" min="1" max="5" step="0.5"
+                      class="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white" />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-gray-400">Capital (₹)</span>
+                    <input id="crude-capital" type="number" value="50000" min="10000" step="5000"
+                      class="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white" />
+                  </label>
+                </div>
+                <button onclick="saveCrudeConfig()" class="mt-3 text-xs text-blue-400 hover:text-blue-300 underline">💾 Save settings</button>
+              </div>
+
+              <!-- Active Trade Card -->
+              <div id="crude-trade-card" class="hidden bg-gray-900 border border-gray-700 rounded-xl p-4 mb-3">
+                <h3 class="text-sm font-bold mb-3">🛢️ Open Position</h3>
+                <div class="grid grid-cols-3 md:grid-cols-6 gap-3 text-center text-xs">
+                  <div><div class="text-gray-400">Direction</div><div id="ct-dir" class="font-bold">--</div></div>
+                  <div><div class="text-gray-400">Instrument</div><div id="ct-instr" class="font-bold truncate max-w-[100px]" title="">--</div></div>
+                  <div><div class="text-gray-400">Entry (Crude)</div><div id="ct-entry" class="font-bold">--</div></div>
+                  <div><div class="text-gray-400">Stop Loss</div><div id="ct-sl" class="font-bold text-red-400">--</div></div>
+                  <div><div class="text-gray-400">Target</div><div id="ct-tgt" class="font-bold text-green-400">--</div></div>
+                  <div><div class="text-gray-400">Qty (units)</div><div id="ct-qty" class="font-bold">--</div></div>
+                </div>
+              </div>
+
+              <!-- Trade History -->
+              <div class="bg-gray-900 border border-gray-700 rounded-xl p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class="text-sm font-bold">📋 Today's Crude Trades</h3>
+                  <button onclick="loadCrudeHistory()" class="text-[10px] text-blue-400 hover:text-blue-300 underline">refresh</button>
+                </div>
+                <div id="crude-history" class="text-xs text-gray-500">No trades yet today.</div>
+              </div>
+
+            </div><!-- /page-crude-trader -->
+
+
+            <!-- ═══════════════════════════════════════════════════════ -->
             <!-- PAPER TRADER                                            -->
             <!-- ═══════════════════════════════════════════════════════ -->
             <div id="page-paper-trader" class="page-section">
@@ -1375,6 +1477,7 @@
     <script src="/static/auto-trader.js?v=13"></script>
     <script src="/static/at-settings.js?v=1"></script>
     <script src="/static/at-health.js?v=1"></script>
+    <script src="/static/crude-trader.js?v=1"></script>
     <script>/* bt-qty v1 — quantity field wired to backtest + live monitor */</script>
     <script src="/static/live-monitor.js?v=2"></script>
     <script src="/static/paper-trader.js?v=1"></script>

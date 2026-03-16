@@ -102,6 +102,52 @@ async def _auto_trader_loop():
             print(f"⚠️ Auto-trader loop error: {e}")
 
 
+async def _crude_trader_loop():
+    """Background loop for MCX Crude Oil — synced to 5-min candle closes.
+
+    Works identically to _auto_trader_loop but fetches MCX Crude OHLCV
+    and calls evaluate_and_act_crude().  Crude trades until 11:25 PM.
+    """
+    from crude_trader import evaluate_and_act_crude, state as crude_state
+    from crude_data import fetch_crude_intraday_data, get_crude_spot
+    print("🛢️  Crude auto-trader loop started")
+    while True:
+        wait = _seconds_to_next_candle_close(5)
+        await asyncio.sleep(wait)
+        if not crude_state.is_running or crude_state.kill_switch:
+            continue
+        try:
+            df = await asyncio.to_thread(fetch_crude_intraday_data, '5minute', 5)
+            price = await asyncio.to_thread(get_crude_spot)
+            if df is not None and not df.empty and price:
+                candle_ts = df.index[-1].strftime("%H:%M")
+                await asyncio.to_thread(evaluate_and_act_crude, df, price)
+                print(f"🛢️  [CANDLE {candle_ts}] ₹{price:.0f} | trades={crude_state.orders_placed}")
+        except Exception as e:
+            print(f"⚠️ Crude trader loop error: {e}")
+
+
+async def _crude_ltp_refresh_loop():
+    """Refresh Crude Oil option LTP every 15s for live P&L display."""
+    from crude_trader import state as crude_state
+    from crude_data import get_crude_option_ltp, get_crude_spot
+    await asyncio.sleep(4)
+    while True:
+        try:
+            if crude_state.active_trade:
+                ltp = await asyncio.to_thread(
+                    get_crude_option_ltp, crude_state.active_trade.instrument
+                )
+                if isinstance(ltp, (int, float)) and ltp > 0:
+                    crude_state.last_option_ltp = ltp
+            spot = await asyncio.to_thread(get_crude_spot)
+            if spot:
+                crude_state.last_crude_price = spot
+        except Exception as e:
+            print(f"⚠️ Crude LTP refresh error: {e}")
+        await asyncio.sleep(15)
+
+
 async def _ltp_refresh_loop():
     """Refresh active option LTP every 15s — keeps P&L live even when
     auto-trader is stopped/in recovery. Runs in threadpool to avoid
@@ -136,14 +182,15 @@ async def _maybe_start_ticker():
 @asynccontextmanager
 async def lifespan(_app):
     """Startup: launch background tasks. Shutdown: cancel them."""
-    task_trader = asyncio.create_task(_auto_trader_loop())
-    task_ltp    = asyncio.create_task(_ltp_refresh_loop())
-    task_ticker = asyncio.create_task(_maybe_start_ticker())
+    task_trader       = asyncio.create_task(_auto_trader_loop())
+    task_ltp          = asyncio.create_task(_ltp_refresh_loop())
+    task_ticker       = asyncio.create_task(_maybe_start_ticker())
+    task_crude        = asyncio.create_task(_crude_trader_loop())
+    task_crude_ltp    = asyncio.create_task(_crude_ltp_refresh_loop())
     yield
-    task_trader.cancel()
-    task_ltp.cancel()
-    task_ticker.cancel()
-    for t in (task_trader, task_ltp, task_ticker):
+    for t in (task_trader, task_ltp, task_ticker, task_crude, task_crude_ltp):
+        t.cancel()
+    for t in (task_trader, task_ltp, task_ticker, task_crude, task_crude_ltp):
         try:
             await t
         except asyncio.CancelledError:
@@ -1958,6 +2005,64 @@ async def auto_trader_preview_symbol():
         "sl_points":    at_state.sl_points,
         "rr_ratio":     at_state.rr_ratio,
     }
+
+
+# ── Crude Oil Auto-Trader endpoints ─────────────────────────────
+
+@app.get("/api/crude/status")
+async def crude_status():
+    from crude_trader import get_crude_status
+    return await asyncio.to_thread(get_crude_status)
+
+
+@app.post("/api/crude/start")
+async def crude_start():
+    from crude_trader import start_crude_trader
+    return await asyncio.to_thread(start_crude_trader)
+
+
+@app.post("/api/crude/stop")
+async def crude_stop():
+    from crude_trader import stop_crude_trader
+    return await asyncio.to_thread(stop_crude_trader)
+
+
+@app.post("/api/crude/kill")
+async def crude_kill():
+    from crude_trader import kill_crude_trader
+    return await asyncio.to_thread(kill_crude_trader)
+
+
+@app.post("/api/crude/config")
+async def crude_config(
+    sl_points:    float | None = None,
+    trail_points: float | None = None,
+    rr_ratio:     float | None = None,
+    capital:      float | None = None,
+    strike_offset: int | None  = None,
+):
+    from crude_trader import state as cs
+    if sl_points    is not None: cs.sl_points    = sl_points
+    if trail_points is not None: cs.trail_points = trail_points
+    if rr_ratio     is not None: cs.rr_ratio     = rr_ratio
+    if capital      is not None: cs.capital      = capital
+    if strike_offset is not None: cs.strike_offset = strike_offset
+    return {'success': True, 'sl_points': cs.sl_points, 'trail_points': cs.trail_points,
+            'rr_ratio': cs.rr_ratio, 'capital': cs.capital}
+
+
+@app.get("/api/crude/history")
+async def crude_history():
+    """Return today's completed Crude trades from log file."""
+    from crude_trader import CRUDE_LOG_FILE
+    import json
+    try:
+        if CRUDE_LOG_FILE.exists():
+            data = json.loads(CRUDE_LOG_FILE.read_text())
+            return {'trades': data, 'count': len(data)}
+    except Exception:
+        pass
+    return {'trades': [], 'count': 0}
 
 
 @app.get("/api/health")
