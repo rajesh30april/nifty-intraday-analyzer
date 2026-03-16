@@ -537,18 +537,21 @@
                     <div>
                       <label class="text-[10px] text-gray-400 block mb-1" for="at-sl-pts">SL (Nifty pts)</label>
                       <input id="at-sl-pts" type="number" value="30" min="5" max="150" step="5"
-                        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white">
+                        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
+                        onfocus="_atMarkDirty()">
                     </div>
 
                     <div>
                       <label class="text-[10px] text-gray-400 block mb-1" for="at-trail-sl">Trail SL (pts)</label>
                       <input id="at-trail-sl" type="number" value="15" min="5" max="60" step="5"
-                        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white">
+                        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
+                        onfocus="_atMarkDirty()">
                     </div>
 
                     <div>
                       <label class="text-[10px] text-gray-400 block mb-1" for="at-rr">R:R Ratio</label>
-                      <select id="at-rr" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white">
+                      <select id="at-rr" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
+                        onfocus="_atMarkDirty()">
                         <option value="1.5">1 : 1.5</option>
                         <option value="2" selected>1 : 2</option>
                         <option value="2.5">1 : 2.5</option>
@@ -563,7 +566,7 @@
                       </label>
                       <input id="at-max-trades" type="range" min="1" max="15" step="1" value="3"
                         class="w-full accent-[#0053e2]"
-                        oninput="_updateMaxTradesBadge(this.value)">
+                        oninput="_atMarkDirty(); _updateMaxTradesBadge(this.value)">
                       <div class="flex justify-between text-[9px] text-gray-600 mt-0.5">
                         <span>1</span><span>5</span><span>10</span><span>15</span>
                       </div>
@@ -598,7 +601,7 @@
                           <label class="text-[10px] text-gray-400 block mb-1" for="at-manual-qty">Lots to trade</label>
                           <input id="at-manual-qty" type="number" value="10" min="1" max="100" step="1"
                             class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-sm text-white font-bold"
-                            oninput="_updateLotsHint()">
+                            onfocus="_atMarkDirty()" oninput="_updateLotsHint()">
                         </div>
                         <!-- Live breakdown -->
                         <div class="text-[11px] text-gray-400 pb-2 leading-5">
@@ -620,7 +623,7 @@
                           <label class="text-[10px] text-gray-400 block mb-1" for="at-capital">Your trading capital (₹)</label>
                           <input id="at-capital" type="number" value="96000" min="10000" max="10000000" step="5000"
                             class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-sm text-white font-bold"
-                            oninput="_updateCapitalEstimate()">
+                            onfocus="_atMarkDirty()" oninput="_updateCapitalEstimate()">
                         </div>
                         <!-- Live breakdown -->
                         <div class="text-[11px] text-gray-400 pb-2 leading-5">

@@ -8,6 +8,10 @@
 //   Fixed Lots mode  → trader picks N lots → we send N×65 units
 //   Auto Capital mode → trader picks ₹ budget → app picks lots at entry
 
+// Guard: when user is actively editing inputs, poll must NOT overwrite their values.
+// Set to true on input focus, cleared on Apply click.
+let _atPanelDirty = false;
+
 function toggleAtSettings() {
     const panel = document.getElementById('at-settings-panel');
     const btn   = document.getElementById('at-settings-btn');
@@ -15,12 +19,20 @@ function toggleAtSettings() {
     const open = panel.classList.toggle('hidden');
     if (btn) btn.classList.toggle('bg-[#0053e2]', !open);
     if (btn) btn.classList.toggle('bg-gray-700', open);
-    if (!open) _syncAtSettingsFromServer();
+    if (!open) {
+        _atPanelDirty = false;   // reset dirty when closing
+        _syncAtSettingsFromServer();
+    }
 }
+
+// Call this from onfocus on every settings input to protect edits from poll
+function _atMarkDirty() { _atPanelDirty = true; }
 
 // ── Sync inputs from server state (called on panel open + status poll) ──
 function syncAtSettingsFromStatus(data) {
     if (!data) return;
+    // If user is actively editing any field, don't overwrite their changes
+    if (_atPanelDirty) return;
     const set = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val; };
     set('at-sl-pts',   data.sl_points);
     set('at-trail-sl', data.trailing_sl_points);
@@ -118,7 +130,7 @@ function _updateStrikeExample(offset) {
 function setAtQtyMode(mode) {
     _atQtyMode = mode;
     _applyQtyModeUI(mode, true);
-    applyAtSettings();
+    // No auto-save — user must click Apply Settings explicitly
 }
 
 function _applyQtyModeUI(mode, animate = false) {
@@ -241,7 +253,16 @@ async function _updateCapitalEstimate() {
     const fallbackPremium  = Math.round(niftyPrice * 0.0022);
     let   seedVix = null;
     try { seedVix = parseFloat(localStorage.getItem('_lastVixPct')) || null; } catch (_) {}
-    _renderCapitalEstimate(capital, fallbackPremium, seedVix, null, offset, 'fallback', null, null, null, null, seedVix ? 'cached' : null);
+    // Compute DTE client-side (Nifty 50 weekly expiry = Tuesday = day 2)
+    const _clientDte = (() => {
+        const now = new Date();
+        const dow = now.getDay(); // 0=Sun,1=Mon,2=Tue,...
+        const TUESDAY = 2;
+        let d = (TUESDAY - dow + 7) % 7 || 7; // days until next Tue; 0→7
+        if (d === 7 && dow === TUESDAY && now.getHours() >= 15) d = 7; // post-3PM on Tue
+        return Math.max(d, 1);
+    })();
+    _renderCapitalEstimate(capital, fallbackPremium, seedVix, _clientDte, offset, 'fallback', null, null, null, null, seedVix ? 'cached' : null);
 
     // ── Cache check — MUST include offset, not just spot ─────────────
     // Bug fix: old code keyed only on spot → switching ATM→2-OTM served
@@ -314,8 +335,9 @@ async function applyAtSettings() {
         const resp = await fetch(`/api/auto-trader/configure?${params}`, { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
-            // After successful save, unlock poll sync (server now has the right value)
+            // After successful save: unlock poll sync and clear dirty flag
             _strikeUserPicked = false;
+            _atPanelDirty     = false;
             const strikeLabel = ['ITM3','ITM2','ITM1','ATM','OTM1','OTM2','OTM3'][_atStrikeOffset + 3];
             const qtyDesc = mode === 'capital'
                 ? `₹${capital.toLocaleString('en-IN')} capital`
