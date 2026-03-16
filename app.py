@@ -1960,6 +1960,87 @@ async def auto_trader_preview_symbol():
     }
 
 
+@app.get("/api/health")
+async def health_check():
+    """System health check — every critical subsystem in one glance.
+
+    Designed to give the user confidence before trusting the auto-trader
+    with real money.  All checks are non-blocking (cached auth, in-memory).
+    """
+    import time as _time
+
+    # ── Kite auth (uses TTL cache — no live network call here) ────
+    kite_ok       = kite_manager.is_authenticated
+    session_date  = None
+    try:
+        from kite_integration import SESSION_FILE
+        import json as _json
+        if SESSION_FILE.exists():
+            _sess = _json.loads(SESSION_FILE.read_text())
+            session_date = _sess.get("date")
+    except Exception:
+        pass
+
+    # ── WebSocket / tick stream ───────────────────────────────────
+    ws_streaming  = kite_manager.is_streaming
+    last_tick_ts  = None
+    last_tick_age = None
+    if kite_manager.latest_tick:
+        last_tick_ts  = kite_manager.latest_tick.get("timestamp")
+        try:
+            from datetime import datetime as _dt
+            age = (_dt.now() - _dt.fromisoformat(last_tick_ts)).total_seconds()
+            last_tick_age = round(age, 1)
+        except Exception:
+            pass
+
+    # ── Auto-trader state ─────────────────────────────────────────
+    at              = trader_state
+    has_trade       = at.active_trade is not None
+    tick_guard_live = ws_streaming  # guard is wired iff WebSocket is up
+    ltp_fresh       = at.last_option_ltp > 0 if has_trade else None
+    nifty_fresh     = at.last_nifty_price > 0
+
+    # ── Snapshot integrity ────────────────────────────────────────
+    from pathlib import Path
+    snap_path = Path(".") / ".state_snapshot.json"
+    snap_ok   = snap_path.exists() and snap_path.stat().st_size > 10
+
+    # ── Aggregate: is the system safe to trade? ───────────────────
+    # Must-have for LIVE trading:
+    critical = [
+        ("kite_auth",    kite_ok),
+        ("ws_streaming", ws_streaming),
+        ("nifty_price",  nifty_fresh),
+    ]
+    all_critical_ok = all(v for _, v in critical)
+
+    return {
+        "ok": all_critical_ok,
+        "kite": {
+            "authenticated": kite_ok,
+            "session_date":  session_date,
+            "ws_streaming":  ws_streaming,
+            "last_tick_ts":  last_tick_ts,
+            "last_tick_age_s": last_tick_age,
+        },
+        "trader": {
+            "is_running":     at.is_running,
+            "is_paper_mode":  at.is_paper_mode,
+            "kill_switch":    at.kill_switch,
+            "has_trade":      has_trade,
+            "tick_guard_live": tick_guard_live,
+            "ltp_fresh":      ltp_fresh,
+            "nifty_fresh":    nifty_fresh,
+            "nifty_price":    round(at.last_nifty_price, 2) if nifty_fresh else None,
+        },
+        "snapshot": {
+            "exists": snap_ok,
+            "path":   str(snap_path.resolve()),
+        },
+    }
+
+
 @app.post("/api/auto-trader/start")
 async def auto_trader_start(strategy: str = "smart_router"):
     """Start the auto-trader with a selected strategy."""
