@@ -1580,19 +1580,37 @@ async def auto_trader_preflight():
 @app.get("/api/auto-trader/status")
 async def auto_trader_status():
     """Get current auto-trader state."""
+    from auto_trader import state as at_state
     status = get_trader_status()
-    # Add unrealized P&L if there's an active trade
-    if status["active_trade"] and kite_manager.latest_tick:
-        price = kite_manager.latest_tick["last_price"]
+
+    if status["active_trade"]:
         trade = status["active_trade"]
-        if trade["direction"] == "long":
-            trade["pnl_unrealized"] = round(
-                (price - trade["entry_price"]) * trade["quantity"], 2
-            )
-        else:
-            trade["pnl_unrealized"] = round(
-                (trade["entry_price"] - price) * trade["quantity"], 2
-            )
+        nifty  = at_state.last_nifty_price or (kite_manager.latest_tick or {}).get("last_price", 0)
+        ltp    = at_state.last_option_ltp   # refreshed each candle loop
+        qty    = trade["quantity"]
+        lots   = max(1, qty // 65)
+        ep     = trade.get("entry_premium", 0) or 0
+        is_long = trade["direction"] == "long"
+
+        # Real unrealized P&L: (current option LTP - entry premium) × units
+        if ltp and ltp > 0 and ep > 0:
+            trade["pnl_unrealized"] = round((ltp - ep) * qty, 2)
+        elif nifty and trade["entry_price"]:
+            # Fallback: rough Nifty-delta approximation (0.5 delta × point move)
+            pt_move = (nifty - trade["entry_price"]) * (1 if is_long else -1)
+            trade["pnl_unrealized"] = round(pt_move * 0.5 * qty, 2)
+
+        # Enrich trade dict with display fields
+        trade["lots"]              = lots
+        trade["current_option_ltp"]= round(ltp, 2) if ltp else None
+        trade["nifty_current"]     = round(nifty, 2) if nifty else None
+        trade["dist_to_sl"]        = round(abs(nifty - trade["stop_loss"]), 1) if nifty else None
+        trade["dist_to_target"]    = round(abs(trade["target"] - nifty), 1)    if nifty and trade.get("target") else None
+        trade["trailing_sl"]       = trade["stop_loss"]   # current trailing SL level
+
+    # Always expose live Nifty price at top level
+    status["nifty_current"] = round(at_state.last_nifty_price, 2) if at_state.last_nifty_price else None
+
     return {"success": True, **status}
 
 

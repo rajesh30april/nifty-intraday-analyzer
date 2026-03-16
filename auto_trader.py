@@ -93,6 +93,8 @@ class TraderState:
     last_signal_reason: str = ""
     last_conditions: list[dict] = field(default_factory=list)
     kill_switch: bool = False
+    last_option_ltp: float = 0.0           # live option LTP — refreshed each candle loop
+    last_nifty_price: float = 0.0          # live Nifty price — refreshed each tick
     selected_strategy: str = "smart_router"
     last_block_reason: str | None = None
     # ── Runtime-configurable trade settings (overrideable from UI) ──
@@ -778,9 +780,13 @@ def evaluate_and_act(df, current_price: float):
         with _tick_guard_lock:
             if state.active_trade:   # re-check: tick may have just closed it
                 _manage_active_trade(current_price, source="🕯 candle")
+        # ── Refresh live option LTP for unrealized P&L display ────
+        if state.active_trade:
+            sym = state.active_trade.instrument.replace("NFO:", "")
+            ltp = kite_manager.get_option_ltp(sym)
+            if ltp and ltp > 0:
+                state.last_option_ltp = ltp
         # ── Sync trailing SL to exchange OUTSIDE the lock (API call safe here) ──
-        # tick_guard sets pending_sl_exchange_update=True when SL trails;
-        # we pick it up here every 5 min — no API calls in the tick thread.
         _sync_trailing_sl_to_exchange()
         return
 
@@ -1020,6 +1026,8 @@ def tick_guard(tick: dict) -> None:
     price = tick.get("last_price")
     if not price or price <= 0:
         return
+
+    state.last_nifty_price = price   # always update — used by status endpoint
 
     # Non-blocking: if the 5-min loop is already inside _manage_active_trade
     # just skip this tick — next one will catch it.

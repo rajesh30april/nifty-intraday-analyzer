@@ -701,25 +701,47 @@
                     </div>
                     <span id="at-pos-dir-badge" class="px-3 py-1 rounded-full font-black text-sm">--</span>
                   </div>
-                  <div class="grid grid-cols-4 gap-2 text-center">
+                  <!-- Row 1: Entry / Trail SL / Target / Unrealized P&L -->
+                  <div class="grid grid-cols-4 gap-2 text-center mb-2">
                     <div class="bg-gray-800/60 rounded-lg p-2">
-                      <div class="text-[10px] text-gray-400">Entry Price</div>
+                      <div class="text-[10px] text-gray-400">Entry (Nifty)</div>
                       <div id="at-entry" class="text-sm font-black text-white">--</div>
                     </div>
                     <div class="bg-gray-800/60 rounded-lg p-2">
-                      <div class="text-[10px] text-gray-400 flex items-center gap-1">
-                        Stop Loss
+                      <div class="text-[10px] text-gray-400 flex items-center justify-center gap-1">
+                        Trail SL
                         <span id="at-sl-sync-badge" class="hidden text-[8px] bg-yellow-500 text-black px-1 rounded font-bold">🔄 SYNC</span>
                       </div>
                       <div id="at-sl" class="text-sm font-black text-red-400">--</div>
+                      <div id="at-dist-sl" class="text-[9px] text-gray-500">--</div>
                     </div>
                     <div class="bg-gray-800/60 rounded-lg p-2">
                       <div class="text-[10px] text-gray-400">Target</div>
                       <div id="at-tgt" class="text-sm font-black text-green-400">--</div>
+                      <div id="at-dist-tgt" class="text-[9px] text-gray-500">--</div>
                     </div>
                     <div class="bg-gray-800/60 rounded-lg p-2">
                       <div class="text-[10px] text-gray-400">Unrealized P&L</div>
                       <div id="at-upnl" class="text-sm font-black">--</div>
+                    </div>
+                  </div>
+                  <!-- Row 2: Option LTP / Entry Premium / Quantity / Live Nifty -->
+                  <div class="grid grid-cols-4 gap-2 text-center">
+                    <div class="bg-gray-900/60 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-500">Live Nifty</div>
+                      <div id="at-nifty-live" class="text-xs font-bold text-[#ffc220]">--</div>
+                    </div>
+                    <div class="bg-gray-900/60 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-500">Option LTP</div>
+                      <div id="at-opt-ltp" class="text-xs font-bold text-white">--</div>
+                    </div>
+                    <div class="bg-gray-900/60 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-500">Entry Premium</div>
+                      <div id="at-entry-prem" class="text-xs font-bold text-gray-300">--</div>
+                    </div>
+                    <div class="bg-gray-900/60 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-500">Qty / Lots</div>
+                      <div id="at-qty-lots" class="text-xs font-bold text-white">--</div>
                     </div>
                   </div>
                 </div>

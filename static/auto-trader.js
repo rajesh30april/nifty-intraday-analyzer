@@ -502,25 +502,40 @@ function renderAutoTrader(data) {
         }
 
         setT('at-entry', `₹${t.entry_price}`);
-        setT('at-sl',    `₹${t.stop_loss}`);
+        setT('at-sl',    `₹${t.trailing_sl ?? t.stop_loss}`);
         setT('at-tgt',   `₹${t.target || '--'}`);
+
+        // Distance to SL / Target
+        const distSl  = document.getElementById('at-dist-sl');
+        const distTgt = document.getElementById('at-dist-tgt');
+        if (distSl)  distSl.textContent  = t.dist_to_sl  != null ? `${t.dist_to_sl} pts away`  : '';
+        if (distTgt) distTgt.textContent = t.dist_to_target != null ? `${t.dist_to_target} pts away` : '';
+
+        // Row 2 — live prices & quantity
+        setT('at-nifty-live',  t.nifty_current   ? `₹${t.nifty_current}`  : '--');
+        setT('at-opt-ltp',     t.current_option_ltp ? `₹${t.current_option_ltp}` : '⏳ fetching');
+        setT('at-entry-prem',  t.entry_premium   ? `₹${t.entry_premium}`  : '--');
+        setT('at-qty-lots',    t.lots != null    ? `${t.quantity} / ${t.lots}L` : '--');
 
         // ── Exchange SL-M sync badge ──────────────────────────────
         const slBadge = document.getElementById('at-sl-sync-badge');
         if (slBadge) {
             if (data.exchange_sl_pending) {
                 slBadge.classList.remove('hidden');
-                slBadge.title = 'Trailing SL updated in-app — Zerodha exchange order will sync on next 5-min candle';
+                slBadge.title = 'Trailing SL updated in-app — Zerodha will sync on next 5-min candle';
             } else {
                 slBadge.classList.add('hidden');
             }
         }
 
+        // Unrealized P&L
         const upnlEl = document.getElementById('at-upnl');
         if (upnlEl) {
-            const pnl = t.pnl_unrealized;
-            upnlEl.textContent = `₹${pnl >= 0 ? '+' : ''}${pnl}`;
-            upnlEl.className   = `text-sm font-black ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+            const pnl = t.pnl_unrealized ?? 0;
+            const src = t.current_o ? '' : ' ~';
+            upnlEl.textContent = `${src}₹${pnl >= 0 ? '+' : ''}${pnl.toLocaleString('en-IN')}`;
+            upnlEl.className   = `text-sm font-black ${pnl > 0 ? 'text-green-400' : pnl < 0 ? 'text-red-400' : 'text-gray-400'}`;
+            upnlEl.title       = t.current_option_ltp ? 'Based on live option LTP' : 'Approx based on Nifty move (option LTP loading)';
         }
     } else {
         if (banner) banner.classList.add('hidden');
