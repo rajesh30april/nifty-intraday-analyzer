@@ -30,7 +30,8 @@ function syncAtSettingsFromStatus(data) {
         set('at-manual-qty', Math.max(1, Math.round(data.manual_qty / LOT_SIZE)));
     set('at-capital', data.capital);
     if (data.qty_mode)      _applyQtyModeUI(data.qty_mode, false);
-    if (data.strike_offset !== undefined) {
+    // Only sync strike from server if user hasn't explicitly picked one this session
+    if (data.strike_offset !== undefined && !_strikeUserPicked) {
         _atStrikeOffset = data.strike_offset;
         _applyStrikeUI(data.strike_offset);
     }
@@ -65,8 +66,9 @@ function _updateMaxTradesBadge(val) {
 
 // ── Strike offset picker ────────────────────────────────────────
 // offset: -3=ITM3, -2=ITM2, -1=ITM1, 0=ATM, 1=OTM1, 2=OTM2, 3=OTM3
-let _atStrikeOffset  = 0;
-let _lastKnownSpot   = null;
+let _atStrikeOffset   = 0;
+let _lastKnownSpot    = null;
+let _strikeUserPicked = false;   // true once user explicitly picks a strike — blocks poll override
 
 const STRIKE_META = {
     '-3': { label: 'ITM3', delta: 0.85 },
@@ -79,9 +81,9 @@ const STRIKE_META = {
 };
 
 function setAtStrike(offset) {
-    _atStrikeOffset = offset;
+    _atStrikeOffset   = offset;
+    _strikeUserPicked = true;    // lock — poll must not overwrite this
     _applyStrikeUI(offset);
-    applyAtSettings();
 }
 
 function _applyStrikeUI(offset) {
@@ -283,6 +285,10 @@ async function applyAtSettings() {
     _updateLotsHint();
     _updateCapitalEstimate();
 
+    // Show loading state on button
+    const applyBtn = document.getElementById('at-apply-btn');
+    if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = '⏳ Saving…'; }
+
     const sl      = parseFloat(document.getElementById('at-sl-pts')?.value    || '30');
     const trail   = parseFloat(document.getElementById('at-trail-sl')?.value  || '15');
     const rr      = parseFloat(document.getElementById('at-rr')?.value        || '2');
@@ -307,16 +313,21 @@ async function applyAtSettings() {
         const resp = await fetch(`/api/auto-trader/configure?${params}`, { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
-            const statusEl = document.getElementById('at-settings-status');
-            if (statusEl) { statusEl.classList.remove('hidden'); setTimeout(() => statusEl.classList.add('hidden'), 2000); }
+            // After successful save, unlock poll sync (server now has the right value)
+            _strikeUserPicked = false;
+            const strikeLabel = ['ITM3','ITM2','ITM1','ATM','OTM1','OTM2','OTM3'][_atStrikeOffset + 3];
             const qtyDesc = mode === 'capital'
-                ? `capital ₹${capital.toLocaleString('en-IN')}`
-                : `${lots} lot${lots>1?'s':''} (${manQty} units)`;
-            _atShowToast(`✅ Saved — SL:${sl}pts | Trail:${trail}pts | R:R 1:${rr} | ${qtyDesc}`, 'info');
-            // Auto-show symbol preview so user sees exactly what will be traded
-            loadSymbolPreview();
+                ? `₹${capital.toLocaleString('en-IN')} capital`
+                : `${lots} lot${lots > 1 ? 's' : ''}`;
+            if (applyBtn) { applyBtn.textContent = '✅ Saved!'; }
+            setTimeout(() => { if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = '✅ Apply Settings'; } }, 1500);
+            _atShowToast(`✅ Saved — ${strikeLabel} | SL:${sl}pts | Trail:${trail}pts | R:R 1:${rr} | ${qtyDesc}`, 'info');
+        } else {
+            if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = '✅ Apply Settings'; }
+            _atShowToast('❌ Save failed — ' + (data.error || 'unknown error'), 'error');
         }
     } catch (e) {
+        if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = '✅ Apply Settings'; }
         _atShowToast('❌ Failed to save settings', 'error');
     }
 }

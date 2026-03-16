@@ -537,21 +537,18 @@
                     <div>
                       <label class="text-[10px] text-gray-400 block mb-1" for="at-sl-pts">SL (Nifty pts)</label>
                       <input id="at-sl-pts" type="number" value="30" min="5" max="150" step="5"
-                        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
-                        onchange="applyAtSettings()">
+                        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white">
                     </div>
 
                     <div>
                       <label class="text-[10px] text-gray-400 block mb-1" for="at-trail-sl">Trail SL (pts)</label>
                       <input id="at-trail-sl" type="number" value="15" min="5" max="60" step="5"
-                        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
-                        onchange="applyAtSettings()">
+                        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white">
                     </div>
 
                     <div>
                       <label class="text-[10px] text-gray-400 block mb-1" for="at-rr">R:R Ratio</label>
-                      <select id="at-rr" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white"
-                        onchange="applyAtSettings()">
+                      <select id="at-rr" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-xs text-white">
                         <option value="1.5">1 : 1.5</option>
                         <option value="2" selected>1 : 2</option>
                         <option value="2.5">1 : 2.5</option>
@@ -566,7 +563,7 @@
                       </label>
                       <input id="at-max-trades" type="range" min="1" max="15" step="1" value="3"
                         class="w-full accent-[#0053e2]"
-                        oninput="_updateMaxTradesBadge(this.value)" onchange="applyAtSettings()">
+                        oninput="_updateMaxTradesBadge(this.value)">
                       <div class="flex justify-between text-[9px] text-gray-600 mt-0.5">
                         <span>1</span><span>5</span><span>10</span><span>15</span>
                       </div>
@@ -648,13 +645,9 @@
                     </div>
 
                     <div class="flex gap-2">
-                      <button onclick="applyAtSettings()"
+                      <button id="at-apply-btn" onclick="applyAtSettings()"
                         class="flex-1 bg-[#0053e2] hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold">
                         ✅ Apply Settings
-                      </button>
-                      <button onclick="loadSymbolPreview()"
-                        class="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold">
-                        🔍 Load Symbol
                       </button>
                     </div>
 
