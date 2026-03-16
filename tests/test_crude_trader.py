@@ -142,20 +142,20 @@ class TestCrudeStrategy:
 
 # ── crude_trader state machine tests ─────────────────────────────
 
-def _fresh_crude_state():
-    import importlib, sys
+def _fresh_crude_state(tmp_path=None):
+    """Re-import crude_trader with a clean state and isolated log/snapshot paths."""
+    import importlib, sys, tempfile
     for k in list(sys.modules):
         if 'crude_trader' in k:
             del sys.modules[k]
-    snap = Path('.') / '.crude_snapshot.json'
-    orig = snap.read_text() if snap.exists() else None
-    snap.unlink(missing_ok=True)
-    try:
-        import crude_trader as ct
-        return ct
-    finally:
-        if orig:
-            snap.write_text(orig)
+
+    # Redirect log and snapshot to temp files so tests never touch real logs
+    _tmp = tmp_path or Path(tempfile.mkdtemp())
+    import crude_trader as ct
+    ct.CRUDE_LOG_FILE   = _tmp / 'test_crude_log.json'
+    ct.CRUDE_SNAP_FILE  = _tmp / 'test_crude_snap.json'
+    ct.state            = ct.CrudeTraderState()   # blank slate
+    return ct
 
 
 class TestCrudeTraderState:
