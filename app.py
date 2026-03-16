@@ -1741,13 +1741,17 @@ async def premium_estimate(spot: float = 23500.0, offset: int = 0):
             from datetime import date as _date, timedelta as _td
             import datetime as _dt2
 
-            _today = _date.today()
-            _days  = (1 - _today.weekday()) % 7   # days to nearest Tuesday
-            if _days == 0 and _dt2.datetime.now().hour >= 15:
-                _days = 7
-            expiry_date = _today + _td(days=max(_days, 1))
-
+            # Use Kite last_trade_time for today's date — immune to system clock drift
+            _today      = kite_manager.get_market_date()
             instruments = _get_nfo_instruments()
+
+            # Find nearest expiry from actual instrument data — no weekday assumption
+            nifty_expiries = sorted({
+                i["expiry"] for i in instruments
+                if i["name"] == "NIFTY" and i["expiry"] >= _today
+            })
+            expiry_date = nifty_expiries[0] if nifty_expiries else _today + _td(days=1)
+
             nifty_opts  = [
                 i for i in instruments
                 if i["name"] == "NIFTY" and i["expiry"] == expiry_date

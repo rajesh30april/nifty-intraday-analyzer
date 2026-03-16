@@ -71,18 +71,28 @@ def atm_strike(nifty_price: float) -> int:
 
 
 def next_expiry() -> str:
-    """Return nearest Tuesday weekly expiry as YYYY-MM-DD.
+    """Return nearest Nifty weekly expiry as YYYY-MM-DD.
 
-    NSE moved Nifty 50 weekly expiry from Thursday → Tuesday (Oct 2024).
+    Reads directly from NFO instruments — no hardcoded weekday.
+    Falls back to nearest Tuesday if Kite is unavailable.
     """
+    try:
+        from auto_trader import _get_nfo_instruments
+        from kite_integration import kite_manager
+        today = kite_manager.get_market_date()
+        instruments = _get_nfo_instruments()
+        expiries = sorted({
+            i["expiry"] for i in instruments
+            if i["name"] == "NIFTY" and i["expiry"] >= today
+        })
+        if expiries:
+            return expiries[0].strftime("%Y-%m-%d")
+    except Exception:
+        pass
+    # fallback: nearest Tuesday
     today = date.today()
-    days_ahead = (1 - today.weekday()) % 7   # 1 = Tuesday
-    if days_ahead == 0:
-        now = datetime.now()
-        if now.hour >= 15:          # past 3 PM on Tuesday → roll to next
-            days_ahead = 7
-    expiry = today + timedelta(days=days_ahead)
-    return expiry.strftime("%Y-%m-%d")
+    days_ahead = (1 - today.weekday()) % 7 or 7
+    return (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
 
 
 def estimate_premium(
@@ -144,10 +154,16 @@ def _bs_premium(spot: float, strike: int, option_type: str) -> float:
         vix = 15.0
 
     iv  = vix / 100.0
-    today  = date.today()
-    tue_wd = 1   # Tuesday
-    days_to_exp = (tue_wd - today.weekday()) % 7 or 7
-    T   = max(days_to_exp, 1) / 365.0
+    # Use Kite market date + nearest actual expiry for DTE
+    exp_str = next_expiry()
+    exp_date = date.fromisoformat(exp_str)
+    try:
+        from kite_integration import kite_manager as _km2
+        today = _km2.get_market_date()
+    except Exception:
+        today = date.today()
+    days_to_exp = max((exp_date - today).days, 1)
+    T   = days_to_exp / 365.0
     r   = 0.065    # risk-free rate
     d1  = (math.log(spot / strike) + (r + 0.5 * iv**2) * T) / (iv * math.sqrt(T))
     d2  = d1 - iv * math.sqrt(T)

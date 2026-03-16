@@ -125,6 +125,23 @@ class KiteManager:
             print(f"Quote error: {e}")
             return None
 
+    def get_market_date(self):
+        """Return today's market date from Kite's last_trade_time.
+
+        More reliable than date.today() when the system clock is off.
+        Falls back to date.today() if Kite is unavailable.
+        """
+        from datetime import date as _date
+        try:
+            quote = self.get_live_quote()
+            if quote and "last_trade_time" in quote:
+                ltt = quote["last_trade_time"]   # Kite returns a datetime obj
+                if hasattr(ltt, "date"):
+                    return ltt.date()
+        except Exception:
+            pass
+        return _date.today()   # fallback
+
     def get_option_ltp(self, tradingsymbol: str) -> float | None:
         """Fetch the Last Traded Price of a single NFO option via kite.ltp().
 
