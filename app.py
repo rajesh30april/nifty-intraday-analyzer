@@ -1999,8 +1999,9 @@ async def auto_trader_sync_zerodha():
     """Scan Zerodha positions and import any open NFO trade into app state.
 
     Use this when the app was restarted with an open position already in Zerodha.
+    Runs in a thread so it doesn't block the FastAPI event loop.
     """
-    result = sync_from_zerodha()
+    result = await asyncio.to_thread(sync_from_zerodha)
     return result
 
 

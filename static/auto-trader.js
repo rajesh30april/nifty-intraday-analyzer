@@ -608,8 +608,20 @@ async function syncFromZerodha() {
     const btn = document.getElementById('at-sync-zd-btn');
     const msg = document.getElementById('at-sync-zd-msg');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Scanning Zerodha…'; }
+    if (msg) {
+        msg.textContent  = '⏳ Fetching live Nifty spot + your positions… (may take ~5s)';
+        msg.className    = 'text-[10px] mt-1 text-yellow-400';
+        msg.classList.remove('hidden');
+    }
     try {
-        const resp = await fetch('/api/auto-trader/sync-zerodha', { method: 'POST' });
+        // 30s timeout — Kite API can be slow on first call
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 30000);
+        const resp = await fetch('/api/auto-trader/sync-zerodha', {
+            method: 'POST',
+            signal: controller.signal,
+        });
+        clearTimeout(timer);
         const data = await resp.json();
         if (data.success) {
             const detail = [
@@ -623,7 +635,6 @@ async function syncFromZerodha() {
             if (msg) {
                 msg.textContent  = `✅ ${detail}`;
                 msg.className    = 'text-[10px] mt-1 text-green-400';
-                msg.classList.remove('hidden');
             }
             _atShowToast(`🔗 Linked — ${detail}`, 'info');
             await pollAutoTraderStatus();
@@ -631,11 +642,19 @@ async function syncFromZerodha() {
             if (msg) {
                 msg.textContent  = `❌ ${data.error}`;
                 msg.className    = 'text-[10px] mt-1 text-red-400';
-                msg.classList.remove('hidden');
             }
+            _atShowToast(`❌ Sync failed — ${data.error}`, 'error');
         }
     } catch (e) {
-        if (msg) { msg.textContent = '❌ Network error'; msg.classList.remove('hidden'); }
+        const isTimeout = e.name === 'AbortError';
+        const errText   = isTimeout
+            ? '⏰ Timed out (30s) — Kite API is slow, try again'
+            : `❌ ${e.message || 'Request failed'}`;
+        if (msg) {
+            msg.textContent = errText;
+            msg.className   = 'text-[10px] mt-1 text-red-400';
+        }
+        _atShowToast(errText, 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '🔗 Sync trade from Zerodha'; }
     }
