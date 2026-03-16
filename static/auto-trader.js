@@ -512,9 +512,11 @@ function renderAutoTrader(data) {
         if (distTgt) distTgt.textContent = t.dist_to_target != null ? `${t.dist_to_target} pts away` : '';
 
         // Row 2 — live prices & quantity
-        setT('at-nifty-live',  t.nifty_current   ? `₹${t.nifty_current}`  : '--');
-        setT('at-opt-ltp',     t.current_option_ltp ? `₹${t.current_option_ltp}` : '⏳ fetching');
-        setT('at-entry-prem',  t.entry_premium   ? `₹${t.entry_premium}`  : '--');
+        // nifty_current: from status.nifty_current (top-level, refreshed by _ltp_refresh_loop)
+        const niftyCur = data.nifty_current || t.nifty_current;   // top-level preferred
+        setT('at-nifty-live',  niftyCur ? `₹${niftyCur}` : '⏳ loading…');
+        setT('at-opt-ltp',     t.current_option_ltp ? `₹${t.current_option_ltp}` : '⏳ loading…');
+        setT('at-entry-prem',  t.entry_premium   ? `₹${t.entry_premium}`  : '⏳ loading…');
         setT('at-qty-lots',    t.lots != null    ? `${t.quantity} / ${t.lots}L` : '--');
 
         // ── Exchange SL-M sync badge ──────────────────────────────

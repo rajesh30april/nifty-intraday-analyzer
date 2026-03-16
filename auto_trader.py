@@ -1104,23 +1104,36 @@ def _save_trade_log():
 # ── Public API ────────────────────────────────────────────────
 
 def refresh_active_option_ltp() -> float | None:
-    """Fetch and cache live option LTP for the active trade.
+    """Fetch and cache live option LTP + Nifty spot for the active trade.
 
     Safe to call at any time — even when auto-trader is not running.
-    Used to keep unrealized P&L fresh during recovery / idle states.
-    Returns the fetched LTP or None on failure.
+    Used to keep unrealized P&L and Live Nifty fresh during recovery.
+    Returns the fetched option LTP or None on failure.
     """
     if not state.active_trade:
         return None
     if not kite_manager.is_authenticated:
         return None
     try:
-        sym = state.active_trade.instrument.replace("NFO:", "")
+        # ── Option LTP ──────────────────────────────────────────────
+        # Strip exchange prefix and any paper-trade date encoding
+        raw = state.active_trade.instrument
+        sym = raw.replace("NFO:", "").replace("NSE:", "")
         ltp = kite_manager.get_option_ltp(sym)
         if ltp and ltp > 0:
             state.last_option_ltp = ltp
             print(f"📊 LTP refresh {sym}: ₹{ltp:.2f}")
-            return ltp
+
+        # ── Nifty spot — always refresh, regardless of option result ─
+        try:
+            nifty_resp = kite_manager.kite.ltp(["NSE:NIFTY 50"])
+            spot = float(nifty_resp["NSE:NIFTY 50"]["last_price"])
+            if spot > 0:
+                state.last_nifty_price = spot
+        except Exception:
+            pass
+
+        return ltp if (ltp and ltp > 0) else None
     except Exception as e:
         print(f"⚠️  LTP refresh failed: {e}")
     return None
@@ -1134,15 +1147,17 @@ def get_trader_status() -> dict:
         "is_paper_mode": state.is_paper_mode,
         "kill_switch": state.kill_switch,
         "active_trade": {
-            "id": active.id,
-            "direction": active.direction,
-            "instrument": active.instrument,
-            "entry_price": active.entry_price,
-            "stop_loss": active.stop_loss,
-        "exchange_sl_pending": state.pending_sl_exchange_update,
-            "target": active.target,
-            "quantity": active.quantity,
-            "pnl_unrealized": 0,  # updated by caller with live price
+            "id":              active.id,
+            "direction":       active.direction,
+            "instrument":      active.instrument,
+            "entry_price":     active.entry_price,
+            "entry_premium":   active.entry_premium,   # ← was missing! needed for P&L + display
+            "stop_loss":       active.stop_loss,
+            "exchange_sl_pending": state.pending_sl_exchange_update,
+            "target":          active.target,
+            "quantity":        active.quantity,
+            "paper":           active.paper,
+            "pnl_unrealized":  0,   # enriched by app.py caller with live LTP
         } if active else None,
         "total_pnl": round(state.total_pnl, 2),
         "orders_placed": state.orders_placed,
