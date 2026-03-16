@@ -612,12 +612,20 @@ async function syncFromZerodha() {
         const resp = await fetch('/api/auto-trader/sync-zerodha', { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
+            const detail = [
+                data.instrument,
+                `${data.quantity}u`,
+                `avg ₹${data.avg_price}`,
+                data.nifty_spot ? `Nifty ₹${Math.round(data.nifty_spot)}` : '',
+                data.sl_level   ? `SL ₹${Math.round(data.sl_level)}` : '',
+                data.tgt_level  ? `Tgt ₹${Math.round(data.tgt_level)}` : '',
+            ].filter(Boolean).join(' | ');
             if (msg) {
-                msg.textContent  = `✅ Linked: ${data.instrument} | ${data.quantity}u | avg ₹${data.avg_price}`;
+                msg.textContent  = `✅ ${detail}`;
                 msg.className    = 'text-[10px] mt-1 text-green-400';
                 msg.classList.remove('hidden');
             }
-            _atShowToast('🔗 Zerodha position linked to app!', 'info');
+            _atShowToast(`🔗 Linked — ${detail}`, 'info');
             await pollAutoTraderStatus();
         } else {
             if (msg) {

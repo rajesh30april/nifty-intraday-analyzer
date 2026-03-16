@@ -1228,6 +1228,8 @@ def sync_from_zerodha() -> dict:
         return {"success": False, "error": "Not authenticated with Zerodha"}
     if state.active_trade:
         return {"success": False, "error": "App already has an active trade. Exit it first."}
+
+    # ── Fetch positions ───────────────────────────────────────────
     try:
         positions = kite_manager.kite.positions()
     except Exception as e:
@@ -1242,43 +1244,74 @@ def sync_from_zerodha() -> dict:
     if not nfo_positions:
         return {"success": False, "error": "No open Nifty NFO positions found in Zerodha"}
 
-    pos = nfo_positions[0]   # take first open position
-    sym   = pos["tradingsymbol"]
-    qty   = abs(int(pos["quantity"]))
+    pos = nfo_positions[0]
+    sym       = pos["tradingsymbol"]
+    qty       = abs(int(pos["quantity"]))
     avg_price = float(pos.get("average_price") or pos.get("buy_price") or 0)
+    opt_ltp   = float(pos.get("last_price") or avg_price)   # current option LTP from position
 
-    # Determine direction from option type (CE = we bought call = LONG, PE = LONG on PE = SHORT on Nifty)
+    # CE = bought call = directional LONG on Nifty; PE = bought put = directional SHORT
     direction_val = "long" if sym.endswith("CE") else "short"
 
-    # Spot price for SL/target calc
+    # ── Fetch live Nifty spot from Kite ───────────────────────────
+    # Priority: Kite LTP → last known tick → 0 (show warning)
     nifty_spot = state.last_nifty_price or 0
+    try:
+        ltp_resp  = kite_manager.kite.ltp(["NSE:NIFTY 50"])
+        nifty_spot = float(ltp_resp["NSE:NIFTY 50"]["last_price"])
+        state.last_nifty_price = nifty_spot
+    except Exception:
+        pass   # use whatever we had
+
+    if nifty_spot <= 0:
+        return {
+            "success": False,
+            "error":   "Could not fetch live Nifty price — wait a moment for the first tick then try again.",
+        }
+
+    # ── Build SL and Target as price LEVELS, not point deltas ─────
+    sl_pts  = state.sl_points
+    tgt_pts = sl_pts * state.rr_ratio
+    if direction_val == "short":
+        sl_level  = round(nifty_spot + sl_pts, 2)    # SL above current for SHORT
+        tgt_level = round(nifty_spot - tgt_pts, 2)   # Target below current for SHORT
+    else:
+        sl_level  = round(nifty_spot - sl_pts, 2)    # SL below current for LONG
+        tgt_level = round(nifty_spot + tgt_pts, 2)   # Target above current for LONG
 
     trade = Trade(
-        id           = f"sync-{datetime.now().strftime('%H%M%S')}",
-        timestamp    = datetime.now().isoformat(),
-        direction    = direction_val,
-        instrument   = f"NFO:{sym}",
-        entry_price  = nifty_spot,
-        entry_premium= avg_price,
-        quantity     = qty,
-        stop_loss    = nifty_spot + state.sl_points if direction_val == "short" else nifty_spot - state.sl_points,
-        target       = nifty_spot - state.sl_points * state.rr_ratio if direction_val == "short" else nifty_spot + state.sl_points * state.rr_ratio,
-        status       = OrderStatus.FILLED,
-        paper        = False,
+        id            = f"sync-{datetime.now().strftime('%H%M%S')}",
+        timestamp     = datetime.now().isoformat(),
+        direction     = direction_val,
+        instrument    = f"NFO:{sym}",
+        entry_price   = nifty_spot,         # current Nifty spot (best proxy for "where we are")
+        entry_premium = avg_price,          # what was actually paid for the option
+        quantity      = qty,
+        stop_loss     = sl_level,
+        target        = tgt_level,
+        status        = OrderStatus.FILLED,
+        paper         = False,
     )
     state.active_trade              = trade
+    state.last_option_ltp           = opt_ltp
     state.highest_price_since_entry = nifty_spot
     state.lowest_price_since_entry  = nifty_spot
+    state.entry_nifty_sl            = sl_level
+    state.pending_sl_exchange_update = False
     state.orders_placed            += 1
     _save_state_snapshot()
-    _log("🔗", "Synced from Zerodha", f"{sym} | {qty}u | avg ₹{avg_price:.2f}")
+    _log("🔗", "Synced from Zerodha",
+         f"{sym} | {qty}u | avg ₹{avg_price:.2f} | Nifty ₹{nifty_spot:.0f} | SL ₹{sl_level:.0f} | Tgt ₹{tgt_level:.0f}")
     return {
         "success":    True,
         "instrument": sym,
         "direction":  direction_val,
         "quantity":   qty,
         "avg_price":  avg_price,
-        "note":       "SL/Target estimated from current settings — adjust if needed",
+        "nifty_spot": nifty_spot,
+        "sl_level":   sl_level,
+        "tgt_level":  tgt_level,
+        "note":       "SL/Target set from current Nifty spot + your SL settings — trailing SL active",
     }
 
 
