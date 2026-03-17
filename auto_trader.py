@@ -801,8 +801,8 @@ def evaluate_and_act(df, current_price: float):
             ltp = kite_manager.get_option_ltp(sym)
             if ltp and ltp > 0:
                 state.last_option_ltp = ltp
-        # ── Sync trailing SL to exchange OUTSIDE the lock (API call safe here) ──
-        _sync_trailing_sl_to_exchange()
+        # ── Candle-close SL sync: belt-and-suspenders on top of the 10s worker ──
+        _sync_trailing_sl_to_exchange()   # no-op if worker already cleared the flag
         return
 
     # 3. Guard: no strategy evaluation outside NSE market hours.
@@ -1031,6 +1031,34 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
 # ── Tick-Level Guard (called on every WebSocket tick) ────────────
 
 _tick_guard_lock = threading.Lock()
+
+# ── Exchange SL sync worker ───────────────────────────────────────
+# Trailing SL is updated IN MEMORY on every tick (zero API calls).
+# This thread flushes the pending exchange SL-M modify within 10s of
+# any trail move — far safer than waiting for the 5-min candle loop.
+
+_SL_SYNC_INTERVAL = 10   # seconds between exchange SL-M syncs
+
+
+def _sl_sync_worker() -> None:
+    """Background daemon: pushes trailing SL to Zerodha within ~10 seconds.
+
+    Runs forever as a daemon thread (dies when main process exits).
+    Only fires kite.modify_order() when pending_sl_exchange_update=True
+    so it costs zero API calls when the SL hasn't moved.
+    """
+    import time
+    while True:
+        time.sleep(_SL_SYNC_INTERVAL)
+        try:
+            if state.pending_sl_exchange_update and state.active_trade:
+                _sync_trailing_sl_to_exchange()
+        except Exception as e:
+            print(f"⚠️  SL sync worker error: {e}")
+
+
+_sl_sync_thread = threading.Thread(target=_sl_sync_worker, daemon=True, name="sl-sync")
+_sl_sync_thread.start()
 
 
 def _tick_guard_sl_only(tick: dict) -> None:
