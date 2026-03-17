@@ -1476,6 +1476,11 @@ def sync_from_zerodha() -> dict:
     state.highest_price_since_entry = nifty_spot
     state.lowest_price_since_entry  = nifty_spot
     state.entry_nifty_sl            = sl_level
+    # Compute option premium SL trigger from actual avg price paid
+    # entry_option_trigger = what option should be worth AT the SL level
+    # For a buyer: trigger = avg_price - (sl_pts × delta)
+    # delta=0.5 assumed for ATM. This gives e.g. ₹89 - 15 = ₹74
+    state.entry_option_trigger      = _estimate_option_sl_trigger(sl_pts, avg_price)
     state.pending_sl_exchange_update = False
     state.orders_placed            += 1
     _save_state_snapshot()
