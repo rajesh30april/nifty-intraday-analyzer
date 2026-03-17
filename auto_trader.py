@@ -91,6 +91,7 @@ class TraderState:
     entry_nifty_sl:          float = 0.0   # original Nifty SL at entry
     entry_option_trigger:    float = 0.0   # original option trigger at entry
     pending_sl_exchange_update: bool = False  # tick sets → candle loop clears
+    exit_in_progress: bool = False             # debounce: prevent double-exit on rapid ticks
     last_evaluation: str = ""
     last_signal_reason: str = ""
     last_conditions: list[dict] = field(default_factory=list)
@@ -730,6 +731,10 @@ def _exit_position(reason: str, current_price: float):
     trade = state.active_trade
     if not trade:
         return
+    if state.exit_in_progress:
+        _log("⏳", "EXIT", "already in-flight — skipping duplicate tick trigger")
+        return
+    state.exit_in_progress = True
 
     # ── Cancel exchange SL-M before placing exit order ────────────
     # CRITICAL: if SL-M is still open at exchange and we also place an
@@ -747,20 +752,34 @@ def _exit_position(reason: str, current_price: float):
 
     if not state.is_paper_mode:
         try:
-            # Option buyer strategy: we always BUY at entry (CE or PE).
-            # Exit closes the long option position → always SELL.
+            # Option buyer: always SELL to close the long option position.
             kite_manager.kite.place_order(
                 variety=kite_manager.kite.VARIETY_REGULAR,
                 exchange="NFO",
                 tradingsymbol=sym_clean,
                 transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
-                quantity=trade.quantity,       # ← same qty as entry, always
+                quantity=trade.quantity,
                 product=kite_manager.kite.PRODUCT_MIS,
                 order_type=kite_manager.kite.ORDER_TYPE_MARKET,
                 validity="DAY",
             )
         except Exception as e:
-            print(f"❌ Exit order failed: {e}")
+            # ── EXIT ORDER FAILED — do NOT clear trade from state ──
+            # Zerodha rejected/timed-out the order. The position is still
+            # open. We must keep the trade alive so the tick guard can
+            # retry, and re-arm the exchange SL-M as backstop protection.
+            err_msg = f"❌ Exit order FAILED ({e}) — trade kept active, re-arming SL-M"
+            print(err_msg)
+            _log("❌", "EXIT FAILED", str(e))
+            # Re-arm exchange SL-M so the position still has backstop
+            sl_trigger = _compute_option_trigger_for_nifty_sl(trade.stop_loss)
+            new_sl_id  = _place_sl_order(trade, sl_trigger)
+            if new_sl_id:
+                trade.sl_order_id = new_sl_id
+                _log("🛡", "SL-M re-armed", f"trigger ₹{sl_trigger:.1f} order {new_sl_id}")
+            _save_state_snapshot()
+            state.exit_in_progress = False   # allow retry on next tick
+            return   # ← abort exit — trade stays active
 
     # ── Real P&L: (option exit price − option entry price) × units ─
     # We are always an OPTION BUYER so:
@@ -776,8 +795,9 @@ def _exit_position(reason: str, current_price: float):
     trade.pnl          = round(pnl, 2)
     trade.status       = OrderStatus.EXITED
 
-    state.total_pnl += pnl
-    state.active_trade = None
+    state.total_pnl       += pnl
+    state.active_trade     = None
+    state.exit_in_progress = False   # exit completed — reset debounce
 
     mode  = "📝 PAPER" if trade.paper else "🟢 LIVE"
     emoji = "🟢" if pnl >= 0 else "🔴"
