@@ -954,7 +954,7 @@ def _enter_trade(direction: Direction, price: float):
     state.pending_sl_exchange_update   = False
 
     mode = "📝 PAPER" if trade.paper else "🟢 LIVE"
-    lots = max(1, qty // 65)
+    lots = max(1, qty // LOT_SIZE)
     print(f"🚀 [{mode}] ENTRY {direction.value.upper()} {qty}x {symbol} "
           f"@ ₹{price} | SL: ₹{sl:.0f} (−{sl_pts}pts) | Target: ₹{target:.0f} (R:R 1:{rr})")
     _log("🚀", f"ENTRY {direction.value.upper()}",
@@ -1354,7 +1354,7 @@ def sync_from_zerodha() -> dict:
     nfo_positions = [
         p for p in positions.get("net", [])
         if p.get("exchange") == "NFO"
-        and "NIFTY" in p.get("tradingsymbol", "")
+        and p.get("tradingsymbol", "").startswith("NIFTY")   # NIFTY only — excludes BANKNIFTY, FINNIFTY, MIDCPNIFTY
         and int(p.get("quantity", 0)) != 0
     ]
     if not nfo_positions:
