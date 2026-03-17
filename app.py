@@ -48,7 +48,7 @@ from trend_health import analyze_trend_health
 from auto_trader import (
     get_trader_status, start_auto_trader, stop_auto_trader,
     activate_kill_switch, configure_auto_trader, sync_from_zerodha,
-    set_trade_managed,
+    set_trade_managed, discard_trade_from_app,
     refresh_active_option_ltp,
     state as trader_state, evaluate_and_act,
     _log as _at_log,
@@ -2247,6 +2247,12 @@ async def auto_trader_sync_zerodha():
     """
     result = await asyncio.to_thread(sync_from_zerodha)
     return result
+
+
+@app.post("/api/auto-trader/discard-trade")
+async def discard_trade_api():
+    """Remove active trade from app state only — no order sent to Zerodha."""
+    return await asyncio.to_thread(discard_trade_from_app)
 
 
 @app.post("/api/auto-trader/trade-managed")

@@ -720,12 +720,19 @@
                       <span class="text-green-400 font-black text-sm">POSITION OPEN</span>
                     </div>
                     <!-- App Managed / Monitor Only toggle -->
-                    <button id="at-managed-toggle"
-                      onclick="toggleTradeManaged()"
-                      title="Toggle whether app manages SL/trail/exit for this trade"
-                      class="text-[10px] px-2 py-1 rounded-lg font-bold border transition-all">
-                      🤖 APP MANAGED
-                    </button>
+                    <div class="flex items-center gap-1">
+                      <button id="at-managed-toggle"
+                        onclick="toggleTradeManaged()"
+                        title="Toggle whether app manages SL/trail/exit for this trade"
+                        class="text-[10px] px-2 py-1 rounded-lg font-bold border transition-all">
+                        🤖 APP MANAGED
+                      </button>
+                      <button onclick="discardTrade()"
+                        title="Remove trade from app only — no order sent to Zerodha"
+                        class="text-[10px] px-2 py-1 rounded-lg font-bold border border-gray-600 text-gray-400 hover:border-red-500 hover:text-red-400 transition-all">
+                        🗑 Remove
+                      </button>
+                    </div>
                     <span id="at-pos-dir-badge" class="px-3 py-1 rounded-full font-black text-sm">--</span>
                   </div>
                   <!-- Row 1: Entry Premium / SL Premium / Target Premium / Unrealized P&L -->
@@ -1481,7 +1488,7 @@
     <script src="/static/progress.js?v=3"></script>
     <script src="/static/dashboard.js?v=3"></script>
     <script src="/static/charts.js?v=3"></script>
-    <script src="/static/auto-trader.js?v=15"></script>
+    <script src="/static/auto-trader.js?v=16"></script>
     <script src="/static/at-settings.js?v=1"></script>
     <script src="/static/at-health.js?v=1"></script>
     <script src="/static/crude-trader.js?v=1"></script>

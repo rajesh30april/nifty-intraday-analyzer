@@ -723,6 +723,22 @@ function _refreshManagedToggle(managed) {
     }
 }
 
+async function discardTrade() {
+    if (!confirm('Remove this trade from the app?\n\nNo order will be sent to Zerodha — your position stays open there.')) return;
+    try {
+        const resp = await fetch('/api/auto-trader/discard-trade', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            _atShowToast(`🗑 Trade removed from app — ${data.discarded}`, 'info');
+            await pollAutoTraderStatus();
+        } else {
+            _atShowToast(`❌ ${data.error}`, 'error');
+        }
+    } catch (e) {
+        _atShowToast(`❌ ${e.message}`, 'error');
+    }
+}
+
 async function toggleTradeManaged() {
     const newManaged = !_tradeManaged;
     try {

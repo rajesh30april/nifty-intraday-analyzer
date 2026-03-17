@@ -1587,6 +1587,19 @@ def set_trade_managed(managed: bool) -> dict:
     return {"success": True, "app_managed": managed, "mode": mode}
 
 
+def discard_trade_from_app() -> dict:
+    """Remove active trade from app state only — zero Zerodha API calls."""
+    trade = state.active_trade
+    if not trade:
+        return {"success": False, "error": "No active trade in app state"}
+    instr = trade.instrument
+    state.active_trade     = None
+    state.exit_in_progress = False
+    _log("🗑", "Trade removed", f"{instr} cleared from app — no order sent to Zerodha")
+    _save_state_snapshot()
+    return {"success": True, "discarded": instr}
+
+
 def activate_kill_switch():
     """Emergency stop — exit all positions, block new trades."""
     state.kill_switch = True
