@@ -1411,24 +1411,7 @@ def start_auto_trader(strategy_id: str | None = None):
     print(f"   SL: {state.sl_points}pts | Trail: {state.trailing_sl_points}pts | R:R 1:{state.rr_ratio}")
     print(f"   Auto-exit: {EXIT_TIME.strftime('%H:%M')} IST\n")
 
-    auto_synced = None
-    if not state.is_paper_mode and not state.active_trade:
-        # Live mode with no trade in state — auto-check Zerodha for open position.
-        # Handles the common case: crash / false exit wiped state, user clicks START.
-        print("   🔍 No active trade in state — auto-checking Zerodha for open position…")
-        try:
-            result = sync_from_zerodha()
-            if result.get("success"):
-                auto_synced = result
-                print(f"   ✅ Auto-synced: {result.get('instrument')} "
-                      f"{result.get('quantity')}u @ avg ₹{result.get('avg_price')}")
-            else:
-                print(f"   ℹ️  No open Zerodha position: {result.get('error')}")
-        except Exception as e:
-            print(f"   ⚠️  Auto-sync failed: {e} — use manual Sync if needed")
-
-    return {"status": "started", "mode": mode, "strategy": strat_name,
-            "auto_synced": auto_synced}
+    return {"status": "started", "mode": mode, "strategy": strat_name}
 
 
 def stop_auto_trader():
