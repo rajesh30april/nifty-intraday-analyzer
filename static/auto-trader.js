@@ -511,43 +511,47 @@ function renderAutoTrader(data) {
             banner.style.background  = isLong ? 'rgba(21,128,61,.15)' : 'rgba(153,27,27,.15)';
         }
 
-        setT('at-entry', `₹${t.entry_price}`);
+        // ── All prices in OPTION PREMIUM terms ───────────────────
+        const ltp    = t.current_option_ltp;
+        const slPrem = t.option_sl_premium;
+        const tgtPrem = t.option_target_premium;
 
-        // SL — show option premium trigger as primary, Nifty spot as subtitle
+        // Entry — show entry premium paid
+        setT('at-entry', t.entry_premium ? `₹${t.entry_premium.toFixed(2)}` : '--');
+
+        // SL — option premium SL level, Nifty spot as tooltip
         const slEl = document.getElementById('at-sl');
         if (slEl) {
-            if (t.option_sl_trigger) {
-                slEl.textContent = `₹${t.option_sl_trigger.toFixed(1)}`;
-                slEl.title = `Nifty spot SL: ₹${t.trailing_sl ?? t.stop_loss}`;
-            } else {
-                // Synced trade — no option trigger computed yet, fall back to Nifty
-                slEl.textContent = `₹${t.trailing_sl ?? t.stop_loss}`;
-                slEl.title = 'Nifty spot SL (option trigger not yet computed)';
-            }
+            slEl.textContent = slPrem ? `₹${slPrem.toFixed(1)}` : '--';
+            slEl.title       = `Nifty spot SL: ₹${t.stop_loss}`;
         }
 
-        setT('at-tgt',   `₹${t.target || '--'}`);
+        // Target — option premium target level, Nifty spot as tooltip
+        const tgtEl = document.getElementById('at-tgt');
+        if (tgtEl) {
+            tgtEl.textContent = tgtPrem ? `₹${tgtPrem.toFixed(1)}` : '--';
+            tgtEl.title       = `Nifty spot target: ₹${t.target}`;
+        }
 
-        // Distance to SL — show in premium pts if available, else Nifty pts
+        // Distance — how far option LTP is from SL / target in premium terms
         const distSl  = document.getElementById('at-dist-sl');
         const distTgt = document.getElementById('at-dist-tgt');
-        if (distSl) {
-            if (t.option_sl_trigger && t.current_option_ltp) {
-                const premDist = (t.current_option_ltp - t.option_sl_trigger).toFixed(1);
-                distSl.textContent = `₹${premDist} prem away`;
-            } else {
-                distSl.textContent = t.dist_to_sl != null ? `${t.dist_to_sl} pts away` : '';
-            }
+        if (distSl && ltp && slPrem) {
+            const d = (ltp - slPrem).toFixed(1);
+            distSl.textContent = `₹${d} away`;
+            distSl.className   = parseFloat(d) < 5 ? 'text-[9px] text-red-400 font-bold' : 'text-[9px] text-gray-500';
         }
-        if (distTgt) distTgt.textContent = t.dist_to_target != null ? `${t.dist_to_target} pts away` : '';
+        if (distTgt && ltp && tgtPrem) {
+            const d = (tgtPrem - ltp).toFixed(1);
+            distTgt.textContent = `₹${d} away`;
+        }
 
         // Row 2 — live prices & quantity
-        // nifty_current: from status.nifty_current (top-level, refreshed by _ltp_refresh_loop)
-        const niftyCur = data.nifty_current || t.nifty_current;   // top-level preferred
+        const niftyCur = data.nifty_current || t.nifty_current;
         setT('at-nifty-live',  niftyCur ? `₹${niftyCur}` : '⏳ loading…');
-        setT('at-opt-ltp',     t.current_option_ltp ? `₹${t.current_option_ltp}` : '⏳ loading…');
-        setT('at-entry-prem',  t.entry_premium   ? `₹${t.entry_premium}`  : '⏳ loading…');
-        setT('at-qty-lots',    t.lots != null    ? `${t.quantity} / ${t.lots}L` : '--');
+        setT('at-opt-ltp',     ltp ? `₹${ltp}` : '⏳ loading…');
+        setT('at-entry-prem',  t.entry_premium ? `₹${t.entry_premium.toFixed(2)}` : '⏳ loading…');
+        setT('at-qty-lots',    t.lots != null  ? `${t.quantity} / ${t.lots}L` : '--');
 
         // ── Exchange SL-M sync badge ──────────────────────────────
         const slBadge = document.getElementById('at-sl-sync-badge');

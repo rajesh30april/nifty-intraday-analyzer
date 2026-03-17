@@ -660,6 +660,29 @@ def _compute_option_trigger_for_nifty_sl(nifty_sl: float) -> float:
     return max(round(new_trigger, 1), 1.0)
 
 
+ASSUMED_DELTA = 0.5   # ATM delta assumption for premium ↔ Nifty conversion
+
+
+def _nifty_to_option_premium(nifty_level: float, trade: "Trade") -> float:
+    """Convert any Nifty spot level → estimated option premium at that level.
+
+    Unified formula (works for SL, target, trailing SL, entry):
+        direction_sign = +1 for LONG (CE), -1 for SHORT (PE)
+        option_prem = entry_premium + (nifty_level - entry_price)
+                      × direction_sign × delta
+
+    Examples:
+        SHORT entry=23414 prem=89.29  SL=23444 →  89.29 + (23444-23414) × -1 × 0.5 = 74.3
+        SHORT entry=23414 prem=89.29  Tgt=23324 → 89.29 + (23324-23414) × -1 × 0.5 = 134.3
+        LONG  entry=23000 prem=150    SL=22970  →  150  + (22970-23000) × +1 × 0.5 = 135.0
+        LONG  entry=23000 prem=150    Tgt=23060 →  150  + (23060-23000) × +1 × 0.5 = 180.0
+    """
+    sign = 1.0 if trade.direction == "long" else -1.0
+    delta_nifty = (nifty_level - trade.entry_price) * sign
+    result = trade.entry_premium + delta_nifty * ASSUMED_DELTA
+    return max(round(result, 1), 0.1)
+
+
 def _sync_trailing_sl_to_exchange() -> None:
     """Modify the standing SL-M order at Zerodha to the current trailed level.
 
@@ -1031,15 +1054,15 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
         return
 
     # ── Secondary guard: option premium SL ────────────────────────
-    # If the option LTP itself drops below the calculated trigger,
+    # If the option LTP itself drops below the SL premium level,
     # exit immediately — don't wait for Nifty spot to cross SL level.
     # This catches: theta crush, vega collapse, illiquid gap fills.
     opt_ltp = state.last_option_ltp
-    if opt_ltp and opt_ltp > 0 and state.entry_option_trigger > 0:
-        current_opt_trigger = _compute_option_trigger_for_nifty_sl(trade.stop_loss)
-        if opt_ltp <= current_opt_trigger:
+    if opt_ltp and opt_ltp > 0 and trade.entry_premium > 0:
+        prem_sl = _nifty_to_option_premium(trade.stop_loss, trade)
+        if opt_ltp <= prem_sl:
             _exit_position(
-                f"{source} — Premium SL ₹{current_opt_trigger:.1f} hit (LTP ₹{opt_ltp:.1f})",
+                f"{source} — Premium SL ₹{prem_sl:.1f} hit (LTP ₹{opt_ltp:.1f})",
                 current_price,
             )
             return
@@ -1254,13 +1277,17 @@ def get_trader_status() -> dict:
             "id":              active.id,
             "direction":       active.direction,
             "instrument":      active.instrument,
+            # ── Nifty spot levels (internal math only) ───────────
             "entry_price":     active.entry_price,
-            "entry_premium":   active.entry_premium,   # ← was missing! needed for P&L + display
             "stop_loss":       active.stop_loss,
-            "option_sl_trigger": round(_compute_option_trigger_for_nifty_sl(active.stop_loss), 2)
-                                  if state.entry_option_trigger > 0 else None,
-            "exchange_sl_pending": state.pending_sl_exchange_update,
             "target":          active.target,
+            # ── Option premium levels (what trader sees) ─────────
+            "entry_premium":         active.entry_premium,
+            "option_sl_premium":     _nifty_to_option_premium(active.stop_loss, active),
+            "option_target_premium": _nifty_to_option_premium(active.target, active)
+                                     if active.target else None,
+            # ─────────────────────────────────────────────────────
+            "exchange_sl_pending": state.pending_sl_exchange_update,
             "quantity":        active.quantity,
             "paper":           active.paper,
             "app_managed":     getattr(active, "app_managed", True),
