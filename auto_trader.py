@@ -1360,14 +1360,48 @@ def sync_from_zerodha() -> dict:
     if not nfo_positions:
         return {"success": False, "error": "No open Nifty NFO positions found in Zerodha"}
 
-    pos = nfo_positions[0]
-    sym       = pos["tradingsymbol"]
-    qty       = abs(int(pos["quantity"]))
-    avg_price = float(pos.get("average_price") or pos.get("buy_price") or 0)
-    opt_ltp   = float(pos.get("last_price") or avg_price)   # current option LTP from position
+    # ── Consolidate all open Nifty NFO positions ──────────────────
+    # Group by direction: CE positions = LONG, PE positions = SHORT.
+    # If user added to a position (same or different strikes same direction),
+    # sum the quantities and compute weighted-average premium.
+    ce_positions = [p for p in nfo_positions if p["tradingsymbol"].endswith("CE")]
+    pe_positions = [p for p in nfo_positions if p["tradingsymbol"].endswith("PE")]
 
-    # CE = bought call = directional LONG on Nifty; PE = bought put = directional SHORT
-    direction_val = "long" if sym.endswith("CE") else "short"
+    # Pick dominant direction (more total qty wins; CE wins tie)
+    def _total_qty(lst): return sum(abs(int(p["quantity"])) for p in lst)
+    ce_qty = _total_qty(ce_positions)
+    pe_qty = _total_qty(pe_positions)
+
+    if ce_qty == 0 and pe_qty == 0:
+        return {"success": False, "error": "No open Nifty NFO positions found in Zerodha"}
+
+    if ce_qty > 0 and pe_qty > 0:
+        # Both sides open — warn and pick larger
+        _log("⚠️", "Sync", f"Both CE ({ce_qty}u) and PE ({pe_qty}u) open — picking larger side")
+
+    chosen_positions = ce_positions if ce_qty >= pe_qty else pe_positions
+    direction_val    = "long"  if ce_qty >= pe_qty else "short"
+
+    # Weighted-average premium across all chosen positions
+    total_qty = _total_qty(chosen_positions)
+    weighted_premium = (
+        sum(
+            abs(int(p["quantity"])) * float(p.get("average_price") or p.get("buy_price") or 0)
+            for p in chosen_positions
+        ) / total_qty
+        if total_qty > 0 else 0.0
+    )
+
+    # Use the largest-qty position as the primary instrument
+    pos       = max(chosen_positions, key=lambda p: abs(int(p["quantity"])))
+    sym       = pos["tradingsymbol"]
+    qty       = total_qty   # ← TOTAL qty across all added positions
+    avg_price = round(weighted_premium, 2)   # ← weighted avg premium
+    opt_ltp   = float(pos.get("last_price") or avg_price)
+
+    _log("🔗", "Sync positions found",
+         f"{len(chosen_positions)} position(s) | total qty={qty} | wtd avg prem=₹{avg_price:.2f}"
+         + (f" | symbols: {[p['tradingsymbol'] for p in chosen_positions]}" if len(chosen_positions) > 1 else ""))
 
     # ── Fetch live Nifty spot from Kite ───────────────────────────
     # Priority: Kite LTP → last known tick → 0 (show warning)
@@ -1416,18 +1450,24 @@ def sync_from_zerodha() -> dict:
     state.pending_sl_exchange_update = False
     state.orders_placed            += 1
     _save_state_snapshot()
+    all_syms = [p["tradingsymbol"] for p in chosen_positions]
     _log("🔗", "Synced from Zerodha",
-         f"{sym} | {qty}u | avg ₹{avg_price:.2f} | Nifty ₹{nifty_spot:.0f} | SL ₹{sl_level:.0f} | Tgt ₹{tgt_level:.0f}")
+         f"{all_syms} | {qty}u | avg ₹{avg_price:.2f} | Nifty ₹{nifty_spot:.0f} | SL ₹{sl_level:.0f} | Tgt ₹{tgt_level:.0f}")
     return {
-        "success":    True,
-        "instrument": sym,
-        "direction":  direction_val,
-        "quantity":   qty,
-        "avg_price":  avg_price,
-        "nifty_spot": nifty_spot,
-        "sl_level":   sl_level,
-        "tgt_level":  tgt_level,
-        "note":       "SL/Target set from current Nifty spot + your SL settings — trailing SL active",
+        "success":          True,
+        "instrument":       sym,
+        "all_instruments":  all_syms,
+        "positions_merged": len(chosen_positions),
+        "direction":        direction_val,
+        "quantity":         qty,
+        "avg_price":        avg_price,
+        "nifty_spot":       nifty_spot,
+        "sl_level":         sl_level,
+        "tgt_level":        tgt_level,
+        "note":             (
+            f"Merged {len(chosen_positions)} position(s) — "
+            "SL/Target set from current Nifty spot + your SL settings — trailing SL active"
+        ),
     }
 
 
