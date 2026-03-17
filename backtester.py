@@ -124,6 +124,7 @@ def run_backtest(
     data_source: str = "yahoo",
     quantity: int = QUANTITY,
     on_progress: Callable[[dict], None] | None = None,
+    _cached_df=None,   # pre-fetched DataFrame — skips network call
 ) -> BacktestResult:
     """Run backtest on historical data.
 
@@ -143,14 +144,33 @@ def run_backtest(
         if on_progress:
             on_progress(payload)
 
-    _emit({"phase": "fetching", "pct": 0, "msg": f"Fetching {period} of {interval} data…"})
-    print(f"\n🔬 Fetching {period} of {interval} data from {data_source}...")
-    df, source_label = _fetch_data(data_source, interval, period)
+    # '1d' = yesterday only — fetch 5d then filter to last completed trading day
+    fetch_period = "5d" if period == "1d" else period
+
+    _emit({"phase": "fetching", "pct": 0, "msg": f"Fetching {'yesterday' if period == '1d' else period} of {interval} data…"})
+    print(f"\n🔬 Fetching {fetch_period} of {interval} data from {data_source}...")
+    if _cached_df is not None and not _cached_df.empty:
+        df, source_label = _cached_df, f"{data_source}(cached)"
+    else:
+        df, source_label = _fetch_data(data_source, interval, fetch_period)
 
     if df is None or df.empty:
         raise ValueError("No data fetched for backtesting")
 
-    print(f"✅ Got {len(df)} candles from {df.index[0]} to {df.index[-1]}")
+    # Filter to yesterday only
+    if period == "1d":
+        from datetime import date, timedelta
+        today      = date.today()
+        yesterday  = today - timedelta(days=1)
+        # Walk back to last weekday (skip weekends)
+        while yesterday.weekday() >= 5:
+            yesterday -= timedelta(days=1)
+        df = df[df.index.date == yesterday]
+        if df.empty:
+            raise ValueError(f"No data for yesterday ({yesterday}) — market may have been closed")
+        print(f"✅ Filtered to yesterday: {yesterday} — {len(df)} candles")
+    else:
+        print(f"✅ Got {len(df)} candles from {df.index[0]} to {df.index[-1]}")
 
     # Group by trading day
     trading_days = df.groupby(df.index.date)
