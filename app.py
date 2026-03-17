@@ -1673,25 +1673,32 @@ async def auto_trader_status():
         nifty  = at_state.last_nifty_price or (kite_manager.latest_tick or {}).get("last_price", 0)
         ltp    = at_state.last_option_ltp   # refreshed each candle loop
         qty    = trade["quantity"]
-        lots   = max(1, qty // 65)
-        ep     = trade.get("entry_premium", 0) or 0
+        from auto_trader import LOT_SIZE
+        lots    = max(1, qty // LOT_SIZE)
+        ep      = trade.get("entry_premium", 0) or 0
         is_long = trade["direction"] == "long"
 
-        # Real unrealized P&L: (current option LTP - entry premium) × units
+        # Real unrealized P&L: (current option LTP − entry premium) × units
         if ltp and ltp > 0 and ep > 0:
             trade["pnl_unrealized"] = round((ltp - ep) * qty, 2)
         elif nifty and trade["entry_price"]:
-            # Fallback: rough Nifty-delta approximation (0.5 delta × point move)
             pt_move = (nifty - trade["entry_price"]) * (1 if is_long else -1)
             trade["pnl_unrealized"] = round(pt_move * 0.5 * qty, 2)
 
-        # Enrich trade dict with display fields
-        trade["lots"]              = lots
-        trade["current_option_ltp"]= round(ltp, 2) if ltp else None
-        trade["nifty_current"]     = round(nifty, 2) if nifty else None
-        trade["dist_to_sl"]        = round(abs(nifty - trade["stop_loss"]), 1) if nifty else None
-        trade["dist_to_target"]    = round(abs(trade["target"] - nifty), 1)    if nifty and trade.get("target") else None
-        trade["trailing_sl"]       = trade["stop_loss"]   # current trailing SL level
+        # Premium SL / target levels (already computed in auto_trader status)
+        prem_sl  = trade.get("option_sl_premium")
+        prem_tgt = trade.get("option_target_premium")
+
+        # Distance in PREMIUM terms (LTP vs SL/target) — meaningful for option buyers
+        if ltp and prem_sl:
+            trade["dist_to_sl"]     = round(ltp - prem_sl, 1)   # +ve = still alive, -ve = SL breached
+        if ltp and prem_tgt:
+            trade["dist_to_target"] = round(prem_tgt - ltp, 1)  # +ve = target not reached yet
+
+        trade["lots"]               = lots
+        trade["current_option_ltp"] = round(ltp, 2) if ltp else None
+        trade["nifty_current"]      = round(nifty, 2) if nifty else None
+        trade["trailing_sl"]        = trade["stop_loss"]   # Nifty spot trailing SL (internal)
 
     # Always expose live Nifty price at top level
     status["nifty_current"] = round(at_state.last_nifty_price, 2) if at_state.last_nifty_price else None
