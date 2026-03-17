@@ -73,6 +73,7 @@ class Trade:
     order_id: str | None = None        # Zerodha entry order ID
     sl_order_id: str | None = None     # Zerodha SL-M order ID (exchange-level guard)
     paper: bool = True
+    app_managed: bool = True   # False = monitor only (no SL/trail/exit by app)
 
 
 @dataclass
@@ -151,6 +152,7 @@ def _trade_to_dict(t: "Trade") -> dict:
         "order_id":      t.order_id,
         "sl_order_id":   getattr(t, "sl_order_id", None),
         "paper":         t.paper,
+        "app_managed":   getattr(t, "app_managed", True),
     }
 
 
@@ -314,6 +316,7 @@ def _recover_state(snapshot_file: Path | None = None):
             order_id=at.get("order_id"),
             sl_order_id=at.get("sl_order_id"),   # restore SL order for cancel-on-exit
             paper=paper_mode,
+            app_managed=at.get("app_managed", True),  # preserve management mode
             status=OrderStatus.FILLED,
         )
         state.active_trade = recovered_trade
@@ -981,6 +984,15 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
     if not trade:
         return
 
+    # ── Monitor-only mode: track P&L but never touch the position ─
+    if not getattr(trade, "app_managed", True):
+        # Still update price extremes so UI shows live data
+        if trade.direction == "long":
+            state.highest_price_since_entry = max(state.highest_price_since_entry, current_price)
+        else:
+            state.lowest_price_since_entry = min(state.lowest_price_since_entry, current_price)
+        return   # ← no SL, no trail, no exit — you manage it yourself
+
     is_long = trade.direction == "long"
 
     # Update price extremes for trailing SL
@@ -1469,6 +1481,22 @@ def sync_from_zerodha() -> dict:
             "SL/Target set from current Nifty spot + your SL settings — trailing SL active"
         ),
     }
+
+
+def set_trade_managed(managed: bool) -> dict:
+    """Toggle app management of the active trade.
+
+    managed=True  → app handles SL, trailing SL, target exit, time exit.
+    managed=False → app tracks price & P&L only — you manage the trade yourself.
+    """
+    trade = state.active_trade
+    if not trade:
+        return {"success": False, "error": "No active trade to configure"}
+    trade.app_managed = managed
+    _save_state_snapshot()
+    mode = "APP MANAGED" if managed else "MONITOR ONLY"
+    _log("🎛", "Trade mode", f"{mode} — {'SL/trail/exit active' if managed else 'app will NOT touch position'}")
+    return {"success": True, "app_managed": managed, "mode": mode}
 
 
 def activate_kill_switch():

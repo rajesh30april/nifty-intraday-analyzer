@@ -47,6 +47,7 @@ from trend_health import analyze_trend_health
 from auto_trader import (
     get_trader_status, start_auto_trader, stop_auto_trader,
     activate_kill_switch, configure_auto_trader, sync_from_zerodha,
+    set_trade_managed,
     refresh_active_option_ltp,
     state as trader_state, evaluate_and_act,
 )
@@ -2226,6 +2227,16 @@ async def auto_trader_sync_zerodha():
     """
     result = await asyncio.to_thread(sync_from_zerodha)
     return result
+
+
+@app.post("/api/auto-trader/trade-managed")
+async def set_trade_managed_api(managed: bool = True):
+    """Toggle whether the app manages the active trade (SL/trail/exit).
+
+    managed=true  → full app control (SL, trailing SL, target, time exit).
+    managed=false → monitor only — app tracks P&L but never touches position.
+    """
+    return await asyncio.to_thread(set_trade_managed, managed)
 
 
 @app.post("/api/auto-trader/evaluate")

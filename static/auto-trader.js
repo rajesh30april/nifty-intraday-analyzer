@@ -496,6 +496,8 @@ function renderAutoTrader(data) {
             dirBadge.className    = `px-3 py-1 rounded-full font-black text-sm ${
                 isLong ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`;
         }
+        // Managed toggle — sync from server state
+        _refreshManagedToggle(t.app_managed !== false);
         // Active label in grid
         const activeEl = document.getElementById('at-active');
         if (activeEl) {
@@ -676,6 +678,50 @@ async function syncFromZerodha() {
         _atShowToast(errText, 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '🔗 Sync trade from Zerodha'; }
+    }
+}
+
+// ── Trade Managed Toggle ──────────────────────────────────────────
+let _tradeManaged = true;  // local state mirror
+
+function _refreshManagedToggle(managed) {
+    _tradeManaged = managed;
+    const btn = document.getElementById('at-managed-toggle');
+    if (!btn) return;
+    if (managed) {
+        btn.textContent = '🤖 APP MANAGED';
+        btn.className   = 'text-[10px] px-2 py-1 rounded-lg font-bold border transition-all ' +
+                          'bg-[#0053e2] border-[#0053e2] text-white';
+        btn.title       = 'App is managing SL / trailing SL / exit — click to switch to Monitor Only';
+    } else {
+        btn.textContent = '👁 MONITOR ONLY';
+        btn.className   = 'text-[10px] px-2 py-1 rounded-lg font-bold border transition-all ' +
+                          'bg-yellow-500 border-yellow-400 text-gray-900';
+        btn.title       = 'App is NOT managing SL/exit — click to hand back control to app';
+    }
+}
+
+async function toggleTradeManaged() {
+    const newManaged = !_tradeManaged;
+    try {
+        const resp = await fetch(
+            `/api/auto-trader/trade-managed?managed=${newManaged}`,
+            { method: 'POST' }
+        );
+        const data = await resp.json();
+        if (data.success) {
+            _refreshManagedToggle(data.app_managed);
+            _atShowToast(
+                data.app_managed
+                    ? '🤖 App will manage SL, trailing SL and exit'
+                    : '👁 Monitor Only — app will NOT touch your position',
+                data.app_managed ? 'info' : 'warning'
+            );
+        } else {
+            _atShowToast(`❌ ${data.error}`, 'error');
+        }
+    } catch (e) {
+        _atShowToast(`❌ Toggle failed: ${e.message}`, 'error');
     }
 }
 

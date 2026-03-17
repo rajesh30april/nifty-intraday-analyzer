@@ -719,6 +719,13 @@
                       </span>
                       <span class="text-green-400 font-black text-sm">POSITION OPEN</span>
                     </div>
+                    <!-- App Managed / Monitor Only toggle -->
+                    <button id="at-managed-toggle"
+                      onclick="toggleTradeManaged()"
+                      title="Toggle whether app manages SL/trail/exit for this trade"
+                      class="text-[10px] px-2 py-1 rounded-lg font-bold border transition-all">
+                      🤖 APP MANAGED
+                    </button>
                     <span id="at-pos-dir-badge" class="px-3 py-1 rounded-full font-black text-sm">--</span>
                   </div>
                   <!-- Row 1: Entry / Trail SL / Target / Unrealized P&L -->
