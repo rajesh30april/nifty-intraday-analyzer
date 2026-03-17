@@ -51,6 +51,7 @@ from auto_trader import (
     set_trade_managed,
     refresh_active_option_ltp,
     state as trader_state, evaluate_and_act,
+    _log as _at_log,
 )
 from pattern_scanner import scan_patterns, TIMEFRAME_META, PATTERN_EMOJIS
 
@@ -93,10 +94,9 @@ async def _auto_trader_loop():
 
         now_str = datetime.now().strftime("%H:%M:%S")
         if not trader_state.is_running:
-            print(f"⏸  [{now_str}] Candle fired — trader not running, skipping")
-            continue
+            continue   # silent — expected when stopped
         if trader_state.kill_switch:
-            print(f"🛑 [{now_str}] Candle fired — kill switch active, skipping")
+            _at_log("🛑", "Candle skipped", "kill switch active")
             continue
         try:
             df = await asyncio.to_thread(fetch_intraday_data, interval="5m", period="5d")
@@ -104,12 +104,15 @@ async def _auto_trader_loop():
                 price     = float(df["close"].iloc[-1])
                 candle_ts = df.index[-1].strftime("%H:%M")
                 has_trade = trader_state.active_trade is not None
+                mode_tag  = "📊 managing trade" if has_trade else "🔍 scanning signal"
+                _at_log("🕯", f"Candle {candle_ts}", f"Nifty ₹{price:.0f} — {mode_tag}")
                 await asyncio.to_thread(evaluate_and_act, df, price)
-                mode_tag  = "📊 trade" if has_trade else "🔍 signal"
-                print(f"🤖 [{now_str}] CANDLE {candle_ts} | ₹{price:.0f} | {mode_tag} | orders={trader_state.orders_placed}")
+                print(f"🤖 [{now_str}] CANDLE {candle_ts} | ₹{price:.0f} | {mode_tag}")
             else:
+                _at_log("⚠️", f"Candle {now_str}", "no data returned from feed")
                 print(f"⚠️  [{now_str}] Candle fired but no data returned")
         except Exception as e:
+            _at_log("❌", "Candle error", str(e)[:80])
             print(f"⚠️  [{now_str}] Auto-trader loop error: {e}")
 
 

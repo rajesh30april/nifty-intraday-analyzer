@@ -838,15 +838,27 @@ def evaluate_and_act(df, current_price: float):
     # 2. If we have an active trade — manage it
     #    Acquire the tick guard lock so we don't race with real-time ticks.
     if state.active_trade:
+        trade = state.active_trade
+        sl_before = trade.stop_loss
         with _tick_guard_lock:
             if state.active_trade:   # re-check: tick may have just closed it
                 _manage_active_trade(current_price, source="🕯 candle")
+        # Log trail move so it appears in the UI event log
+        if state.active_trade and state.active_trade.stop_loss != sl_before:
+            new_sl_prem = _nifty_to_option_premium(state.active_trade.stop_loss, state.active_trade)
+            _log("📈", "Trail SL moved",
+                 f"Nifty SL ₹{sl_before:.0f}→₹{state.active_trade.stop_loss:.0f} "
+                 f"| Prem SL ₹{new_sl_prem:.1f}")
         # ── Refresh live option LTP for unrealized P&L display ────
         if state.active_trade:
             sym = state.active_trade.instrument.replace("NFO:", "")
             ltp = kite_manager.get_option_ltp(sym)
             if ltp and ltp > 0:
                 state.last_option_ltp = ltp
+                _log("💰", "LTP refresh",
+                     f"Opt ₹{ltp:.2f} | Prem SL ₹{_nifty_to_option_premium(state.active_trade.stop_loss, state.active_trade):.1f} "
+                     f"| Tgt ₹{_nifty_to_option_premium(state.active_trade.target, state.active_trade):.1f}"
+                     if state.active_trade.target else f"Opt ₹{ltp:.2f}")
         # ── Candle-close SL sync: belt-and-suspenders on top of the 10s worker ──
         _sync_trailing_sl_to_exchange()   # no-op if worker already cleared the flag
         return
