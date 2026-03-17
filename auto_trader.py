@@ -256,7 +256,7 @@ def _recover_state(snapshot_file: Path | None = None):
     # ── Restore base counters ─────────────────────────────────
     state.total_pnl         = snap.get("total_pnl", 0.0)
     state.orders_placed     = snap.get("orders_placed", 0)
-    state.is_paper_mode     = snap.get("is_paper_mode", not LIVE_TRADING)
+    state.is_paper_mode     = not LIVE_TRADING  # always from env — never let snapshot override this
     state.selected_strategy = snap.get("selected_strategy", "smart_router")
 
     # ── Restore runtime trade settings ───────────────────────
