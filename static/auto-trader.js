@@ -512,13 +512,33 @@ function renderAutoTrader(data) {
         }
 
         setT('at-entry', `₹${t.entry_price}`);
-        setT('at-sl',    `₹${t.trailing_sl ?? t.stop_loss}`);
+
+        // SL — show option premium trigger as primary, Nifty spot as subtitle
+        const slEl = document.getElementById('at-sl');
+        if (slEl) {
+            if (t.option_sl_trigger) {
+                slEl.textContent = `₹${t.option_sl_trigger.toFixed(1)}`;
+                slEl.title = `Nifty spot SL: ₹${t.trailing_sl ?? t.stop_loss}`;
+            } else {
+                // Synced trade — no option trigger computed yet, fall back to Nifty
+                slEl.textContent = `₹${t.trailing_sl ?? t.stop_loss}`;
+                slEl.title = 'Nifty spot SL (option trigger not yet computed)';
+            }
+        }
+
         setT('at-tgt',   `₹${t.target || '--'}`);
 
-        // Distance to SL / Target
+        // Distance to SL — show in premium pts if available, else Nifty pts
         const distSl  = document.getElementById('at-dist-sl');
         const distTgt = document.getElementById('at-dist-tgt');
-        if (distSl)  distSl.textContent  = t.dist_to_sl  != null ? `${t.dist_to_sl} pts away`  : '';
+        if (distSl) {
+            if (t.option_sl_trigger && t.current_option_ltp) {
+                const premDist = (t.current_option_ltp - t.option_sl_trigger).toFixed(1);
+                distSl.textContent = `₹${premDist} prem away`;
+            } else {
+                distSl.textContent = t.dist_to_sl != null ? `${t.dist_to_sl} pts away` : '';
+            }
+        }
         if (distTgt) distTgt.textContent = t.dist_to_target != null ? `${t.dist_to_target} pts away` : '';
 
         // Row 2 — live prices & quantity

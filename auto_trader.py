@@ -1030,6 +1030,20 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
         _exit_position(f"{source} — SL hit ₹{trade.stop_loss} @ ₹{current_price:.0f}", current_price)
         return
 
+    # ── Secondary guard: option premium SL ────────────────────────
+    # If the option LTP itself drops below the calculated trigger,
+    # exit immediately — don't wait for Nifty spot to cross SL level.
+    # This catches: theta crush, vega collapse, illiquid gap fills.
+    opt_ltp = state.last_option_ltp
+    if opt_ltp and opt_ltp > 0 and state.entry_option_trigger > 0:
+        current_opt_trigger = _compute_option_trigger_for_nifty_sl(trade.stop_loss)
+        if opt_ltp <= current_opt_trigger:
+            _exit_position(
+                f"{source} — Premium SL ₹{current_opt_trigger:.1f} hit (LTP ₹{opt_ltp:.1f})",
+                current_price,
+            )
+            return
+
     # Check target hit
     if trade.target:
         if is_long and current_price >= trade.target:
@@ -1243,10 +1257,13 @@ def get_trader_status() -> dict:
             "entry_price":     active.entry_price,
             "entry_premium":   active.entry_premium,   # ← was missing! needed for P&L + display
             "stop_loss":       active.stop_loss,
+            "option_sl_trigger": round(_compute_option_trigger_for_nifty_sl(active.stop_loss), 2)
+                                  if state.entry_option_trigger > 0 else None,
             "exchange_sl_pending": state.pending_sl_exchange_update,
             "target":          active.target,
             "quantity":        active.quantity,
             "paper":           active.paper,
+            "app_managed":     getattr(active, "app_managed", True),
             "pnl_unrealized":  0,   # enriched by app.py caller with live LTP
         } if active else None,
         "total_pnl": round(state.total_pnl, 2),
