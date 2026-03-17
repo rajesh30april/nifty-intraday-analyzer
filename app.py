@@ -8,6 +8,7 @@ import pandas as pd
 import traceback
 import json as json_lib
 import time as _time
+from datetime import datetime
 
 import numpy as np
 from fastapi import FastAPI, Request, Query
@@ -90,17 +91,26 @@ async def _auto_trader_loop():
         wait = _seconds_to_next_candle_close(5)
         await asyncio.sleep(wait)
 
-        if not trader_state.is_running or trader_state.kill_switch:
+        now_str = datetime.now().strftime("%H:%M:%S")
+        if not trader_state.is_running:
+            print(f"⏸  [{now_str}] Candle fired — trader not running, skipping")
+            continue
+        if trader_state.kill_switch:
+            print(f"🛑 [{now_str}] Candle fired — kill switch active, skipping")
             continue
         try:
             df = await asyncio.to_thread(fetch_intraday_data, interval="5m", period="5d")
             if df is not None and not df.empty:
-                price = float(df["close"].iloc[-1])
+                price     = float(df["close"].iloc[-1])
                 candle_ts = df.index[-1].strftime("%H:%M")
+                has_trade = trader_state.active_trade is not None
                 await asyncio.to_thread(evaluate_and_act, df, price)
-                print(f"🤖 [CANDLE {candle_ts}] ₹{price:.0f} | trades={trader_state.orders_placed}")
+                mode_tag  = "📊 trade" if has_trade else "🔍 signal"
+                print(f"🤖 [{now_str}] CANDLE {candle_ts} | ₹{price:.0f} | {mode_tag} | orders={trader_state.orders_placed}")
+            else:
+                print(f"⚠️  [{now_str}] Candle fired but no data returned")
         except Exception as e:
-            print(f"⚠️ Auto-trader loop error: {e}")
+            print(f"⚠️  [{now_str}] Auto-trader loop error: {e}")
 
 
 async def _crude_trader_loop():

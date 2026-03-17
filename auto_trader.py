@@ -1376,23 +1376,47 @@ def configure_auto_trader(
 
 
 def start_auto_trader(strategy_id: str | None = None):
-    """Start the auto-trader loop."""
+    """Start the auto-trader loop.
+
+    If live mode and no active trade in state, automatically attempts a
+    Zerodha position sync — so clicking START mid-session after a crash
+    or false exit immediately re-links any open position without needing
+    a separate manual Sync step.
+    """
     if state.is_running:
         return {"status": "already_running"}
 
     if strategy_id:
         state.selected_strategy = strategy_id
 
-    state.is_running = True
+    state.is_running  = True
     state.kill_switch = False
-    mode = "📝 PAPER" if state.is_paper_mode else "🟢 LIVE"
+    mode       = "📝 PAPER" if state.is_paper_mode else "🟢 LIVE"
     strat_name = state.selected_strategy
     print(f"\n🚀 Auto-Trader STARTED [{mode} MODE]")
     print(f"   Strategy: {strat_name}")
     print(f"   Max loss: ₹{MAX_LOSS_PER_DAY} | Max orders: {MAX_ORDERS_PER_DAY}")
     print(f"   SL: {state.sl_points}pts | Trail: {state.trailing_sl_points}pts | R:R 1:{state.rr_ratio}")
     print(f"   Auto-exit: {EXIT_TIME.strftime('%H:%M')} IST\n")
-    return {"status": "started", "mode": mode, "strategy": strat_name}
+
+    auto_synced = None
+    if not state.is_paper_mode and not state.active_trade:
+        # Live mode with no trade in state — auto-check Zerodha for open position.
+        # Handles the common case: crash / false exit wiped state, user clicks START.
+        print("   🔍 No active trade in state — auto-checking Zerodha for open position…")
+        try:
+            result = sync_from_zerodha()
+            if result.get("success"):
+                auto_synced = result
+                print(f"   ✅ Auto-synced: {result.get('instrument')} "
+                      f"{result.get('quantity')}u @ avg ₹{result.get('avg_price')}")
+            else:
+                print(f"   ℹ️  No open Zerodha position: {result.get('error')}")
+        except Exception as e:
+            print(f"   ⚠️  Auto-sync failed: {e} — use manual Sync if needed")
+
+    return {"status": "started", "mode": mode, "strategy": strat_name,
+            "auto_synced": auto_synced}
 
 
 def stop_auto_trader():

@@ -226,15 +226,25 @@ async function startAutoTrader() {
         const resp = await fetch(`/api/auto-trader/start?strategy=${strategyId}`, { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
-            // Don't call evaluate here — it fetches data and blocks.
-            // The 6-second poller will pick up the running state.
             _setAtStatus('running');
             _atIsRunning = true;
-            // Reset dedup so the very first evaluation after start always logs
             _atLastCondKey    = null;
             _atLastSignalText = null;
             _atLastSignalTime = 0;
             _atLogEvent('🟢', 'Auto-Trader started', `strategy: ${strategyId}`);
+            // Show auto-sync result if a position was re-linked on START
+            if (data.auto_synced) {
+                const s = data.auto_synced;
+                _atLogEvent('🔗', 'Auto-synced on START',
+                    `${s.instrument} ${s.quantity}u @ ₹${s.avg_price}`);
+                _atShowToast(
+                    `🔗 Auto-synced position: ${s.instrument} — app is managing your trade`,
+                    'info');
+            } else if (data.auto_synced === null) {
+                // Live mode, no open position found — inform user
+                _atLogEvent('ℹ️', 'No Zerodha position', 'No open Nifty NFO position found on START');
+            }
+            await pollAutoTraderStatus();
         } else {
             _setAtStatus('error', data.error || 'Failed to start');
         }
