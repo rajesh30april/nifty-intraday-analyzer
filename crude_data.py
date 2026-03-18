@@ -66,7 +66,17 @@ def get_crude_futures_token() -> tuple[int, str]:
     if not futs:
         raise RuntimeError("No active CRUDEOIL futures found on MCX")
     futs.sort(key=lambda x: x['expiry'])
+
+    # Auto-roll: skip contracts expiring within the next 2 days —
+    # they have dying volume and extreme bid-ask spreads.
+    # Use next month contract instead for cleaner fills.
     front = futs[0]
+    days_to_expiry = (front['expiry'] - today).days
+    if days_to_expiry <= 2 and len(futs) > 1:
+        front = futs[1]
+        print(f"🔄 Auto-rolled to {front['tradingsymbol']} "
+              f"(near-month expires in {days_to_expiry}d)")
+
     return front['instrument_token'], front['tradingsymbol']
 
 

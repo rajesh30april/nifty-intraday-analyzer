@@ -133,7 +133,7 @@ def evaluate_crude_orb(df: pd.DataFrame) -> StrategySignal:
     return StrategySignal(
         should_enter=True,
         direction=direction,
-        detail=f"ORB {direction.value} breakout | range ₹{orb_range:.0f} | vol {volume:.0f}",
+        reason=f"ORB {direction.value} breakout | range ₹{orb_range:.0f} | vol {volume:.0f}",
         conditions=conditions,
     )
 
@@ -162,20 +162,35 @@ def evaluate_crude_supertrend(df: pd.DataFrame) -> StrategySignal:
     st_dir  = st['direction']
     st_line = st['supertrend']
 
-    # ── Did Supertrend flip within last 2 candles? ────────────────
-    flipped = (
-        st_dir.iloc[-1] != st_dir.iloc[-2]
-        or (len(st_dir) > 2 and st_dir.iloc[-1] != st_dir.iloc[-3])
-    )
-    conditions.append(StrategyCondition(
-        name="ST flip",
-        met=flipped,
-        detail="Supertrend flipped" if flipped else "No recent Supertrend flip",
-    ))
-
     direction = Direction.LONG if st_dir.iloc[-1] == 1 else Direction.SHORT
     price     = float(close.iloc[-1])
     st_val    = float(st_line.iloc[-1])
+
+    # ── Entry trigger: fresh flip OR pullback to ST line ──────────
+    # Strict 2-candle flip misses established trends after the first
+    # candle. Allow entry on either:
+    #   A) Fresh flip in last 5 candles  (new trend starting)
+    #   B) Price within 1.5× ATR of ST   (pullback re-entry into trend)
+    atr_val = float(ind.atr(high, low, close, 14).iloc[-1])
+    flip_window = 10   # 10 candles = 50 min — catches morning flip into evening
+    recent_flip = any(
+        st_dir.iloc[-i] != st_dir.iloc[-(i + 1)]
+        for i in range(1, min(flip_window, len(st_dir) - 1))
+    )
+    pullback_reentry = abs(price - st_val) <= 2.5 * atr_val  # 2.5× is comfortable
+    triggered = recent_flip or pullback_reentry
+
+    trigger_detail = (
+        f"Fresh flip ({flip_window}c)" if recent_flip
+        else f"Pullback re-entry (price={price:.0f} ST={st_val:.0f} dist={abs(price-st_val):.0f}≤1.5×ATR={1.5*atr_val:.0f})"
+        if pullback_reentry
+        else f"No flip or pullback (price={price:.0f} ST={st_val:.0f} dist={abs(price-st_val):.0f} 1.5×ATR={1.5*atr_val:.0f})"
+    )
+    conditions.append(StrategyCondition(
+        name="ST trigger",
+        met=triggered,
+        detail=trigger_detail,
+    ))
 
     # ── Price on correct side of ST line ─────────────────────────
     on_right_side = (
@@ -217,7 +232,7 @@ def evaluate_crude_supertrend(df: pd.DataFrame) -> StrategySignal:
     return StrategySignal(
         should_enter=True,
         direction=direction,
-        detail=f"Crude ST {direction.value} | price {price:.0f} | EMA9 {ema_fast:.0f}",
+        reason=f"Crude ST {direction.value} | price {price:.0f} | EMA9 {ema_fast:.0f}",
         conditions=conditions,
     )
 
