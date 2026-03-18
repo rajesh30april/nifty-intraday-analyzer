@@ -366,23 +366,38 @@ def _consensus_pick(
     )
 
 
-def _volume_ok(df: pd.DataFrame) -> tuple[bool, str]:
-    """Check if the latest candle has at least 70% of the 20-candle avg volume.
+# Minimum candle body as % of ATR to confirm conviction.
+# Doji / spinning-top candles (tiny body) often signal indecision —
+# entering on them is a coin flip regardless of what indicators say.
+# Nifty 50 is a cash index (^NSEI) — Yahoo Finance never returns volume
+# for it, so we use candle-body-strength as the conviction proxy instead.
+MIN_BODY_ATR_PCT = 20  # body must be ≥ 20% of ATR  (0 = disabled)
 
-    Breakouts on thin volume are unreliable — this filters the worst cases
-    without being too restrictive (uses 70% not 100% so minor slow periods
-    don't block valid signals).
+
+def _volume_ok(df: pd.DataFrame) -> tuple[bool, str]:
+    """Candle body strength check — replaces volume (unavailable on cash index).
+
+    A candle whose body is < MIN_BODY_ATR_PCT% of ATR is a doji/indecision
+    candle. Entering on those is low-conviction regardless of what the
+    indicators say.
+
+    Returns (ok, note) where note is shown in the event log.
     """
-    if "volume" not in df.columns or len(df) < 21:
-        return True, "vol=N/A"  # can't check → allow
-    vol       = df["volume"]
-    avg20     = float(vol.iloc[-21:-1].mean())
-    latest    = float(vol.iloc[-1])
-    if avg20 <= 0:
-        return True, "vol=N/A"
-    pct       = latest / avg20 * 100
-    ok        = pct >= 70
-    note      = f"vol={latest/1000:.0f}K ({pct:.0f}% of avg)"
+    if MIN_BODY_ATR_PCT <= 0 or len(df) < 15:
+        return True, "body-check=off"
+
+    import indicators as _ind  # noqa: PLC0415
+    atr_series  = _ind.atr(df["high"], df["low"], df["close"], period=14)
+    atr_val     = float(atr_series.iloc[-1])
+    if atr_val <= 0:
+        return True, "body-check=N/A"
+
+    last        = df.iloc[-1]
+    body        = abs(float(last["close"]) - float(last["open"]))
+    body_pct    = body / atr_val * 100
+    ok          = body_pct >= MIN_BODY_ATR_PCT
+    candle_type = "bullish" if last["close"] >= last["open"] else "bearish"
+    note        = f"body={body_pct:.0f}% of ATR ({candle_type})"
     return ok, note
 
 
