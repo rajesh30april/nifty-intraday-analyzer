@@ -18,10 +18,10 @@ from strategies.registry import StrategyInfo, register
 import indicators as ind
 
 # ── Thresholds ─────────────────────────────────────────────────────────────
-LOOKBACK        = 10    # candles to look back for divergence
-MIN_PRICE_SWING = 15    # pts — minimum price movement to call it a new high/low
+LOOKBACK        = 14    # candles to look back for divergence (~70 min at 5m)
+MIN_PRICE_SWING = 8     # pts — 15 was too strict for 5-min Nifty candles
 OBV_SMOOTH      = 3     # EMA smoothing on OBV (reduces noise)
-ADX_MIN         = 18    # don't trade divergences in completely dead markets
+ADX_MIN         = 15    # lower ADX bar — we want more divergence signals
 
 
 def _compute_obv(close: pd.Series, volume: pd.Series) -> pd.Series:
@@ -109,7 +109,7 @@ def evaluate_obv_divergence(df: pd.DataFrame) -> StrategySignal:
     ))
 
     # ── ADX confirmation — don't trade in totally dead markets ───────────────
-    adx_val = float(ind.adx(df["high"], df["low"], df["close"], period=14).iloc[-1])
+    adx_val = float(ind.adx(df["high"], df["low"], df["close"], period=14)["adx"].iloc[-1])
     adx_ok  = adx_val >= ADX_MIN
     conditions.append(StrategyCondition(
         name="ADX minimum",

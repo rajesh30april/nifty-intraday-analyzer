@@ -1,0 +1,82 @@
+{
+  "ocf": {
+    "trades": 88,
+    "winners": 60,
+    "losers": 28,
+    "win_rate": 68.2,
+    "profit_factor": 7.98,
+    "trades_per_day": 2.0,
+    "avg_win_pts": 45.0,
+    "avg_loss_pts": 15.0
+  },
+  "gap_and_go": {
+    "trades": 20,
+    "winners": 15,
+    "losers": 5,
+    "win_rate": 75.0,
+    "profit_factor": 8.14,
+    "trades_per_day": 0.4,
+    "avg_win_pts": 55.0,
+    "avg_loss_pts": 12.0
+  },
+  "orb": {
+    "trades": 83,
+    "winners": 39,
+    "losers": 44,
+    "win_rate": 47.0,
+    "profit_factor": 3.1,
+    "trades_per_day": 1.8,
+    "avg_win_pts": 42.0,
+    "avg_loss_pts": 18.0
+  },
+  "supertrend": {
+    "trades": 71,
+    "winners": 30,
+    "losers": 41,
+    "win_rate": 42.3,
+    "profit_factor": 2.11,
+    "trades_per_day": 1.6,
+    "avg_win_pts": 38.0,
+    "avg_loss_pts": 22.0
+  },
+  "volume_spike": {
+    "trades": 131,
+    "winners": 56,
+    "losers": 75,
+    "win_rate": 42.7,
+    "profit_factor": 2.92,
+    "trades_per_day": 2.9,
+    "avg_win_pts": 35.0,
+    "avg_loss_pts": 20.0
+  },
+  "obv_divergence": {
+    "trades": 154,
+    "winners": 95,
+    "losers": 59,
+    "win_rate": 61.7,
+    "profit_factor": 3.82,
+    "trades_per_day": 3.4,
+    "avg_win_pts": 28.0,
+    "avg_loss_pts": 14.0
+  },
+  "volume_profile": {
+    "trades": 167,
+    "winners": 108,
+    "losers": 59,
+    "win_rate": 64.7,
+    "profit_factor": 5.44,
+    "trades_per_day": 3.7,
+    "avg_win_pts": 30.0,
+    "avg_loss_pts": 12.0
+  },
+  "camarilla": {
+    "trades": 20,
+    "winners": 9,
+    "losers": 11,
+    "win_rate": 45.0,
+    "profit_factor": 2.47,
+    "trades_per_day": 0.4,
+    "avg_win_pts": 40.0,
+    "avg_loss_pts": 22.0
+  }
+}

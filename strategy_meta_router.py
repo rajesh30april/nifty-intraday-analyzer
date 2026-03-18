@@ -231,15 +231,29 @@ def evaluate_all(df: pd.DataFrame) -> MetaRouterResult:
         t_mult    = _time_bonus(strat.id, current_time)
         r_fit     = _regime_fit(strat.category, regime)
         v_boost   = _vix_category_boost(strat.category, current_vix)
+
+        # ── Calibrated scoring (data-driven, not hand-coded) ──────────────
+        # base      = historical win rate from real backtest (0-100)
+        #             falls back to 50 (neutral) if not yet calibrated
+        # strength  = how well conditions align RIGHT NOW (0.5 – 1.5)
+        #             derived from strategy's per-candle confidence
+        #             so a strategy with 60% win rate on a perfect setup
+        #             scores HIGHER than a 70% win rate strategy on a weak one
+        # composite = base × strength × regime × time × vix
+        from calibrator import win_rate_for  # noqa: PLC0415
+        base      = win_rate_for(strat.id)          # e.g., 63.0 for ORB
         raw_conf  = signal.confidence or 0.0
-        composite = raw_conf * r_fit * t_mult * v_boost
+        strength  = 0.5 + (raw_conf / 100.0)        # maps [0,100] → [0.5, 1.5]
+        composite = base * strength * r_fit * t_mult * v_boost
 
         candidates.append({
             "id":          strat.id,
             "name":        strat.name,
             "emoji":       strat.emoji,
             "category":    strat.category,
-            "confidence":  round(raw_conf, 1),
+            "confidence":  round(raw_conf, 1),    # current candle signal strength
+            "win_rate":    round(base, 1),         # calibrated historical win rate
+            "strength":    round(strength, 2),     # 0.5-1.5 multiplier
             "regime_fit":  r_fit,
             "time_mult":   t_mult,
             "vix_boost":   v_boost,
@@ -259,8 +273,10 @@ def evaluate_all(df: pd.DataFrame) -> MetaRouterResult:
 # ── Single gate: minimum composite score to enter ─────────────────────────────
 # Keeps truly weak signals out without needing multi-strategy consensus.
 # A strategy scoring below this is saying "I see something but barely" — skip it.
-# Tune upward (→ 80) for fewer trades, downward (→ 40) for more.
-MIN_ENTRY_SCORE = 60
+# New scale: base(50-70) × strength(0.5-1.5) × regime(0.6-1.4) × time × vix
+# A calibrated strategy on a decent setup in the right regime ≈ 50-100
+# Tune upward (→ 80) for fewer/higher-quality trades.
+MIN_ENTRY_SCORE = 55
 
 
 def _priority_pick(

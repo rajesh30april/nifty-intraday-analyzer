@@ -1,26 +1,52 @@
-"""Load all strategies into the registry.
+"""Load strategies into the registry — 8 non-overlapping strategies.
 
-Import this module once at app startup to populate the registry.
+Strategy selection rationale (YAGNI — keep one per job):
+
+  TIME-GATED (specific windows only):
+    opening_candle_fade   → 9:20 specific fade play
+    gap_and_go            → gap day opener (9:15–9:45)
+    orb                   → 9:30–10:30 range breakout
+
+  TREND-FOLLOWING (trending regime):
+    supertrend_strat      → best all-round trend follower
+                            (replaces ema_crossover + ema_scalp + macd_momentum)
+
+  VOLUME-BASED (requires Zerodha real volume):
+    volume_spike          → institutional breakout detection
+    obv_divergence        → smart money reversal signal
+    volume_profile        → HVN support/resistance levels
+
+  PIVOT / MEAN-REVERSION (sideways regime):
+    camarilla_pivots      → mathematical pivot levels
+
+Removed (overlapping or redundant):
+  - trend_follow      → covered by supertrend (better signal)
+  - ema_crossover     → covered by supertrend
+  - ema_scalp         → covered by supertrend
+  - vwap_reversion    → covered by volume_profile (volume-backed)
+  - vwap_bounce_scalp → covered by volume_profile
+  - rsi_reversal      → covered by obv_divergence (volume-backed)
+  - price_rejection   → covered by obv_divergence
+  - macd_momentum     → covered by supertrend
+  - bb_squeeze        → covered by orb + volume_spike
+  - candlestick_patt  → high noise, low edge alone
+  - chart_patterns    → too similar to orb + volume_spike
+  - pdhl_breakout     → covered by volume_profile HVN
+  - first_candle_range→ covered by orb
 """
 
-# Import order matters — existing strategies first, then new ones
-import strategies.existing        # noqa: F401 — Price Rejection + Trend Follow
-import strategies.orb              # noqa: F401 — Opening Range Breakout
-import strategies.vwap_reversion   # noqa: F401 — VWAP Mean Reversion
-import strategies.ema_crossover    # noqa: F401 — EMA Crossover
-import strategies.supertrend_strat # noqa: F401 — Supertrend
-import strategies.rsi_reversal     # noqa: F401 — RSI Reversal
-import strategies.macd_momentum    # noqa: F401 — MACD Momentum
-import strategies.smart_router     # noqa: F401 — Smart Router (Auto)
-import strategies.scalping          # noqa: F401 — Scalping strategies (EMA/VWAP/Momentum)
-import strategies.opening_candle_fade  # noqa: F401 — Opening Candle Fade (Rajesh's strategy)
-import strategies.gap_and_go           # noqa: F401 — Gap and Go
-import strategies.bb_squeeze           # noqa: F401 — Bollinger Band Squeeze
-import strategies.camarilla_pivots     # noqa: F401 — Camarilla Pivot Points
-import strategies.candlestick_patterns # noqa: F401 — Candlestick Patterns (Engulfing, Star, Hammer)
-import strategies.chart_patterns       # noqa: F401 — Chart Patterns (Flag, Double Top, Triangle)
-import strategies.pdhl_breakout        # noqa: F401 — Previous Day High/Low Breakout
-import strategies.first_candle_range   # noqa: F401 — First Candle Range (FCR)
-import strategies.volume_spike         # noqa: F401 — Volume Spike Breakout
-import strategies.obv_divergence       # noqa: F401 — OBV Divergence
-import strategies.volume_profile       # noqa: F401 — Volume Profile HVN/LVN
+# ── Time-gated strategies ─────────────────────────────────────────────────
+import strategies.opening_candle_fade  # noqa: F401 — 9:20 fade
+import strategies.gap_and_go           # noqa: F401 — gap day 9:15–9:45
+import strategies.orb                  # noqa: F401 — 9:30–10:30 range breakout
+
+# ── Trend following ───────────────────────────────────────────────────────
+import strategies.supertrend_strat     # noqa: F401 — trend + momentum
+
+# ── Volume-based (require Zerodha real volume) ────────────────────────────
+import strategies.volume_spike         # noqa: F401 — institutional breakout
+import strategies.obv_divergence       # noqa: F401 — smart money reversal
+import strategies.volume_profile       # noqa: F401 — HVN S/R levels
+
+# ── Pivot / Mean-reversion ────────────────────────────────────────────────
+import strategies.camarilla_pivots     # noqa: F401 — pivot level plays
