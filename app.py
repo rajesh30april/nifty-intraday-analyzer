@@ -1026,6 +1026,93 @@ async def trade_report_page(request: Request):
     return templates_local.TemplateResponse("trade_report.html", {"request": request})
 
 
+@app.get("/api/auto-trader/zerodha-balance")
+async def get_zerodha_balance():
+    """Fetch live Zerodha balance + suggest best strike for available capital."""
+    from kite_integration import kite_manager
+    from auto_trader import LOT_SIZE
+    try:
+        if not kite_manager.is_authenticated:
+            return {"success": False, "error": "Not authenticated"}
+
+        margins  = kite_manager.kite.margins()
+        equity   = margins.get("equity", {})
+        balance  = equity.get("available", {}).get("live_balance", 0) or equity.get("net", 0)
+        balance  = round(float(balance), 2)
+
+        # Get current Nifty price for strike estimation
+        nifty_ltp = None
+        try:
+            q = kite_manager.kite.ltp(["NSE:NIFTY 50"])
+            nifty_ltp = q.get("NSE:NIFTY 50", {}).get("last_price")
+        except Exception:
+            pass
+
+        # Estimate premiums for each strike offset using rough delta approximation
+        # ATM premium varies; use live LTP from instruments if possible
+        suggestions = []
+        OFFSETS = [
+            (-2, "ITM2", "deepest value, highest cost"),
+            (-1, "ITM1", "safer delta, higher cost"),
+            (0,  "ATM",  "most liquid, balanced"),
+            (1,  "OTM1", "cheaper, needs more move"),
+            (2,  "OTM2", "lottery, big move needed"),
+        ]
+        # Rough premium estimate per offset (% of ATM)
+        ATM_PREM_APPROX = 100  # ₹ rough ATM premium
+        PREM_MULT = {-2: 2.0, -1: 1.5, 0: 1.0, 1: 0.55, 2: 0.30}
+
+        # Try to get real ATM premium
+        atm_prem = ATM_PREM_APPROX
+        if nifty_ltp:
+            try:
+                atm_strike = round(nifty_ltp / 50) * 50
+                # Try to get real quote
+                expiry = kite_manager._get_nearest_weekly_expiry() if hasattr(kite_manager, '_get_nearest_weekly_expiry') else None
+                if expiry:
+                    sym = f"NFO:NIFTY{expiry}{atm_strike}PE"
+                    q2  = kite_manager.kite.ltp([sym])
+                    atm_prem = q2.get(sym, {}).get("last_price") or ATM_PREM_APPROX
+            except Exception:
+                pass
+
+        for offset, label, desc in OFFSETS:
+            est_prem    = atm_prem * PREM_MULT.get(offset, 1.0)
+            cost_per_lot = est_prem * LOT_SIZE
+            max_lots    = int(balance / cost_per_lot) if cost_per_lot > 0 else 0
+            max_units   = max_lots * LOT_SIZE
+            affordable  = max_lots >= 1
+            suggestions.append({
+                "offset":       offset,
+                "label":        label,
+                "description":  desc,
+                "est_premium":  round(est_prem, 1),
+                "cost_per_lot": round(cost_per_lot, 0),
+                "max_lots":     max_lots,
+                "max_units":    max_units,
+                "affordable":   affordable,
+            })
+
+        # Best suggestion = highest offset that allows ≥1 lot (prefer ATM or OTM1)
+        affordable = [s for s in suggestions if s["affordable"]]
+        recommended = next(
+            (s for s in suggestions if s["offset"] == 0 and s["affordable"]),  # ATM first
+            affordable[-1] if affordable else suggestions[0]                    # else best we can do
+        )
+
+        return {
+            "success":     True,
+            "balance":     balance,
+            "nifty_ltp":  nifty_ltp,
+            "atm_premium": round(atm_prem, 1),
+            "lot_size":    LOT_SIZE,
+            "suggestions": suggestions,
+            "recommended": recommended,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 @app.get("/api/report/app-trades")
 async def get_app_trades():
     """Return trades from the app's trade log with pattern analysis."""

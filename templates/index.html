@@ -639,13 +639,19 @@
 
                     <!-- ── Auto Capital mode ── -->
                     <div id="at-qty-capital-row" class="hidden">
-                      <div class="flex items-end gap-3">
+                      <div class="flex items-end gap-3 flex-wrap">
                         <div class="w-36">
                           <label class="text-[10px] text-gray-400 block mb-1" for="at-capital">Your trading capital (₹)</label>
                           <input id="at-capital" type="number" value="96000" min="10000" max="10000000" step="5000"
                             class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-sm text-white font-bold"
                             onfocus="_atMarkDirty()" oninput="_updateCapitalEstimate()">
                         </div>
+                        <!-- Fetch from Zerodha button -->
+                        <button onclick="fetchZerodhaBalance()"
+                          id="at-fetch-balance-btn"
+                          class="pb-2 text-[10px] font-bold text-[#ffc220] border border-yellow-600 px-2 py-1 rounded-lg hover:bg-yellow-900 transition flex items-center gap-1">
+                          🏦 Use Zerodha Balance
+                        </button>
                         <!-- Live breakdown -->
                         <div class="text-[11px] text-gray-400 pb-2 leading-5">
                           <span class="text-gray-500">≈ </span>
@@ -658,6 +664,18 @@
                       </div>
                       <!-- Math breakdown -->
                       <div id="at-capital-detail" class="text-[10px] text-gray-500 mt-1 font-mono">--</div>
+
+                      <!-- Zerodha Balance Strike Suggester -->
+                      <div id="at-balance-panel" class="hidden mt-3 bg-gray-900 border border-yellow-700 rounded-lg p-3">
+                        <div class="flex items-center justify-between mb-2">
+                          <span class="text-[10px] font-bold text-yellow-400">🏦 Zerodha Balance</span>
+                          <span id="at-balance-amount" class="text-sm font-black text-white">--</span>
+                        </div>
+                        <p class="text-[10px] text-gray-400 mb-2">Best strikes for your available capital:</p>
+                        <div id="at-strike-suggestions" class="space-y-1"></div>
+                        <p class="text-[9px] text-gray-600 mt-2">💡 Click a row to apply that strike + capital. You can change before entry.</p>
+                      </div>
+
                       <!-- How it works -->
                       <div class="mt-2 bg-gray-900 border border-gray-700 rounded-lg p-2 space-y-1">
                         <p class="text-[10px] text-gray-400 font-bold">🎯 How the app picks strike &amp; lots at entry:</p>

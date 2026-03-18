@@ -419,6 +419,83 @@ async function loadSymbolPreview() {
     }
 }
 
+// ── Fetch Zerodha Balance + strike suggestions ──────────────────
+async function fetchZerodhaBalance() {
+    const btn = document.getElementById('at-fetch-balance-btn');
+    const panel = document.getElementById('at-balance-panel');
+    const orig = btn.innerHTML;
+    btn.innerHTML = '⏳ Fetching…';
+    btn.disabled = true;
+
+    try {
+        const resp = await fetch('/api/auto-trader/zerodha-balance');
+        const data = await resp.json();
+
+        if (!data.success) {
+            _atShowToast('❌ ' + data.error, 'error');
+            return;
+        }
+
+        // Fill in balance as capital
+        const balEl = document.getElementById('at-capital');
+        if (balEl) {
+            balEl.value = Math.floor(data.balance);
+            _atMarkDirty();
+            _updateCapitalEstimate();
+        }
+
+        // Show balance amount
+        document.getElementById('at-balance-amount').textContent =
+            '₹' + data.balance.toLocaleString('en-IN', {maximumFractionDigits: 0});
+
+        // Render strike suggestions
+        const sugEl = document.getElementById('at-strike-suggestions');
+        sugEl.innerHTML = data.suggestions.map(s => {
+            const isRec   = s.offset === data.recommended.offset;
+            const canBuy  = s.affordable;
+            const bg      = isRec ? 'bg-yellow-900 border-yellow-500' :
+                            canBuy ? 'bg-gray-800 border-gray-600 hover:border-yellow-600' :
+                                     'bg-gray-900 border-gray-700 opacity-50 cursor-not-allowed';
+            const badge   = isRec ? '<span class="ml-1 text-[8px] bg-yellow-500 text-black font-bold px-1 rounded">RECOMMENDED</span>' : '';
+            return `<div class="flex items-center justify-between text-[10px] px-2 py-1.5 rounded border ${bg} ${
+                canBuy ? 'cursor-pointer' : ''}"
+                onclick="${canBuy ? `_applyBalanceSuggestion(${s.offset}, ${data.balance})` : ''}">
+                <span class="font-bold text-white">${s.label}${badge}</span>
+                <span class="text-gray-400">${s.description}</span>
+                <span class="text-gray-300">~₹${s.est_premium}/unit</span>
+                <span class="${canBuy ? 'text-green-400' : 'text-red-400'} font-bold">
+                    ${canBuy ? s.max_lots + ' lots (' + s.max_units + 'u)' : 'Not enough'}
+                </span>
+            </div>`;
+        }).join('');
+
+        // Auto-apply recommended strike
+        if (data.recommended && data.recommended.affordable) {
+            setAtStrike(data.recommended.offset);
+            _atShowToast(
+                `🏦 Balance ₹${data.balance.toLocaleString('en-IN',{maximumFractionDigits:0})} → ${data.recommended.label} (${data.recommended.max_lots} lots)`,
+                'success'
+            );
+        } else {
+            _atShowToast('⚠️ Balance may be too low for even 1 lot — check your funds', 'error');
+        }
+
+        panel.classList.remove('hidden');
+    } catch(e) {
+        _atShowToast('❌ Failed: ' + e.message, 'error');
+    } finally {
+        btn.innerHTML = orig;
+        btn.disabled = false;
+    }
+}
+
+function _applyBalanceSuggestion(offset, balance) {
+    setAtStrike(offset);
+    const balEl = document.getElementById('at-capital');
+    if (balEl) { balEl.value = Math.floor(balance); _atMarkDirty(); _updateCapitalEstimate(); }
+    _atShowToast(`✅ Applied: ${['ITM3','ITM2','ITM1','ATM','OTM1','OTM2','OTM3'][offset+3]} strike with ₹${Math.floor(balance).toLocaleString('en-IN')} capital`, 'success');
+}
+
 // ── Init hints on load ───────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     _updateLotsHint();
