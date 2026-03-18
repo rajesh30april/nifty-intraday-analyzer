@@ -232,6 +232,7 @@ def _backtest_day(
     highest = 0.0
     lowest = float("inf")
     conditions_met = []
+    last_exit_ts = None   # for cooldown simulation
 
     # Walk through each candle — start from 1 (skip the open candle itself)
     # Signal evaluation uses full_df lookback so no warmup skip needed here
@@ -258,6 +259,7 @@ def _backtest_day(
             )
             result.trades.append(trade)
             in_trade = False
+            last_exit_ts = i
             continue
 
         if candle_time >= EXIT_TIME:
@@ -285,6 +287,7 @@ def _backtest_day(
                     )
                     result.trades.append(trade)
                     in_trade = False
+                    last_exit_ts = i
                     continue
                 # Check target hit
                 if high >= target:
@@ -298,6 +301,7 @@ def _backtest_day(
                     )
                     result.trades.append(trade)
                     in_trade = False
+                    last_exit_ts = i
                     continue
             else:  # short
                 lowest = min(lowest, low)
@@ -317,6 +321,7 @@ def _backtest_day(
                     )
                     result.trades.append(trade)
                     in_trade = False
+                    last_exit_ts = i
                     continue
                 if low <= target:
                     pnl_pts = _calc_pnl(direction, entry_price, target)
@@ -329,6 +334,7 @@ def _backtest_day(
                     )
                     result.trades.append(trade)
                     in_trade = False
+                    last_exit_ts = i
                     continue
             continue
 
@@ -336,13 +342,26 @@ def _backtest_day(
         if trades_today >= max_trades:
             continue
 
-        # Use full_df up to current candle's timestamp for prev day context
+        # Cooldown check — 5-min candles, 1 candle = 5 min
         current_ts = df.index[i]
+        if last_exit_ts is not None:
+            elapsed_candles = i - last_exit_ts
+            if elapsed_candles < 1:   # minimum 1 candle gap (= 5 min)
+                continue
         lookback_df = full_df[full_df.index <= current_ts]
 
         # Use specified strategy from registry
         strat_info = get_strategy(strategy_id)
-        if strat_info:
+        if strategy_id == "meta_router":
+            # ── Consensus system (new) ──────────────────────────
+            from strategy_meta_router import evaluate_all  # noqa: PLC0415
+            meta_result = evaluate_all(lookback_df)
+            signal = meta_result.signal
+        elif strategy_id == "old_router":
+            # ── Old winner-takes-all via route_strategy ─────────
+            router_result = route_strategy(lookback_df)
+            signal = router_result.signal
+        elif strat_info:
             signal = strat_info.evaluate(lookback_df)
         elif use_router:
             router_result = route_strategy(lookback_df)
