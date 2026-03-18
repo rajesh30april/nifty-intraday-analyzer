@@ -845,20 +845,28 @@ def evaluate_and_act(df, current_price: float):
                 _manage_active_trade(current_price, source="🕯 candle")
         # Log trail move so it appears in the UI event log
         if state.active_trade and state.active_trade.stop_loss != sl_before:
-            new_sl_prem = _nifty_to_option_premium(state.active_trade.stop_loss, state.active_trade)
-            _log("📈", "Trail SL moved",
-                 f"Nifty SL ₹{sl_before:.0f}→₹{state.active_trade.stop_loss:.0f} "
-                 f"| Prem SL ₹{new_sl_prem:.1f}")
+            t            = state.active_trade
+            old_sl_prem  = _nifty_to_option_premium(sl_before, t)
+            new_sl_prem  = _nifty_to_option_premium(t.stop_loss, t)
+            new_tgt_prem = _nifty_to_option_premium(t.target, t) if t.target else None
+            ltp_val      = state.last_option_ltp
+            tgt_part = (' | Target ₹' + f'{new_tgt_prem:.1f}') if new_tgt_prem else ''
+            ltp_part = (' | LTP ₹'    + f'{ltp_val:.1f}')      if ltp_val      else ''
+            _log('\U0001f4c8', 'Trail SL moved',
+                 'SL Prem ₹' + f'{old_sl_prem:.1f}->₹{new_sl_prem:.1f}'
+                 + tgt_part + ltp_part + ' (Nifty ₹' + f'{current_price:.0f})')
         # ── Refresh live option LTP for unrealized P&L display ────
         if state.active_trade:
-            sym = state.active_trade.instrument.replace("NFO:", "")
+            t   = state.active_trade
+            sym = t.instrument.replace('NFO:', '')
             ltp = kite_manager.get_option_ltp(sym)
             if ltp and ltp > 0:
                 state.last_option_ltp = ltp
-                _log("💰", "LTP refresh",
-                     f"Opt ₹{ltp:.2f} | Prem SL ₹{_nifty_to_option_premium(state.active_trade.stop_loss, state.active_trade):.1f} "
-                     f"| Tgt ₹{_nifty_to_option_premium(state.active_trade.target, state.active_trade):.1f}"
-                     if state.active_trade.target else f"Opt ₹{ltp:.2f}")
+                prem_sl  = _nifty_to_option_premium(t.stop_loss, t)
+                prem_tgt = _nifty_to_option_premium(t.target, t) if t.target else None
+                tgt_part = (' | Target ₹' + f'{prem_tgt:.1f}') if prem_tgt else ''
+                _log('\U0001f4b0', 'LTP refresh',
+                     'LTP ₹' + f'{ltp:.1f} | SL ₹{prem_sl:.1f}' + tgt_part + ' | Entry ₹' + f'{t.entry_premium:.1f}')
         # ── Candle-close SL sync: belt-and-suspenders on top of the 10s worker ──
         _sync_trailing_sl_to_exchange()   # no-op if worker already cleared the flag
         return
@@ -1015,8 +1023,11 @@ def _enter_trade(direction: Direction, price: float):
     lots = max(1, qty // LOT_SIZE)
     print(f"🚀 [{mode}] ENTRY {direction.value.upper()} {qty}x {symbol} "
           f"@ ₹{price} | SL: ₹{sl:.0f} (−{sl_pts}pts) | Target: ₹{target:.0f} (R:R 1:{rr})")
-    _log("🚀", f"ENTRY {direction.value.upper()}",
-         f"Nifty ₹{price:.0f} | SL ₹{sl:.0f} | Tgt ₹{target:.0f} | {lots}L ({qty}u) | Prem ₹{entry_premium:.2f}")
+    prem_sl  = _nifty_to_option_premium(sl, trade)
+    prem_tgt = _nifty_to_option_premium(target, trade) if target else None
+    tgt_part = (' | Target ₹' + f'{prem_tgt:.1f}') if prem_tgt else ''
+    _log('\U0001f680', f'ENTRY {direction.value.upper()}',
+         'Entry ₹' + f'{entry_premium:.1f} | SL ₹{prem_sl:.1f}' + tgt_part + f' | {lots}L ({qty}u) | Nifty ₹{price:.0f}')
 
     # ── Place SL-M backstop at exchange immediately after entry ───
     # Crash protection: if app dies, exchange still holds this order.
@@ -1068,14 +1079,26 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
             trade.stop_loss = round(new_sl, 2)
             state.pending_sl_exchange_update = True
             _save_state_snapshot()
-            _log("🔼", "Trail SL moved UP", f"New SL ₹{trade.stop_loss:.0f} | Nifty ₹{current_price:.0f}")
+            prem_sl  = _nifty_to_option_premium(trade.stop_loss, trade)
+            prem_tgt = _nifty_to_option_premium(trade.target, trade) if trade.target else None
+            ltp_val  = state.last_option_ltp
+            tgt_part = (' | Target ₹' + f'{prem_tgt:.1f}') if prem_tgt else ''
+            ltp_part = (' | LTP ₹'    + f'{ltp_val:.1f}') if ltp_val else ''
+            _log('\U0001f53c', 'Trail SL moved UP',
+                 'SL Prem ₹' + f'{prem_sl:.1f}' + tgt_part + ltp_part + ' (Nifty ₹' + f'{current_price:.0f})')
     else:
         new_sl = state.lowest_price_since_entry + state.trailing_sl_points
         if new_sl < trade.stop_loss:
             trade.stop_loss = round(new_sl, 2)
             state.pending_sl_exchange_update = True
             _save_state_snapshot()
-            _log("🔽", "Trail SL moved DOWN", f"New SL ₹{trade.stop_loss:.0f} | Nifty ₹{current_price:.0f}")
+            prem_sl  = _nifty_to_option_premium(trade.stop_loss, trade)
+            prem_tgt = _nifty_to_option_premium(trade.target, trade) if trade.target else None
+            ltp_val  = state.last_option_ltp
+            tgt_part = (' | Target ₹' + f'{prem_tgt:.1f}') if prem_tgt else ''
+            ltp_part = (' | LTP ₹'    + f'{ltp_val:.1f}') if ltp_val else ''
+            _log('\U0001f53d', 'Trail SL moved DOWN',
+                 'SL Prem ₹' + f'{prem_sl:.1f}' + tgt_part + ltp_part + ' (Nifty ₹' + f'{current_price:.0f})')
 
     # Check stop-loss hit
     if is_long and current_price <= trade.stop_loss:
