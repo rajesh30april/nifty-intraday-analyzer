@@ -92,6 +92,8 @@ class TraderState:
     entry_option_trigger:    float = 0.0   # original option trigger at entry
     pending_sl_exchange_update: bool = False  # tick sets → candle loop clears
     exit_in_progress: bool = False             # debounce: prevent double-exit on rapid ticks
+    last_exit_time: datetime | None = None     # when last trade exited — for cooldown
+    last_exit_direction: str | None = None    # direction of last exit — for same-dir filter
     last_evaluation: str = ""
     last_signal_reason: str = ""
     last_conditions: list[dict] = field(default_factory=list)
@@ -209,6 +211,9 @@ def _save_state_snapshot():
         "capital":            state.capital,
         "strike_offset":      state.strike_offset,
         "max_trades_per_day": state.max_trades_per_day,
+        # cooldown — survive restarts so re-entry filter stays intact
+        "last_exit_time":      state.last_exit_time.isoformat() if state.last_exit_time else None,
+        "last_exit_direction": state.last_exit_direction,
         # active_trade stored with full detail (includes sl_order_id for crash cancel)
         "active_trade": _trade_to_dict(active) if active else None,
         # Only completed trades — avoids double-counting on recovery
@@ -258,9 +263,34 @@ def _recover_state(snapshot_file: Path | None = None):
 
     # ── Restore base counters ─────────────────────────────────
     state.total_pnl         = snap.get("total_pnl", 0.0)
-    state.orders_placed     = snap.get("orders_placed", 0)
     state.is_paper_mode     = not LIVE_TRADING  # always from env — never let snapshot override this
     state.selected_strategy = snap.get("selected_strategy", "smart_router")
+
+    # orders_placed: cross-check against trade_log.json for today
+    # so restarts don't reset the daily trade counter
+    try:
+        if TRADE_LOG_FILE.exists():
+            log_data  = json.loads(TRADE_LOG_FILE.read_text(encoding="utf-8"))
+            log_today = log_data.get("date", "")
+            if log_today == today:
+                # Count all trades (including fills) from today's log
+                state.orders_placed = len(log_data.get("trades", []))
+            else:
+                state.orders_placed = snap.get("orders_placed", 0)
+        else:
+            state.orders_placed = snap.get("orders_placed", 0)
+    except Exception:
+        state.orders_placed = snap.get("orders_placed", 0)
+    print(f"♻️  orders_placed restored from log: {state.orders_placed}")
+
+    # Restore cooldown so a restart mid-cooldown doesn't bypass the filter
+    last_exit_raw = snap.get("last_exit_time")
+    if last_exit_raw:
+        try:
+            state.last_exit_time      = datetime.fromisoformat(last_exit_raw)
+            state.last_exit_direction = snap.get("last_exit_direction")
+        except (ValueError, TypeError):
+            pass
 
     # ── Restore runtime trade settings ───────────────────────
     state.sl_points          = snap.get("sl_points",          SL_POINTS)
@@ -395,6 +425,10 @@ def _now_time() -> dt_time:
     return datetime.now().time()
 
 
+# Cooldown between trades — prevents rapid-fire re-entry on same signal
+COOLDOWN_MINUTES = int(os.getenv("COOLDOWN_MINUTES", "15"))
+
+
 def _check_safety() -> tuple[bool, str]:
     """Check all safety limits before placing an order."""
     if state.kill_switch:
@@ -411,9 +445,17 @@ def _check_safety() -> tuple[bool, str]:
         return False, f"Past exit time ({EXIT_TIME.strftime('%H:%M')})"
 
     # No trading in first 3 minutes
-    market_open = dt_time(9, 15)
     if now < dt_time(9, 18):
         return False, "Too early — waiting for market to settle (first 3 min)"
+
+    # ── Post-exit cooldown ────────────────────────────────────────
+    # After any exit, wait COOLDOWN_MINUTES before re-entering.
+    # Prevents chasing a trending instrument that already hit SL.
+    if state.last_exit_time is not None:
+        elapsed = (datetime.now() - state.last_exit_time).total_seconds() / 60
+        if elapsed < COOLDOWN_MINUTES:
+            remaining = int(COOLDOWN_MINUTES - elapsed)
+            return False, f"Cooldown: {remaining}m left after last exit (wait {COOLDOWN_MINUTES}m)"
 
     return True, "All safety checks passed"
 
@@ -795,9 +837,11 @@ def _exit_position(reason: str, current_price: float):
     trade.pnl          = round(pnl, 2)
     trade.status       = OrderStatus.EXITED
 
-    state.total_pnl       += pnl
-    state.active_trade     = None
-    state.exit_in_progress = False   # exit completed — reset debounce
+    state.total_pnl         += pnl
+    state.active_trade       = None
+    state.exit_in_progress   = False          # exit completed — reset debounce
+    state.last_exit_time      = datetime.now() # cooldown starts now
+    state.last_exit_direction = trade.direction
 
     mode  = "📝 PAPER" if trade.paper else "🟢 LIVE"
     emoji = "🟢" if pnl >= 0 else "🔴"
@@ -1361,6 +1405,11 @@ def get_trader_status() -> dict:
         "trailing_sl_points": TRAILING_SL_POINTS,
         "selected_strategy": state.selected_strategy,
         "block_reason":     state.last_block_reason,
+        "cooldown_minutes":  COOLDOWN_MINUTES,
+        "cooldown_remaining": (
+            max(0, round(COOLDOWN_MINUTES - (datetime.now() - state.last_exit_time).total_seconds() / 60, 1))
+            if state.last_exit_time else 0
+        ),
         "recovery_mode":    state.recovery_mode,
         "recovery_type":    state.recovery_type,
         "recovery_message": state.recovery_message,
