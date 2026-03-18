@@ -11,7 +11,8 @@ import time as _time
 from datetime import datetime
 
 import numpy as np
-from fastapi import FastAPI, Request, Query
+from pathlib import Path
+from fastapi import FastAPI, Request, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -1012,6 +1013,39 @@ async def replay_day_api(
         return {"success": True, **result}
     except Exception as e:
         traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+# ── Trade Report routes ────────────────────────────────────────────────────
+
+@app.get("/report", response_class=HTMLResponse)
+async def trade_report_page(request: Request):
+    """Full trade analysis report page."""
+    from fastapi.templating import Jinja2Templates
+    templates_local = Jinja2Templates(directory="templates")
+    return templates_local.TemplateResponse("trade_report.html", {"request": request})
+
+
+@app.get("/api/report/app-trades")
+async def get_app_trades():
+    """Return trades from the app's trade log with pattern analysis."""
+    from trade_report import load_app_trade_log, analyse
+    log_path = Path(__file__).parent / "trade_log.json"
+    trades = load_app_trade_log(log_path)
+    return {"success": True, "data": analyse(trades), "count": len(trades)}
+
+
+@app.post("/api/report/upload-csv")
+async def upload_zerodha_csv(file: UploadFile):
+    """Upload Zerodha Console tradebook CSV → analyse all historical trades."""
+    from trade_report import parse_zerodha_csv, pair_legs_into_trades, analyse
+    try:
+        content = (await file.read()).decode("utf-8", errors="replace")
+        legs    = parse_zerodha_csv(content)
+        trades  = pair_legs_into_trades(legs)
+        result  = analyse(trades)
+        return {"success": True, "data": result, "count": len(trades), "legs": len(legs)}
+    except Exception as e:
         return {"success": False, "error": str(e)}
 
 

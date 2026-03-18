@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Report — Nifty Analyzer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  body { background:#0f172a; color:#e2e8f0; font-family:'Inter',sans-serif; }
+  .card { background:#1e293b; border:1px solid #334155; border-radius:12px; padding:20px; }
+  .stat-card { background:#1e293b; border:1px solid #334155; border-radius:10px; padding:16px; }
+  .win  { color:#22c55e; } .loss { color:#ef4444; } .neutral { color:#94a3b8; }
+  .badge-win  { background:#14532d33; color:#22c55e; border:1px solid #166534; }
+  .badge-loss { background:#7f1d1d33; color:#ef4444; border:1px solid #991b1b; }
+  .badge-neu  { background:#1e40af33; color:#60a5fa; border:1px solid #1e40af; }
+  .chart-wrap { position:relative; height:260px; }
+  .upload-zone { border:2px dashed #334155; border-radius:12px; padding:40px; text-align:center; transition:border-color .2s; cursor:pointer; }
+  .upload-zone:hover, .upload-zone.drag { border-color:#0053e2; background:#0053e210; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th { background:#0f172a; color:#94a3b8; padding:8px 10px; text-align:left; position:sticky; top:0; }
+  td { padding:7px 10px; border-bottom:1px solid #1e293b; }
+  tr:hover td { background:#1e293b88; }
+  .tab { cursor:pointer; padding:8px 18px; border-radius:8px; font-size:13px; font-weight:600; color:#94a3b8; transition:.2s; }
+  .tab.active { background:#0053e2; color:#fff; }
+  .insight-box { background:#0053e210; border:1px solid #0053e240; border-radius:10px; padding:14px; }
+</style>
+</head>
+<body class="p-4 md:p-8">
+
+<!-- Header -->
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-black text-white">📊 Trade Report</h1>
+    <p class="text-sm text-slate-400 mt-1">Pattern analysis — what worked &amp; what didn't</p>
+  </div>
+  <a href="/" class="text-xs text-blue-400 hover:text-blue-300 border border-blue-800 px-3 py-1.5 rounded-lg">← Back to App</a>
+</div>
+
+<!-- Source tabs -->
+<div class="flex gap-2 mb-6" id="source-tabs">
+  <div class="tab active" onclick="switchSource('app')" id="tab-app">📱 Today's App Trades</div>
+  <div class="tab" onclick="switchSource('csv')" id="tab-csv">📂 Upload Zerodha CSV</div>
+</div>
+
+<!-- CSV upload panel -->
+<div id="csv-panel" class="hidden mb-6">
+  <div class="card">
+    <h3 class="font-bold text-white mb-1">Upload Zerodha Tradebook CSV</h3>
+    <p class="text-xs text-slate-400 mb-4">Download from: <span class="text-blue-400">Zerodha Console → Reports → Tradebook → Download CSV</span></p>
+    <div class="upload-zone" id="upload-zone" onclick="document.getElementById('csv-input').click()">
+      <div class="text-4xl mb-3">📤</div>
+      <p class="text-slate-300 font-semibold">Click to upload or drag & drop</p>
+      <p class="text-slate-500 text-xs mt-1">Zerodha tradebook CSV file</p>
+      <input type="file" id="csv-input" accept=".csv" class="hidden" onchange="handleFile(this)">
+    </div>
+    <div id="upload-status" class="mt-3 text-sm hidden"></div>
+  </div>
+</div>
+
+<!-- Loading -->
+<div id="loading" class="text-center py-20">
+  <div class="text-4xl mb-4 animate-pulse">📊</div>
+  <p class="text-slate-400">Loading trade data…</p>
+</div>
+
+<!-- Main report -->
+<div id="report" class="hidden space-y-6">
+
+  <!-- Insight banner -->
+  <div class="insight-box" id="insight-banner"></div>
+
+  <!-- Summary stats -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="stat-cards"></div>
+
+  <!-- Charts row -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="card">
+      <h3 class="font-bold text-white mb-3">P&amp;L Per Trade</h3>
+      <div class="chart-wrap"><canvas id="chart-pnl"></canvas></div>
+    </div>
+    <div class="card">
+      <h3 class="font-bold text-white mb-3">Win Rate by Time of Day</h3>
+      <div class="chart-wrap"><canvas id="chart-time"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="card">
+      <h3 class="font-bold text-white mb-3">Direction (CE/PE)</h3>
+      <div class="chart-wrap" style="height:180px"><canvas id="chart-dir"></canvas></div>
+    </div>
+    <div class="card">
+      <h3 class="font-bold text-white mb-3">By Day of Week</h3>
+      <div class="chart-wrap" style="height:180px"><canvas id="chart-dow"></canvas></div>
+    </div>
+    <div class="card">
+      <h3 class="font-bold text-white mb-3">Option Type</h3>
+      <div class="chart-wrap" style="height:180px"><canvas id="chart-opt"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Pattern table -->
+  <div class="card">
+    <h3 class="font-bold text-white mb-4">Pattern Breakdown</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <h4 class="text-xs font-bold text-slate-400 uppercase mb-2">✅ What Worked</h4>
+        <div id="what-worked" class="space-y-2"></div>
+      </div>
+      <div>
+        <h4 class="text-xs font-bold text-slate-400 uppercase mb-2">❌ What Didn't</h4>
+        <div id="what-didnt" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trade table -->
+  <div class="card">
+    <h3 class="font-bold text-white mb-3">All Trades</h3>
+    <div class="overflow-auto max-h-80">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Date</th><th>Time</th><th>Instrument</th>
+            <th>Dir</th><th>Entry ₹</th><th>Exit ₹</th><th>Qty</th>
+            <th>Duration</th><th>P&amp;L</th><th>Exit Reason</th>
+          </tr>
+        </thead>
+        <tbody id="trade-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let charts = {};
+let currentData = null;
+
+// ── Source switcher ─────────────────────────────────────────────────────────
+function switchSource(src) {
+  document.getElementById('tab-app').classList.toggle('active', src === 'app');
+  document.getElementById('tab-csv').classList.toggle('active', src === 'csv');
+  document.getElementById('csv-panel').classList.toggle('hidden', src !== 'csv');
+  if (src === 'app') loadAppTrades();
+  else { document.getElementById('report').classList.add('hidden'); document.getElementById('loading').classList.add('hidden'); }
+}
+
+// ── Load app trades ─────────────────────────────────────────────────────────
+async function loadAppTrades() {
+  showLoading();
+  try {
+    const r = await fetch('/api/report/app-trades');
+    const j = await r.json();
+    if (j.success && j.data && j.data.trades) renderReport(j.data);
+    else showEmpty('No trades found in today\'s app log.');
+  } catch(e) { showEmpty('Error loading trades: ' + e.message); }
+}
+
+// ── CSV upload ───────────────────────────────────────────────────────────────
+const zone = document.getElementById('upload-zone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+zone.addEventListener('drop', e => {
+  e.preventDefault(); zone.classList.remove('drag');
+  if (e.dataTransfer.files[0]) uploadCSV(e.dataTransfer.files[0]);
+});
+
+function handleFile(input) {
+  if (input.files[0]) uploadCSV(input.files[0]);
+}
+
+async function uploadCSV(file) {
+  const status = document.getElementById('upload-status');
+  status.className = 'mt-3 text-sm text-blue-400';
+  status.textContent = '⏳ Uploading and analysing…';
+  status.classList.remove('hidden');
+  showLoading();
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch('/api/report/upload-csv', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (j.success) {
+      status.className = 'mt-3 text-sm text-green-400';
+      status.textContent = `✅ Parsed ${j.legs} legs → ${j.count} trades`;
+      renderReport(j.data);
+    } else {
+      status.className = 'mt-3 text-sm text-red-400';
+      status.textContent = '❌ ' + j.error;
+      showEmpty(j.error);
+    }
+  } catch(e) {
+    status.className = 'mt-3 text-sm text-red-400';
+    status.textContent = '❌ Upload failed: ' + e.message;
+    showEmpty(e.message);
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function showLoading() {
+  document.getElementById('loading').classList.remove('hidden');
+  document.getElementById('report').classList.add('hidden');
+}
+function showEmpty(msg) {
+  document.getElementById('loading').innerHTML =
+    `<div class="text-4xl mb-4">🕳</div><p class="text-slate-400">${msg}</p>`;
+  document.getElementById('loading').classList.remove('hidden');
+  document.getElementById('report').classList.add('hidden');
+}
+function fmt(n) { return n >= 0 ? `+₹${n.toLocaleString('en-IN', {maximumFractionDigits:0})}` : `-₹${Math.abs(n).toLocaleString('en-IN', {maximumFractionDigits:0})}`; }
+function fmtN(n) { return n >= 0 ? `<span class="win">${fmt(n)}</span>` : `<span class="loss">${fmt(n)}</span>`; }
+const DAYS_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function renderReport(data) {
+  currentData = data;
+  document.getElementById('loading').classList.add('hidden');
+  document.getElementById('report').classList.remove('hidden');
+
+  renderInsight(data);
+  renderStats(data.summary);
+  renderPnlChart(data.trades);
+  renderTimeChart(data.by_time);
+  renderDirChart(data.by_direction);
+  renderDowChart(data.by_day);
+  renderOptChart(data.by_opt_type);
+  renderPatternTable(data);
+  renderTradeTable(data.trades);
+}
+
+function renderInsight(data) {
+  const s = data.summary;
+  const lines = [];
+  if (s.win_rate >= 60) lines.push(`🟢 Win rate <b>${s.win_rate}%</b> — edge exists, keep refining.`);
+  else if (s.win_rate >= 45) lines.push(`🟡 Win rate <b>${s.win_rate}%</b> — marginal edge. Focus on R:R.`);
+  else lines.push(`🔴 Win rate <b>${s.win_rate}%</b> — no clear edge yet. Review entry signals.`);
+
+  if (s.profit_factor && s.profit_factor >= 1.5) lines.push(`💪 Profit factor <b>${s.profit_factor}</b> — winners outpace losers significantly.`);
+  else if (s.profit_factor) lines.push(`⚠️ Profit factor <b>${s.profit_factor}</b> — need bigger winners or smaller losses.`);
+
+  // Best time
+  const byTime = data.by_time;
+  const bestTime = Object.entries(byTime).sort((a,b) => b[1].pnl - a[1].pnl)[0];
+  const worstTime = Object.entries(byTime).sort((a,b) => a[1].pnl - b[1].pnl)[0];
+  if (bestTime) lines.push(`⏰ Best trading time: <b>${bestTime[0]}</b> (${fmt(bestTime[1].pnl)}, ${bestTime[1].win_rate}% WR)`);
+  if (worstTime && worstTime[0] !== bestTime[0]) lines.push(`🚫 Avoid: <b>${worstTime[0]}</b> (${fmt(worstTime[1].pnl)}, ${worstTime[1].win_rate}% WR)`);
+
+  document.getElementById('insight-banner').innerHTML =
+    `<h3 class="font-bold text-blue-300 mb-2">🧠 Key Insights</h3>` +
+    lines.map(l => `<p class="text-sm text-slate-300 mb-1">• ${l}</p>`).join('');
+}
+
+function renderStats(s) {
+  const cards = [
+    { label:'Total Trades', value: s.total_trades, sub: `${s.winners}W / ${s.losers}L`, cls:'neutral' },
+    { label:'Win Rate',     value: s.win_rate+'%', sub: s.profit_factor ? `PF: ${s.profit_factor}` : '', cls: s.win_rate>=50?'win':'loss' },
+    { label:'Total P&L',    value: fmt(s.total_pnl), sub: '', cls: s.total_pnl>=0?'win':'loss' },
+    { label:'Avg Winner',   value: fmt(s.avg_win),   sub: `Avg Loss: ${fmt(s.avg_loss)}`, cls:'win' },
+    { label:'Best Trade',   value: fmt(s.best_trade), sub: '', cls:'win' },
+    { label:'Worst Trade',  value: fmt(s.worst_trade), sub: '', cls:'loss' },
+    { label:'Avg Duration', value: s.avg_duration ? s.avg_duration+'m' : 'N/A', sub: '', cls:'neutral' },
+  ];
+  document.getElementById('stat-cards').innerHTML = cards.map(c =>
+    `<div class="stat-card">
+      <div class="text-xs text-slate-400 mb-1">${c.label}</div>
+      <div class="text-xl font-black ${c.cls}">${c.value}</div>
+      ${c.sub ? `<div class="text-xs text-slate-500 mt-0.5">${c.sub}</div>` : ''}
+    </div>`
+  ).join('');
+}
+
+function destroyChart(id) { if(charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+function renderPnlChart(trades) {
+  destroyChart('pnl');
+  const labels = trades.map((t,i) => `#${i+1} ${t.entry_time||''}`);
+  const values = trades.map(t => t.pnl);
+  const colors = values.map(v => v >= 0 ? '#22c55e88' : '#ef444488');
+  const borders = values.map(v => v >= 0 ? '#22c55e' : '#ef4444');
+  charts['pnl'] = new Chart(document.getElementById('chart-pnl'), {
+    type:'bar',
+    data:{ labels, datasets:[{ data:values, backgroundColor:colors, borderColor:borders, borderWidth:1.5, borderRadius:4 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{color:'#94a3b8',font:{size:9}},grid:{color:'#1e293b'}},
+               y:{ticks:{color:'#94a3b8',font:{size:9},callback:v=>fmt(v)},grid:{color:'#334155'}} } }
+  });
+}
+
+function renderTimeChart(byTime) {
+  destroyChart('time');
+  const labels = Object.keys(byTime);
+  const winRates = labels.map(k => byTime[k].win_rate);
+  const pnls = labels.map(k => byTime[k].pnl);
+  charts['time'] = new Chart(document.getElementById('chart-time'), {
+    type:'bar',
+    data:{ labels, datasets:[
+      { label:'Win Rate %', data:winRates, backgroundColor:'#0053e288', borderColor:'#0053e2', borderWidth:1.5, borderRadius:4, yAxisID:'y' },
+      { label:'P&L', data:pnls, type:'line', borderColor:'#ffc220', backgroundColor:'transparent', pointBackgroundColor:'#ffc220', tension:0.3, yAxisID:'y1' }
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#94a3b8',font:{size:10}}}},
+      scales:{
+        x:{ticks:{color:'#94a3b8',font:{size:8}},grid:{color:'#1e293b'}},
+        y:{ticks:{color:'#94a3b8',font:{size:9},callback:v=>v+'%'},grid:{color:'#334155'},max:100,min:0},
+        y1:{position:'right',ticks:{color:'#ffc220',font:{size:9},callback:v=>fmt(v)},grid:{display:false}}
+      }
+    }
+  });
+}
+
+function miniBarChart(canvasId, labels, values, color) {
+  destroyChart(canvasId);
+  const colors = values.map(v => v >= 0 ? '#22c55e88' : '#ef444488');
+  const borders = values.map(v => v >= 0 ? '#22c55e' : '#ef4444');
+  charts[canvasId] = new Chart(document.getElementById('chart-'+canvasId), {
+    type:'bar',
+    data:{ labels, datasets:[{ data:values, backgroundColor: color?color+'88':colors, borderColor:color||borders, borderWidth:1.5, borderRadius:4 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{color:'#94a3b8',font:{size:9}},grid:{color:'#1e293b'}},
+               y:{ticks:{color:'#94a3b8',font:{size:9},callback:v=>fmt(v)},grid:{color:'#334155'}} } }
+  });
+}
+
+function renderDirChart(byDir) {
+  const labels = Object.keys(byDir);
+  miniBarChart('dir', labels, labels.map(k=>byDir[k].pnl));
+}
+function renderDowChart(byDow) {
+  const labels = DAYS_ORDER.filter(d => byDow[d]);
+  miniBarChart('dow', labels, labels.map(k=>byDow[k].pnl), '#0053e2');
+}
+function renderOptChart(byOpt) {
+  const labels = Object.keys(byOpt);
+  miniBarChart('opt', labels, labels.map(k=>byOpt[k].pnl), '#ffc220');
+}
+
+function renderPatternTable(data) {
+  const good = [], bad = [];
+  const sections = [
+    ['by_time','Time'],['by_direction','Direction'],['by_day','Day'],['by_opt_type','Option']
+  ];
+  sections.forEach(([key, label]) => {
+    Object.entries(data[key]||{}).forEach(([k,v]) => {
+      const item = `<div class="flex justify-between items-center text-xs p-2 rounded-lg ${
+        v.pnl>=0?'badge-win':'badge-loss'}"><span>${label}: <b>${k}</b></span><span>${fmt(v.pnl)} | ${v.win_rate}% WR | ${v.total}T</span></div>`;
+      if(v.pnl>=0 && v.total>=1) good.push({pnl:v.pnl, html:item});
+      else if(v.pnl<0 && v.total>=1) bad.push({pnl:v.pnl, html:item});
+    });
+  });
+  good.sort((a,b)=>b.pnl-a.pnl);
+  bad.sort((a,b)=>a.pnl-b.pnl);
+  document.getElementById('what-worked').innerHTML = good.length ? good.map(x=>x.html).join('') : '<p class="text-slate-500 text-xs">No winning patterns yet</p>';
+  document.getElementById('what-didnt').innerHTML = bad.length ? bad.map(x=>x.html).join('') : '<p class="text-slate-500 text-xs">No losing patterns</p>';
+}
+
+function renderTradeTable(trades) {
+  document.getElementById('trade-rows').innerHTML = trades.map((t,i) =>
+    `<tr>
+      <td class="text-slate-500">${i+1}</td>
+      <td>${t.entry_date}</td>
+      <td>${t.entry_time}</td>
+      <td class="font-mono text-xs">${t.security}</td>
+      <td><span class="px-2 py-0.5 rounded text-xs font-bold ${
+        t.direction==='LONG'?'bg-green-900 text-green-300':'bg-red-900 text-red-300'
+      }">${t.direction}</span></td>
+      <td>₹${t.entry_price}</td>
+      <td>₹${t.exit_price}</td>
+      <td>${t.qty?.toLocaleString()}</td>
+      <td class="text-slate-400">${t.duration_min!=null?t.duration_min+'m':'-'}</td>
+      <td class="font-bold ${t.won?'win':'loss'}">${fmt(t.pnl)}</td>
+      <td class="text-slate-400 text-xs max-w-xs truncate">${t.exit_reason||'-'}</td>
+    </tr>`
+  ).join('');
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+loadAppTrades();
+</script>
+</body>
+</html>
