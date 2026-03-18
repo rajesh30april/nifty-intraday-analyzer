@@ -1,17 +1,20 @@
-"""Strategy Meta Router — Evaluate ALL strategies, pick the best one.
+"""Strategy Meta Router — Evaluate ALL strategies, best score wins.
 
-Instead of hard-coding which strategy to run, this evaluates every
-registered strategy before each trade and picks the one with the
-highest composite score:
+Every registered strategy is scored each candle:
 
-    composite = confidence × regime_fit × time_bonus
+    composite = confidence × regime_fit × time_bonus × vix_boost
 
-This means:
-- Trend strategies score higher when ADX is strong
-- Reversal / OCF strategies score higher when market is choppy
-- OCF gets a big time bonus at 9:20 (its exact window)
-- ORB gets a time bonus after 9:30
-- No strategy ever fires blindly — all conditions must pass
+Highest composite that exceeds MIN_ENTRY_SCORE gets the trade. Simple.
+
+Priority is baked into the score:
+- Trending market  → trend/breakout strategies get 1.3-1.4× regime boost
+- Sideways market  → reversal/scalping get 1.3-1.4× regime boost
+- 9:20 candle      → OCF gets 2.0× time bonus, naturally dominates
+- 9:30-10:30       → ORB gets 1.3× time bonus
+- High VIX (>20)   → breakout strategies get extra 1.25× vix boost
+- Low VIX (<14)    → scalping/reversal get extra boost
+
+No committees. No voting. No ratio checks. Best strategy wins every candle.
 """
 
 from __future__ import annotations
@@ -228,62 +231,50 @@ def evaluate_all(df: pd.DataFrame) -> MetaRouterResult:
     # Sort by composite score descending
     candidates.sort(key=lambda x: x["composite"], reverse=True)
 
-    return _consensus_pick(candidates, regime, regime_result, current_vix, df)
+    return _priority_pick(candidates, regime, regime_result, current_vix)
 
 
-# ── Consensus thresholds (tune these if too many / too few trades) ─
-# MIN_SCORE:       a strategy must score at least this to count as a vote
-# MIN_VOTE_SCORE:  the winning direction's total must reach this
-# MIN_RATIO:       winning direction must outvote the other by this factor
-# MIN_AGREEING:    at least N strategiesvote the same direction
-MIN_SCORE        = 60    # individual strategy minimum to count as a vote
-MIN_VOTE_SCORE   = 100   # total directional vote score needed
-MIN_RATIO        = 1.5   # e.g. LONG 180 vs SHORT 100 → ratio 1.8 ✅
-MIN_AGREEING     = 2     # at least 2 strategies must agree
+# ── Single gate: minimum composite score to enter ─────────────────────────────
+# Keeps truly weak signals out without needing multi-strategy consensus.
+# A strategy scoring below this is saying "I see something but barely" — skip it.
+# Tune upward (→ 80) for fewer trades, downward (→ 40) for more.
+MIN_ENTRY_SCORE = 60
 
 
-def _consensus_pick(
+def _priority_pick(
     candidates: list[dict],
     regime: MarketRegime,
     regime_result,
     current_vix: float,
-    df: pd.DataFrame,
 ) -> MetaRouterResult:
-    """Directional vote consensus.
+    """Best score wins — highest composite that passes MIN_ENTRY_SCORE takes the trade.
 
-    Instead of letting ONE strategy win, we tally scores by direction.
-    Both LONG and SHORT voters must earn their way in:
-      - individual score  >= MIN_SCORE      (no weak signals)
-      - winning direction >= MIN_VOTE_SCORE (enough conviction)
-      - winning / losing  >= MIN_RATIO      (clear majority)
-      - at least           MIN_AGREEING strategies agree
+    The scoring formula already handles priority:
+        composite = confidence × regime_fit × time_mult × vix_boost
 
-    This prevents a single high-confidence contrarian strategy
-    from overriding all the other evidence.
+    So naturally:
+      - Trending market  → trend/breakout strategies score highest
+      - Sideways market  → reversal/scalping strategies score highest
+      - 9:20 candle      → OCF gets 2× bonus, dominates
+      - 9:30-10:30       → ORB gets 1.3× bonus
+      - High VIX         → breakout strategies get extra boost
+
+    No voting. No ratios. No committees. Best score wins.
     """
-    from strategy import Direction  # noqa: PLC0415
-
     vix_tag = f"VIX={current_vix:.1f}"
 
-    # Only strategies that WANT to enter AND score high enough get a vote
-    voters = [
+    # Eligible: must want to enter, not time-blocked, score above minimum
+    entry_candidates = [
         c for c in candidates
         if c["should_enter"]
         and c["time_mult"] > 0
-        and c["composite"] >= MIN_SCORE
+        and c["composite"] >= MIN_ENTRY_SCORE
     ]
 
-    long_voters  = [c for c in voters if c["direction"] == Direction.LONG]
-    short_voters = [c for c in voters if c["direction"] == Direction.SHORT]
+    top = candidates[0] if candidates else None
 
-    long_score  = sum(c["composite"] for c in long_voters)
-    short_score = sum(c["composite"] for c in short_voters)
-
-    # Volume confirmation — avoid entering on thin candles
-    vol_ok, vol_note = _volume_ok(df)
-
-    def _no_entry(why: str) -> MetaRouterResult:
-        top = candidates[0] if candidates else None
+    if not entry_candidates:
+        best_score = top["composite"] if top else 0
         return MetaRouterResult(
             regime=regime.value,
             regime_detail=regime_result.detail,
@@ -293,120 +284,37 @@ def _consensus_pick(
             signal=StrategySignal(
                 should_enter=False,
                 reason=(
-                    f"[META: {regime.value.upper()}] {why} "
-                    f"| LONG {long_score:.0f} ({len(long_voters)} strats) "
-                    f"vs SHORT {short_score:.0f} ({len(short_voters)} strats) "
+                    f"[META: {regime.value.upper()}] No entry — "
+                    f"best score {best_score:.0f} < {MIN_ENTRY_SCORE} "
                     f"| {vix_tag}"
                 ),
             ),
             scores=candidates,
-            reason=why,
+            reason=f"No strategy reached min score {MIN_ENTRY_SCORE}",
         )
 
-    # Guard: no voters at all
-    if not voters:
-        return _no_entry("No strategy fired with score ≥ {MIN_SCORE}")
-
-    # Guard: volume too low
-    if not vol_ok:
-        return _no_entry(f"Low volume — {vol_note}")
-
-    # Determine winning direction
-    if long_score >= short_score:
-        win_dir, win_voters, win_score = Direction.LONG,  long_voters,  long_score
-        los_score                       =                               short_score
-    else:
-        win_dir, win_voters, win_score = Direction.SHORT, short_voters, short_score
-        los_score                       =                               long_score
-
-    ratio = win_score / los_score if los_score > 0 else 999
-
-    # Guard: not enough total conviction
-    if win_score < MIN_VOTE_SCORE:
-        return _no_entry(
-            f"Consensus too weak — winning dir score {win_score:.0f} < {MIN_VOTE_SCORE}"
-        )
-
-    # Guard: not enough strategies agree
-    if len(win_voters) < MIN_AGREEING:
-        return _no_entry(
-            f"Only {len(win_voters)} strat(s) agree on "
-            f"{'LONG' if win_dir==Direction.LONG else 'SHORT'} — need {MIN_AGREEING}"
-        )
-
-    # Guard: ratio too low (contested signal — market unclear)
-    if ratio < MIN_RATIO:
-        return _no_entry(
-            f"Contested — LONG {long_score:.0f} vs SHORT {short_score:.0f} "
-            f"(ratio {ratio:.1f}× < {MIN_RATIO}×)"
-        )
-
-    # ✅ Consensus reached — build signal from the top-scoring voter
-    top_voter = win_voters[0]  # highest composite in winning direction
-    sig = top_voter["signal"]
-    voter_names = ", ".join(
-        f"{c['emoji']}{c['name']} ({c['composite']:.0f})"
-        for c in win_voters
-    )
+    # ✅ Winner: highest composite score
+    winner = entry_candidates[0]
+    sig = winner["signal"]
     sig.reason = (
-        f"[META: {regime.value.upper()}] CONSENSUS {'LONG' if win_dir==Direction.LONG else 'SHORT'} "
-        f"| score {win_score:.0f} vs {los_score:.0f} (ratio {ratio:.1f}×) "
-        f"| {len(win_voters)} agree: {voter_names} "
-        f"| {vix_tag} | {vol_note}"
+        f"[META: {regime.value.upper()}] "
+        f"{winner['emoji']} {winner['name']} wins "
+        f"| score={winner['composite']:.0f} "
+        f"(conf={winner['confidence']:.0f}% "
+        f"× regime={winner['regime_fit']} "
+        f"× time={winner['time_mult']} "
+        f"× vix={winner.get('vix_boost', 1.0)}) "
+        f"| {vix_tag} | {sig.reason}"
     )
     return MetaRouterResult(
         regime=regime.value,
         regime_detail=regime_result.detail,
         adx=regime_result.adx,
-        selected_strategy=top_voter["name"],
-        selected_emoji=top_voter["emoji"],
+        selected_strategy=winner["name"],
+        selected_emoji=winner["emoji"],
         signal=sig,
         scores=candidates,
         reason=sig.reason,
-    )
-
-
-# Minimum candle body as % of ATR to confirm conviction.
-# Doji / spinning-top candles (tiny body) often signal indecision —
-# entering on them is a coin flip regardless of what indicators say.
-# Nifty 50 is a cash index (^NSEI) — Yahoo Finance never returns volume
-# for it, so we use candle-body-strength as the conviction proxy instead.
-MIN_BODY_ATR_PCT = 20  # body must be ≥ 20% of ATR  (0 = disabled)
-
-
-def _volume_ok(df: pd.DataFrame) -> tuple[bool, str]:
-    """Candle body strength check — replaces volume (unavailable on cash index).
-
-    A candle whose body is < MIN_BODY_ATR_PCT% of ATR is a doji/indecision
-    candle. Entering on those is low-conviction regardless of what the
-    indicators say.
-
-    Returns (ok, note) where note is shown in the event log.
-    """
-    if MIN_BODY_ATR_PCT <= 0 or len(df) < 15:
-        return True, "body-check=off"
-
-    import indicators as _ind  # noqa: PLC0415
-    atr_series  = _ind.atr(df["high"], df["low"], df["close"], period=14)
-    atr_val     = float(atr_series.iloc[-1])
-    if atr_val <= 0:
-        return True, "body-check=N/A"
-
-    last        = df.iloc[-1]
-    body        = abs(float(last["close"]) - float(last["open"]))
-    body_pct    = body / atr_val * 100
-    ok          = body_pct >= MIN_BODY_ATR_PCT
-    candle_type = "bullish" if last["close"] >= last["open"] else "bearish"
-    note        = f"body={body_pct:.0f}% of ATR ({candle_type})"
-    return ok, note
-
-
-def _empty_result(reason: str) -> MetaRouterResult:
-    return MetaRouterResult(
-        regime="unknown", regime_detail=reason, adx=0,
-        selected_strategy="none", selected_emoji="❓",
-        signal=StrategySignal(should_enter=False, reason=reason),
-        scores=[], reason=reason,
     )
 
 
