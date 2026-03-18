@@ -446,8 +446,16 @@ function renderAutoTrader(data) {
     const setT = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     const pnlEl = document.getElementById('at-pnl');
     if (pnlEl) {
-        pnlEl.textContent = `₹${data.total_pnl >= 0 ? '+' : ''}${data.total_pnl}`;
-        pnlEl.className   = `text-xs font-bold ${data.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+        // Day P&L = realized (closed trades) + unrealized (open trade if any)
+        const realized   = data.total_pnl || 0;
+        const unrealized = hasTrade ? (data.active_trade?.pnl_unrealized ?? 0) : 0;
+        const dayTotal   = realized + unrealized;
+        const sign       = dayTotal >= 0 ? '+' : '';
+        pnlEl.textContent = `₹${sign}${dayTotal.toLocaleString('en-IN', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+        pnlEl.className   = `text-xs font-bold ${dayTotal >= 0 ? 'text-green-400' : 'text-red-400'}`;
+        pnlEl.title       = unrealized !== 0
+            ? `Realized: ₹${realized >= 0 ? '+' : ''}${realized}  |  Unrealized: ₹${unrealized >= 0 ? '+' : ''}${unrealized}`
+            : `Realized P&L from ${data.trades_today ?? 0} trade(s) today`;
     }
     setT('at-orders',    `${data.orders_placed}/${data.max_orders}`);
     setT('at-exit-time', data.exit_time);
@@ -562,22 +570,28 @@ function renderAutoTrader(data) {
             }
         }
 
-        // Unrealized P&L — show ⏳ while option LTP hasn't loaded yet
+        // Unrealized P&L — live LTP preferred, delta estimate fallback
         const upnlEl = document.getElementById('at-upnl');
         if (upnlEl) {
             const hasLtp = t.current_option_ltp && t.current_option_ltp > 0;
             const hasEp  = t.entry_premium      && t.entry_premium > 0;
-            if (!hasLtp || !hasEp) {
-                // LTP not yet fetched — background loop will populate in ≤15s
-                upnlEl.textContent = '⏳ loading…';
-                upnlEl.className   = 'text-sm font-black text-gray-500';
-                upnlEl.title       = 'Option LTP refreshing (background task runs every 15s)';
-            } else {
-                const pnl = t.pnl_unrealized ?? 0;
-                const src = hasLtp ? '' : ' ~';
-                upnlEl.textContent = `${src}₹${pnl >= 0 ? '+' : ''}${pnl.toLocaleString('en-IN')}`;
+            const pnl    = t.pnl_unrealized ?? 0;
+
+            if (hasLtp && hasEp) {
+                // Best case: real option LTP available
+                upnlEl.textContent = `₹${pnl >= 0 ? '+' : ''}${pnl.toLocaleString('en-IN')}`;
                 upnlEl.className   = `text-sm font-black ${pnl > 0 ? 'text-green-400' : pnl < 0 ? 'text-red-400' : 'text-gray-400'}`;
-                upnlEl.title       = 'Based on live option LTP';
+                upnlEl.title       = `LTP ₹${t.current_option_ltp} | Entry ₹${t.entry_premium} | ${t.quantity}u`;
+            } else if (pnl !== 0) {
+                // Delta estimate from server (nifty move × 0.5 × qty)
+                upnlEl.textContent = `~₹${pnl >= 0 ? '+' : ''}${pnl.toLocaleString('en-IN')}`;
+                upnlEl.className   = `text-sm font-black ${pnl > 0 ? 'text-green-400' : pnl < 0 ? 'text-red-400' : 'text-gray-400'}`;
+                upnlEl.title       = 'Estimated (delta × Nifty move) — LTP refreshing…';
+            } else {
+                // Nothing yet — show 0 with note, not a spinner
+                upnlEl.textContent = '₹0';
+                upnlEl.className   = 'text-sm font-black text-gray-500';
+                upnlEl.title       = 'Waiting for first LTP tick (updates every 15s)';
             }
         }
     } else {
@@ -778,51 +792,101 @@ async function loadTradeHistory() {
 }
 
 function renderTradeHistory(data) {
-    const trades   = data.trades || [];
-    const totalPnl = data.total_pnl || 0;
-    const wins     = trades.filter(t => t.pnl > 0).length;
-    const losses   = trades.filter(t => t.pnl < 0).length;
+    const trades       = data.trades        || [];
+    const realizedPnl  = data.total_pnl     || 0;
+    const unrealPnl    = data.unrealized_pnl || 0;
+    const dayTotal     = data.day_total_pnl  ?? (realizedPnl + unrealPnl);
+    const wins         = trades.filter(t => t.pnl > 0).length;
+    const losses       = trades.filter(t => t.pnl < 0).length;
+    const breakeven    = trades.filter(t => t.pnl === 0).length;
 
     const setT = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     setT('ath-count',  trades.length);
     setT('ath-wins',   wins);
     setT('ath-losses', losses);
 
+    // Realized P&L
     const pnlEl = document.getElementById('ath-pnl');
     if (pnlEl) {
-        pnlEl.textContent = `₹${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(0)}`;
-        pnlEl.className   = `text-xs font-bold ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+        pnlEl.textContent = `₹${realizedPnl >= 0 ? '+' : ''}${realizedPnl.toFixed(0)}`;
+        pnlEl.className   = `text-xs font-bold ${realizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+        pnlEl.title       = 'Realized P&L (closed trades only)';
+    }
+
+    // Day Total = Realized + Unrealized
+    const dayEl = document.getElementById('ath-day-total');
+    if (dayEl) {
+        const sign = dayTotal >= 0 ? '+' : '';
+        dayEl.textContent = `₹${sign}${dayTotal.toLocaleString('en-IN', {minimumFractionDigits:0, maximumFractionDigits:0})}`;
+        dayEl.className   = `text-xs font-bold ${dayTotal >= 0 ? 'text-green-400' : 'text-red-400'}`;
+        dayEl.title       = unrealPnl !== 0
+            ? `Realized ₹${realizedPnl >= 0?'+':''}${realizedPnl.toFixed(0)} + Unrealized ₹${unrealPnl >= 0?'+':''}${unrealPnl.toFixed(0)}`
+            : 'Realized P&L only (no open trade)';
     }
 
     const container = document.getElementById('at-history-table');
     if (!container) return;
     if (!trades.length) {
-        container.innerHTML = '<p class="text-gray-600 text-center py-3">No trades yet</p>';
+        container.innerHTML = '<p class="text-gray-600 text-center py-3">No trades yet today</p>';
         return;
     }
 
     const rows = [...trades].reverse().map(t => {
-        const pnlColor = t.pnl > 0 ? 'text-green-400' : t.pnl < 0 ? 'text-red-400' : 'text-gray-400';
+        const pnl      = t.pnl ?? 0;
+        const pnlColor = pnl > 0 ? 'text-green-400' : pnl < 0 ? 'text-red-400' : 'text-gray-400';
         const dirIcon  = t.direction === 'long' ? '⬆' : '⬇';
-        const dirColor = t.direction === 'long' ? 'text-green-400' : 'text-red-400';
-        const time     = t.timestamp ? (t.timestamp.split('T')[1]?.substring(0, 8) || t.timestamp) : '--';
-        const exitPx   = t.exit_price ? `₹${Number(t.exit_price).toFixed(0)}` : '--';
-        const reason   = (t.exit_reason || '').substring(0, 25);
-        const emoji    = t.pnl > 0 ? '🟢' : t.pnl < 0 ? '🔴' : '⚪';
-        return `<tr class="border-t border-gray-800 hover:bg-gray-800/50">
-            <td class="py-1.5 text-gray-400">${time}</td>
+        const dirColor = t.direction === 'long' ? 'text-green-300' : 'text-red-300';
+        const time     = t.exit_time
+            ? (t.exit_time.split('T')[1]?.substring(0,5) || '--')
+            : (t.timestamp?.split('T')[1]?.substring(0,5) || '--');
+        // Show OPTION PREMIUMS not Nifty spot
+        const entryPrem = t.entry_premium != null ? `₹${Number(t.entry_premium).toFixed(1)}` : `₹${Number(t.entry_price).toFixed(0)}`;
+        const exitPrem  = t.exit_premium  != null ? `₹${Number(t.exit_premium).toFixed(1)}`  : '--';
+        const reason    = (t.exit_reason || '').replace(/[🕯⚡📊🔍]/g,'').substring(0, 22);
+        const emoji     = pnl > 0 ? '🟢' : pnl < 0 ? '🔴' : '⚪';
+        const qty       = t.quantity ? `${t.quantity}u` : '';
+        return `<tr class="border-t border-gray-800 hover:bg-gray-800/40 text-[11px]">
+            <td class="py-1.5 pl-1 text-gray-400">${time}</td>
             <td class="text-center ${dirColor} font-bold">${dirIcon}</td>
-            <td class="text-center">₹${Number(t.entry_price).toFixed(0)}</td>
-            <td class="text-center">${exitPx}</td>
-            <td class="text-center font-bold ${pnlColor}">${emoji} ₹${t.pnl >= 0 ? '+' : ''}${t.pnl.toFixed(0)}</td>
-            <td class="text-gray-500 truncate max-w-[120px]" title="${t.exit_reason || ''}">${reason}</td>
+            <td class="text-center text-gray-300">${entryPrem}</td>
+            <td class="text-center text-gray-300">${exitPrem}</td>
+            <td class="text-center font-bold ${pnlColor}">${emoji} ₹${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)}</td>
+            <td class="text-gray-500 text-[10px] truncate max-w-[100px]" title="${t.exit_reason || ''}">${reason}</td>
         </tr>`;
     }).join('');
 
+    // Running total row
+    const unrealRow = unrealPnl !== 0 ? `
+        <tr class="border-t border-yellow-800/50 bg-yellow-900/10 text-[11px]">
+            <td class="py-1 pl-1 text-yellow-400 font-bold" colspan="4">⏳ Open trade (unrealized)</td>
+            <td class="text-center font-bold ${unrealPnl >= 0 ? 'text-green-400' : 'text-red-400'}">
+                ₹${unrealPnl >= 0 ? '+' : ''}${unrealPnl.toFixed(0)}
+            </td>
+            <td></td>
+        </tr>` : '';
+
+    const totalRow = `
+        <tr class="border-t-2 border-gray-600 text-[11px] font-bold">
+            <td class="py-1.5 pl-1 text-gray-300" colspan="4">Day Total (${trades.length} trades, ${wins}W/${losses}L)</td>
+            <td class="text-center ${dayTotal >= 0 ? 'text-green-400' : 'text-red-400'}">
+                ₹${dayTotal >= 0 ? '+' : ''}${dayTotal.toFixed(0)}
+            </td>
+            <td></td>
+        </tr>`;
+
     container.innerHTML = `<table class="w-full" role="table">
         <thead class="text-[10px] text-gray-500 uppercase">
-            <tr><th class="text-left py-1">Time</th><th>Dir</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Reason</th></tr>
-        </thead><tbody>${rows}</tbody></table>`;
+            <tr>
+                <th class="text-left py-1 pl-1">Exit</th>
+                <th>Dir</th>
+                <th>Entry Prem</th>
+                <th>Exit Prem</th>
+                <th>P&L</th>
+                <th>Reason</th>
+            </tr>
+        </thead>
+        <tbody>${rows}${unrealRow}${totalRow}</tbody>
+    </table>`;
 }
 
 // ── Init ─────────────────────────────────────────────────────────

@@ -2527,15 +2527,45 @@ async def auto_trader_update_trail_sl(new_sl_points: float = Query(...)):
 
 @app.get("/api/auto-trader/history")
 async def auto_trader_history():
-    """Return trade history from trade log."""
+    """Return completed trade history from trade log.
+
+    Filters out ghost trades (status=filled with no exit_premium)
+    so they don't pollute the history or P&L totals.
+    """
     from pathlib import Path
     import json as _json
     log_file = Path(__file__).parent / "trade_log.json"
     if not log_file.exists():
         return {"success": True, "trades": [], "total_pnl": 0}
     try:
-        data = _json.loads(log_file.read_text())
-        return {"success": True, **data}
+        data   = _json.loads(log_file.read_text())
+        trades = data.get("trades", [])
+
+        # Only include properly exited trades
+        completed = [
+            t for t in trades
+            if t.get("status") == "exited" and t.get("exit_premium") is not None
+        ]
+
+        # Recompute realized P&L from completed trades only (ignore ghost fills)
+        realized_pnl = round(sum(t.get("pnl", 0) or 0 for t in completed), 2)
+
+        # Include unrealized P&L of any currently open trade
+        from auto_trader import state as at_state
+        unrealized_pnl = 0.0
+        if at_state.active_trade and at_state.last_option_ltp > 0:
+            t   = at_state.active_trade
+            ltp = at_state.last_option_ltp
+            unrealized_pnl = round((ltp - t.entry_premium) * t.quantity, 2)
+
+        return {
+            "success":        True,
+            "trades":         completed,
+            "total_pnl":      realized_pnl,
+            "unrealized_pnl": unrealized_pnl,
+            "day_total_pnl":  round(realized_pnl + unrealized_pnl, 2),
+            "ghost_trades":   len(trades) - len(completed),  # for debugging
+        }
     except Exception as e:
         return {"success": False, "error": str(e)}
 
