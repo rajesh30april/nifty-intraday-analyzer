@@ -110,11 +110,16 @@ async def _auto_trader_loop():
                 await asyncio.to_thread(evaluate_and_act, df, price)
                 print(f"🤖 [{now_str}] CANDLE {candle_ts} | ₹{price:.0f} | {mode_tag}")
             else:
-                _at_log("⚠️", f"Candle {now_str}", "no data returned from feed")
+                _at_log("⚠️", f"Candle {now_str}", "no data returned from feed — check VPN/proxy")
                 print(f"⚠️  [{now_str}] Candle fired but no data returned")
         except Exception as e:
-            _at_log("❌", "Candle error", str(e)[:80])
-            print(f"⚠️  [{now_str}] Auto-trader loop error: {e}")
+            import traceback as _tb
+            full_trace = _tb.format_exc()
+            # Show first useful line of traceback in the event log (not just message)
+            trace_lines = [l.strip() for l in full_trace.splitlines() if l.strip() and 'File' in l]
+            location = trace_lines[-1] if trace_lines else ''
+            _at_log("❌", "Candle error", f"{str(e)[:70]} | {location[-60:]}")
+            print(f"⚠️  [{now_str}] Auto-trader loop error:\n{full_trace}")
 
 
 async def _crude_trader_loop():
@@ -168,11 +173,28 @@ async def _ltp_refresh_loop():
     auto-trader is stopped/in recovery. Runs in threadpool to avoid
     blocking the event loop with synchronous Kite HTTP calls.
     First iteration fires after 3s so P&L populates quickly on startup.
+    Also logs a heartbeat every 60s so the event log shows the system is alive.
     """
     await asyncio.sleep(3)   # short initial delay — let server finish startup
+    _hb_tick = 0
     while True:
         if trader_state.active_trade:
             await asyncio.to_thread(refresh_active_option_ltp)
+            # Heartbeat every ~60s (4 × 15s iterations) when trade is open
+            _hb_tick += 1
+            if _hb_tick % 4 == 0:
+                t   = trader_state.active_trade
+                ltp = trader_state.last_option_ltp
+                nifty = trader_state.last_nifty_price or 0
+                from auto_trader import _nifty_to_option_premium
+                sl_prem  = _nifty_to_option_premium(t.stop_loss, t)
+                tgt_prem = _nifty_to_option_premium(t.target, t) if t.target else None
+                tgt_str  = f" | Tgt ₹{tgt_prem:.1f}" if tgt_prem else ""
+                ltp_str  = f"₹{ltp:.1f}" if ltp else "–"
+                _at_log("💓", "Alive",
+                        f"LTP {ltp_str} | SL Prem ₹{sl_prem:.1f}{tgt_str} | Nifty ₹{nifty:.0f}")
+        else:
+            _hb_tick = 0
         await asyncio.sleep(15)
 
 

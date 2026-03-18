@@ -30,28 +30,43 @@ def fetch_intraday_data(
     Returns:
         DataFrame with OHLCV columns and DatetimeIndex.
     """
+    import time
     last_error = None
     for attempt in range(retries + 1):
         try:
             ticker = yf.Ticker(NIFTY_SYMBOL)
             df = ticker.history(period=period, interval=interval)
 
-            if df is None or df.empty:
-                raise ValueError(f"No data returned for {NIFTY_SYMBOL} ({interval}/{period})")
+            # Defensive: yfinance can return None or non-DataFrame in some versions
+            if df is None:
+                raise ValueError(f"yfinance returned None for {NIFTY_SYMBOL} ({interval}/{period})")
+            if not hasattr(df, 'columns') or not hasattr(df, 'empty'):
+                raise ValueError(f"yfinance returned unexpected type: {type(df).__name__}")
+            if df.empty:
+                raise ValueError(f"Empty DataFrame for {NIFTY_SYMBOL} ({interval}/{period})")
 
-            # Normalize column names
-            df.columns = [c.lower().replace(" ", "_") for c in df.columns]
+            # Normalize column names to lowercase
+            df = df.copy()
+            df.columns = [str(c).lower().replace(" ", "_") for c in df.columns]
 
-            # Keep only OHLCV
+            # Keep only OHLCV columns that exist
             required = ["open", "high", "low", "close", "volume"]
-            df = df[[c for c in required if c in df.columns]]
+            available = [c for c in required if c in df.columns]
+            if not available:
+                raise ValueError(f"No OHLCV columns found. Got: {list(df.columns)}")
+            df = df[available]
+
+            # Drop rows where close is NaN (can happen on partial candles)
+            df = df.dropna(subset=["close"])
+            if df.empty:
+                raise ValueError("All rows had NaN close — stale/partial data")
 
             return df
+
         except Exception as e:
             last_error = e
             if attempt < retries:
-                import time
-                time.sleep(1)
+                time.sleep(2 ** attempt)  # exponential back-off: 1s, 2s
 
     raise ValueError(f"Failed after {retries + 1} attempts: {last_error}")
 
