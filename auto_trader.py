@@ -937,25 +937,29 @@ def evaluate_and_act(df, current_price: float):
         {"name": c.name, "met": c.met, "detail": c.detail}
         for c in signal.conditions
     ]
-    met = sum(1 for c in signal.conditions if c.met)
+    met   = sum(1 for c in signal.conditions if c.met)
     total = len(signal.conditions)
-    icon = "🚦" if met == total and total > 0 else "🔍"
+    icon  = "🚦" if met == total and total > 0 else "🔍"
     _log(icon, f"Eval {met}/{total} conds", signal.reason[:80])
 
     # 5. Check safety before actually placing orders
     safe, safety_msg = _check_safety()
     if not safe:
         state.last_signal_reason = f"{signal.reason} | ⚠️ {safety_msg}"
-        state.last_block_reason  = safety_msg   # ← UI uses this for no-pos message
+        state.last_block_reason  = safety_msg
+        _log("🚫", "Blocked", safety_msg)          # ← outcome visible in log
         return
 
-    state.last_block_reason = None   # clear any previous block
+    state.last_block_reason = None
 
     if not signal.should_enter or signal.direction is None:
         state.last_block_reason = None
+        _log("⏸", "No entry", signal.reason[:60])  # ← outcome: conditions not fully met
         return
 
     # All conditions met — enter trade!
+    dir_label = "LONG 📈" if signal.direction == Direction.LONG else "SHORT 📉"
+    _log("✅", f"Entering {dir_label}", f"@ Nifty {current_price:.0f}")
     _enter_trade(signal.direction, current_price)
 
 

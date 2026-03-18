@@ -113,28 +113,10 @@ function _atMaybeLog(data) {
         });
     }
 
-    // ── 2. Log signal summary when it changes ───────────────────
-    const signalChanged = signal && signal !== _atLastSignalText;
-    const evalChanged   = evalTime && evalTime !== _atLastEvalTime;
-
-    if (signalChanged || (evalChanged && signal)) {
-        // Throttle: don't log same signal type more than once per AT_LOG_THROTTLE sec
-        const nowSec = Date.now() / 1000;
-        const lastSec = _atLastSignalTime || 0;
-        if (signalChanged || (nowSec - lastSec >= AT_LOG_THROTTLE)) {
-            const metCount  = conds.filter(c => c.met).length;
-            const totalCond = conds.length;
-            const icon = metCount === totalCond && totalCond > 0 ? '🚦'
-                       : metCount === 0                          ? '⏳'
-                       : '📊';
-            // Only show first 120 chars of signal to keep log readable
-            const shortSig = signal.length > 120 ? signal.slice(0, 117) + '…' : signal;
-            // Pass server evalTime so log shows candle-close time, not poll time
-            _atLogEvent(icon, `Eval (${metCount}/${totalCond} conds met)`, shortSig, evalTime);
-            _atLastSignalTime = nowSec;
-            _atLastSignalText = signal;
-        }
-    }
+    // ── 2. Signal summary: now owned by server event log — skip client dupe ──
+    // Server writes 🚦/🚫/⏸/✅ outcome rows; _renderServerEventLog shows them.
+    const signalChanged = signal !== _atLastSignalText;
+    if (signalChanged) _atLastSignalText = signal;  // still track for condition-flip context
 
     // ── 3. Log kill-switch / safety blocks ──────────────────────
     if (data.kill_switch && !_atKillSwitchLogged) {
@@ -649,20 +631,33 @@ function renderAutoTrader(data) {
     }
 }
 
+// Colour + style per icon so outcomes are instantly readable
+const _LOG_ICON_STYLE = {
+    '✅': { row: 'bg-green-950/40 border-green-900',  label: 'text-green-400', detail: 'text-green-300' },
+    '🚫': { row: 'bg-red-950/40 border-red-900',      label: 'text-red-400',   detail: 'text-red-300'   },
+    '⏸':  { row: 'bg-yellow-950/30 border-yellow-900',label: 'text-yellow-400',detail: 'text-yellow-300'},
+    '🚦': { row: 'border-gray-800',                   label: 'text-blue-300',  detail: 'text-gray-400'  },
+    '🔍': { row: 'border-gray-800',                   label: 'text-gray-400',  detail: 'text-gray-500'  },
+    '🟢': { row: 'bg-green-950/30 border-green-900',  label: 'text-green-300', detail: 'text-green-400' },
+    '🔴': { row: 'bg-red-950/30 border-red-900',      label: 'text-red-300',   detail: 'text-red-400'   },
+};
+
 function _renderServerEventLog(events) {
     const el = document.getElementById('at-event-log');
     if (!el || !events.length) return;
-    // Only re-render if new events arrived (compare first ts)
+    // Only re-render if new events arrived
     const firstTs = events[0]?.ts;
     if (el.dataset.lastTs === firstTs) return;
     el.dataset.lastTs = firstTs;
-    el.innerHTML = events.map(e => `
-        <div class="flex items-start gap-1.5 py-0.5 border-b border-gray-800">
+    el.innerHTML = events.map(e => {
+        const s = _LOG_ICON_STYLE[e.icon] || { row: 'border-gray-800', label: 'text-gray-300', detail: 'text-gray-500' };
+        return `<div class="flex items-start gap-1.5 py-0.5 px-1 border-b ${s.row}">
           <span class="text-[11px] shrink-0">${e.icon}</span>
-          <span class="text-[9px] text-gray-500 shrink-0 font-mono">${e.ts}</span>
-          <span class="text-[10px] font-bold text-gray-300 shrink-0">${e.label}</span>
-          <span class="text-[10px] text-gray-500 truncate">${e.detail}</span>
-        </div>`).join('');
+          <span class="text-[9px] text-gray-500 shrink-0 font-mono mt-px">${e.ts}</span>
+          <span class="text-[10px] font-bold shrink-0 ${s.label}">${e.label}</span>
+          <span class="text-[10px] ${s.detail} break-words min-w-0">${e.detail}</span>
+        </div>`;
+    }).join('');
 }
 
 // ── Sync existing Zerodha position into app ───────────────────────
