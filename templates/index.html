@@ -1480,6 +1480,15 @@
                 <button onclick="saveCrudeConfig()" class="mt-3 text-xs text-blue-400 hover:text-blue-300 underline">💾 Save settings</button>
               </div>
 
+              <!-- Event Log -->
+              <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 mb-3">
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class="text-sm font-bold">📋 Event Log</h3>
+                  <button onclick="document.getElementById('crude-event-log').innerHTML=''" class="text-[10px] text-gray-500 hover:text-gray-300 underline">clear</button>
+                </div>
+                <div id="crude-event-log" class="font-mono text-[11px] text-gray-400 space-y-1 max-h-48 overflow-y-auto"></div>
+              </div>
+
               <!-- Active Trade Card -->
               <div id="crude-trade-card" class="hidden bg-gray-900 border border-gray-700 rounded-xl p-4 mb-3">
                 <h3 class="text-sm font-bold mb-3">🛢️ Open Position</h3>

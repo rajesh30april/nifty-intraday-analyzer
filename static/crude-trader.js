@@ -8,8 +8,11 @@
 'use strict';
 
 // ── State ─────────────────────────────────────────────────────────
-let _crudePoller  = null;
-let _crudeRunning = false;
+let _crudePoller      = null;
+let _crudeRunning     = false;
+let _crudeLastSignal  = null;   // dedup signal logs
+let _crudeLastBlock   = null;   // dedup block_reason logs
+let _crudeLastTrade   = null;   // dedup active trade logs
 
 // ── Toast ─────────────────────────────────────────────────────────
 function _crudeToast(msg, type = 'info') {
@@ -32,21 +35,81 @@ function _crudeToast(msg, type = 'info') {
     setTimeout(() => el.remove(), 6000);
 }
 
+// ── Event log ────────────────────────────────────────────────────
+function _crudeLog(msg, type = 'info') {
+    const log = document.getElementById('crude-event-log');
+    if (!log) return;
+    const colors = {
+        info:  'text-blue-400',
+        ok:    'text-green-400',
+        warn:  'text-yellow-400',
+        error: 'text-red-400',
+        trade: 'text-spark-100',
+    };
+    const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 items-start';
+    row.innerHTML = `<span class="text-gray-600 shrink-0">${now}</span>
+        <span class="${colors[type] ?? colors.info} break-all">${msg}</span>`;
+    log.prepend(row);
+    // cap at 50 entries
+    while (log.children.length > 50) log.lastChild.remove();
+}
+
+// ── Button state management ───────────────────────────────────────
+function _setCrudeStatus(state) {
+    const startBtn = document.getElementById('crude-start-btn');
+    const stopBtn  = document.getElementById('crude-stop-btn');
+    const killBtn  = document.getElementById('crude-kill-btn');
+    if (!startBtn || !stopBtn) return;
+
+    const states = {
+        idle:    { startDis: false, stopDis: true,  killDis: true,  startCls: 'bg-green-600 hover:bg-green-700', stopCls: 'bg-gray-700 opacity-40 cursor-not-allowed', startTxt: '▶ Start' },
+        loading: { startDis: true,  stopDis: true,  killDis: true,  startCls: 'bg-gray-600 opacity-60',         stopCls: 'bg-gray-700 opacity-40 cursor-not-allowed', startTxt: '⏳ …' },
+        running: { startDis: true,  stopDis: false, killDis: false, startCls: 'bg-green-800 opacity-60 cursor-not-allowed', stopCls: 'bg-red-700 hover:bg-red-600', startTxt: '▶ Running' },
+        killed:  { startDis: false, stopDis: true,  killDis: true,  startCls: 'bg-green-600 hover:bg-green-700', stopCls: 'bg-gray-700 opacity-40 cursor-not-allowed', startTxt: '▶ Start' },
+    };
+    const s = states[state] ?? states.idle;
+    const base = 'px-4 py-2 rounded-lg font-bold text-sm transition';
+
+    startBtn.disabled   = s.startDis;
+    startBtn.textContent = s.startTxt;
+    startBtn.className  = `${base} ${s.startCls}`;
+
+    stopBtn.disabled    = s.stopDis;
+    stopBtn.textContent = '⏹ Stop';
+    stopBtn.className   = `${base} ${s.stopCls}`;
+
+    if (killBtn) {
+        killBtn.disabled  = s.killDis;
+        killBtn.className = `${base} ${s.killDis ? 'bg-gray-700 opacity-40 cursor-not-allowed' : 'bg-red-700 hover:bg-red-600'}`;
+    }
+}
+
 // ── Controls ──────────────────────────────────────────────────────
 async function crudeTrade(action) {
     const label = { start: '▶ Start', stop: '⏹ Stop', kill: '🚨 Kill' };
+    _setCrudeStatus('loading');
     _crudeToast(`${label[action] ?? action}ing Crude trader…`, 'info');
+    _crudeLog(`🖱 ${label[action] ?? action} clicked`, 'info');
     try {
         const resp = await fetch(`/api/crude/${action}`, { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
-            _crudeToast(`✅ ${action.charAt(0).toUpperCase() + action.slice(1)} OK`, 'ok');
+            const mode = data.mode ? ` [${data.mode}]` : '';
+            _crudeToast(`✅ ${action.charAt(0).toUpperCase() + action.slice(1)} OK${mode}`, 'ok');
+            _crudeLog(`✅ ${action.toUpperCase()} confirmed${mode}`, 'ok');
             await pollCrudeStatus();
         } else {
-            _crudeToast(`❌ ${data.error ?? 'Failed'}`, 'error');
+            const err = data.error ?? 'Failed';
+            _crudeToast(`❌ ${err}`, 'error');
+            _crudeLog(`❌ ${action.toUpperCase()} failed: ${err}`, 'error');
+            await pollCrudeStatus(); // re-sync button state
         }
     } catch (e) {
         _crudeToast(`❌ ${e.message}`, 'error');
+        _crudeLog(`❌ Network error: ${e.message}`, 'error');
+        await pollCrudeStatus();
     }
 }
 
@@ -91,6 +154,43 @@ function _pnlClass(v) {
 }
 
 function renderCrudeStatus(d) {
+    // ── Button states ─────────────────────────────────────────────
+    if (d.kill_switch)  _setCrudeStatus('killed');
+    else if (d.is_running) _setCrudeStatus('running');
+    else                _setCrudeStatus('idle');
+
+    // ── State-change event log entries ────────────────────────────
+    const wasRunning = _crudeRunning;
+    if (d.is_running !== wasRunning) {
+        if (d.is_running)  _crudeLog('▶ Crude trader STARTED', 'ok');
+        else               _crudeLog('⏹ Crude trader STOPPED', 'warn');
+    }
+    if (d.kill_switch && wasRunning) _crudeLog('🚨 Kill switch activated — position exited', 'error');
+
+    // ── Signal / block reason changes ────────────────────────────
+    const sig = d.last_signal || '';
+    const blk = d.block_reason || '';
+    if (sig && sig !== _crudeLastSignal) {
+        _crudeLog(`📡 Signal: ${sig}`, sig.startsWith('[ST]') || sig.startsWith('[ORB]') ? 'trade' : 'info');
+        _crudeLastSignal = sig;
+    }
+    if (blk && blk !== _crudeLastBlock) {
+        _crudeLog(`⛔ Blocked: ${blk}`, 'warn');
+        _crudeLastBlock = blk;
+    }
+
+    // ── Active trade change ───────────────────────────────────────
+    const tradeId = d.active_trade?.id ?? null;
+    if (tradeId !== _crudeLastTrade) {
+        if (tradeId) {
+            const at = d.active_trade;
+            _crudeLog(`🛢️ Trade OPEN: ${at.direction?.toUpperCase()} @ ₹${at.entry_price} | SL ₹${at.stop_loss} | Tgt ₹${at.target}`, 'trade');
+        } else if (_crudeLastTrade) {
+            _crudeLog('🏁 Trade CLOSED', 'ok');
+        }
+        _crudeLastTrade = tradeId;
+    }
+
     // ── Mode badge ────────────────────────────────────────────────
     const badge = document.getElementById('crude-mode-badge');
     if (badge) {
@@ -202,6 +302,7 @@ async function loadCrudeHistory() {
 
 // ── Lifecycle (called by dashboard.js switchPage) ─────────────────
 function onCrudeTraderTabOpen() {
+    _crudeLog('👁 Crude trader tab opened', 'info');
     pollCrudeStatus();
     loadCrudeHistory();
     _crudePoller = setInterval(pollCrudeStatus, 5000);
