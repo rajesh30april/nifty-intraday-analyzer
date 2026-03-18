@@ -56,40 +56,51 @@ function _crudeLog(msg, type = 'info') {
     while (log.children.length > 50) log.lastChild.remove();
 }
 
-// ── Button state management ───────────────────────────────────────
-function _setCrudeStatus(state) {
-    const startBtn = document.getElementById('crude-start-btn');
-    const stopBtn  = document.getElementById('crude-stop-btn');
-    const killBtn  = document.getElementById('crude-kill-btn');
+// ── Button state management (mirrors auto-trader.js _setAtStatus) ──
+function _setCrudeStatus(s) {
+    const startBtn  = document.getElementById('crude-start-btn');
+    const stopBtn   = document.getElementById('crude-stop-btn');
+    const killBtn   = document.getElementById('crude-kill-btn');
+    const statusEl  = document.getElementById('crude-status');
     if (!startBtn || !stopBtn) return;
 
-    const states = {
-        idle:    { startDis: false, stopDis: true,  killDis: true,  startCls: 'bg-green-600 hover:bg-green-700', stopCls: 'bg-gray-700 opacity-40 cursor-not-allowed', startTxt: '▶ Start' },
-        loading: { startDis: true,  stopDis: true,  killDis: true,  startCls: 'bg-gray-600 opacity-60',         stopCls: 'bg-gray-700 opacity-40 cursor-not-allowed', startTxt: '⏳ …' },
-        running: { startDis: true,  stopDis: false, killDis: false, startCls: 'bg-green-800 opacity-60 cursor-not-allowed', stopCls: 'bg-red-700 hover:bg-red-600', startTxt: '▶ Running' },
-        killed:  { startDis: false, stopDis: true,  killDis: true,  startCls: 'bg-green-600 hover:bg-green-700', stopCls: 'bg-gray-700 opacity-40 cursor-not-allowed', startTxt: '▶ Start' },
+    // Exact same pattern as Nifty AT _setAtStatus
+    const BTN = 'px-3 py-1.5 rounded-lg font-bold text-xs transition';
+    const STATES = {
+        idle:     { startDis: false, stopDis: true,  killDis: true,  txt: '⏸ Idle',        cls: 'text-yellow-400' },
+        loading:  { startDis: true,  stopDis: true,  killDis: true,  txt: '⏳ Loading…',    cls: 'text-yellow-400 animate-pulse' },
+        running:  { startDis: true,  stopDis: false, killDis: false, txt: '▶ Running',      cls: 'text-green-400' },
+        stopping: { startDis: true,  stopDis: true,  killDis: true,  txt: '⏳ Stopping…',   cls: 'text-yellow-400 animate-pulse' },
+        killed:   { startDis: false, stopDis: true,  killDis: true,  txt: '🚨 KILLED',      cls: 'text-red-500 animate-pulse' },
+        error:    { startDis: false, stopDis: true,  killDis: true,  txt: '❌ Error',        cls: 'text-red-400' },
     };
-    const s = states[state] ?? states.idle;
-    const base = 'px-4 py-2 rounded-lg font-bold text-sm transition';
+    const st = STATES[s] ?? STATES.idle;
 
-    startBtn.disabled   = s.startDis;
-    startBtn.textContent = s.startTxt;
-    startBtn.className  = `${base} ${s.startCls}`;
+    startBtn.disabled    = st.startDis;
+    startBtn.textContent = st.startDis && s === 'running' ? '▶ Running' : '▶ Start';
+    startBtn.className   = `${BTN} ${st.startDis ? 'bg-green-800 opacity-50 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`;
 
-    stopBtn.disabled    = s.stopDis;
-    stopBtn.textContent = '⏹ Stop';
-    stopBtn.className   = `${base} ${s.stopCls}`;
+    stopBtn.disabled     = st.stopDis;
+    stopBtn.textContent  = '⏹ Stop';
+    stopBtn.className    = `${BTN} ${st.stopDis ? 'bg-gray-700 opacity-50 cursor-not-allowed' : 'bg-gray-500 hover:bg-gray-400'}`;
 
     if (killBtn) {
-        killBtn.disabled  = s.killDis;
-        killBtn.className = `${base} ${s.killDis ? 'bg-gray-700 opacity-40 cursor-not-allowed' : 'bg-red-700 hover:bg-red-600'}`;
+        killBtn.disabled   = st.killDis;
+        killBtn.textContent = '🚨 Kill';
+        killBtn.className  = `${BTN} ${st.killDis ? 'bg-gray-700 opacity-50 cursor-not-allowed' : 'bg-red-700 hover:bg-red-600'}`;
+    }
+
+    if (statusEl) {
+        statusEl.textContent = st.txt;
+        statusEl.className   = `text-xs font-bold ${st.cls}`;
     }
 }
 
 // ── Controls ──────────────────────────────────────────────────────
 async function crudeTrade(action) {
     const label = { start: '▶ Start', stop: '⏹ Stop', kill: '🚨 Kill' };
-    _setCrudeStatus('loading');
+    // show transitional state immediately — same UX as Nifty AT
+    _setCrudeStatus(action === 'stop' || action === 'kill' ? 'stopping' : 'loading');
     _crudeToast(`${label[action] ?? action}ing Crude trader…`, 'info');
     _crudeLog(`🖱 ${label[action] ?? action} clicked`, 'info');
     try {
@@ -104,11 +115,13 @@ async function crudeTrade(action) {
             const err = data.error ?? 'Failed';
             _crudeToast(`❌ ${err}`, 'error');
             _crudeLog(`❌ ${action.toUpperCase()} failed: ${err}`, 'error');
-            await pollCrudeStatus(); // re-sync button state
+            _setCrudeStatus('error');
+            await pollCrudeStatus();
         }
     } catch (e) {
         _crudeToast(`❌ ${e.message}`, 'error');
         _crudeLog(`❌ Network error: ${e.message}`, 'error');
+        _setCrudeStatus('error');
         await pollCrudeStatus();
     }
 }
@@ -154,10 +167,10 @@ function _pnlClass(v) {
 }
 
 function renderCrudeStatus(d) {
-    // ── Button states ─────────────────────────────────────────────
-    if (d.kill_switch)  _setCrudeStatus('killed');
+    // ── Button + status label — exact same logic as Nifty AT ─────
+    if (d.kill_switch)     _setCrudeStatus('killed');
     else if (d.is_running) _setCrudeStatus('running');
-    else                _setCrudeStatus('idle');
+    else                   _setCrudeStatus('idle');
 
     // ── State-change event log entries ────────────────────────────
     const wasRunning = _crudeRunning;

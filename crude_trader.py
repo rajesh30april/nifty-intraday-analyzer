@@ -24,6 +24,8 @@ from dotenv import load_dotenv
 from kite_integration import kite_manager
 from crude_data import (
     MCX_CRUDE_LOT_SIZE,
+    MCX_CRUDE_MINI_LOT_SIZE,
+    get_crude_lot_size,
     get_crude_spot,
     get_crude_atm_option,
     get_crude_option_ltp,
@@ -217,14 +219,20 @@ def _place_order(symbol: str, direction: Direction, qty: int, price: float) -> s
         return None
 
 
-def _resolve_qty(spot: float, real_premium: float | None = None) -> int:
+def _resolve_qty(spot: float, real_premium: float | None = None,
+                 lot_size: int = MCX_CRUDE_LOT_SIZE) -> int:
+    """Return order quantity (units = lots × barrel_multiplier).
+
+    Returns 0 if capital is insufficient — caller must block the trade.
+    """
     premium = real_premium if real_premium and real_premium > 0 else estimate_crude_premium(spot)
-    cost_per_lot = premium * MCX_CRUDE_LOT_SIZE
+    cost_per_lot = premium * lot_size
     if cost_per_lot <= 0:
-        return MCX_CRUDE_LOT_SIZE
-    lots = max(1, int(state.capital / cost_per_lot))
-    qty  = lots * MCX_CRUDE_LOT_SIZE
-    print(f"📐 Crude qty: ₹{state.capital:,.0f} ÷ ₹{cost_per_lot:.0f}/lot = {lots} lots → {qty} units")
+        return lot_size
+    lots = int(state.capital * 0.9 / cost_per_lot)   # 90% of capital, no max(1,…)
+    qty  = lots * lot_size
+    print(f"📐 Qty: Rs{state.capital:,.0f} × 90% ÷ Rs{cost_per_lot:,.0f}/lot "
+          f"= {lots} lots → {qty} units  (lot_sz={lot_size} bbl)")
     return qty
 
 
@@ -232,14 +240,28 @@ def _resolve_qty(spot: float, real_premium: float | None = None) -> int:
 
 def _enter_trade(direction: Direction, price: float):
     try:
-        symbol, _token = get_crude_atm_option(price, direction.value, state.strike_offset)
+        symbol, _token, lot_size = get_crude_atm_option(
+            price, direction.value, state.strike_offset, capital=state.capital
+        )
     except RuntimeError as e:
         print(f"❌ Crude instrument lookup failed: {e}")
         state.last_block_reason = str(e)
         return
 
     real_ltp = get_crude_option_ltp(symbol)
-    qty      = _resolve_qty(price, real_ltp)
+    qty      = _resolve_qty(price, real_ltp, lot_size=lot_size)
+
+    # ── Capital guard — block before hitting exchange ──────────────
+    if qty == 0:
+        premium    = real_ltp or estimate_crude_premium(price)
+        needed     = premium * lot_size
+        state.last_block_reason = (
+            f"Insufficient capital: 1 lot costs ~Rs{needed:,.0f} "
+            f"but capital=Rs{state.capital:,.0f}. "
+            f"Need at least Rs{int(needed * 1.1):,} for 1 lot."
+        )
+        print(f"🚫 {state.last_block_reason}")
+        return
     sl_pts   = state.sl_points
     trail    = state.trail_points
     rr       = state.rr_ratio

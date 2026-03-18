@@ -1445,13 +1445,17 @@
 
               <!-- Controls -->
               <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 mb-3">
-                <div class="flex gap-2 flex-wrap mb-3">
+                <div class="flex items-center gap-2 flex-wrap mb-3">
                   <button onclick="crudeTrade('start')" id="crude-start-btn"
-                    class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-bold text-sm transition">▶ Start</button>
+                    class="bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg font-bold text-xs transition">▶ Start</button>
                   <button onclick="crudeTrade('stop')" id="crude-stop-btn"
-                    class="bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded-lg font-bold text-sm transition">⏹ Stop</button>
+                    class="bg-gray-700 opacity-50 cursor-not-allowed px-3 py-1.5 rounded-lg font-bold text-xs transition" disabled>⏹ Stop</button>
                   <button onclick="crudeTrade('kill')" id="crude-kill-btn"
-                    class="bg-red-700 hover:bg-red-600 px-4 py-2 rounded-lg font-bold text-sm transition">🚨 Kill &amp; Exit</button>
+                    class="bg-gray-700 opacity-50 cursor-not-allowed px-3 py-1.5 rounded-lg font-bold text-xs transition" disabled>🚨 Kill</button>
+                  <div class="ml-2 bg-gray-800 rounded-lg px-3 py-1.5 text-center min-w-[80px]">
+                    <div class="text-[10px] text-gray-400">Status</div>
+                    <div id="crude-status" class="text-xs font-bold text-yellow-400">⏸ Idle</div>
+                  </div>
                 </div>
 
                 <!-- Settings row -->

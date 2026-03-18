@@ -20,11 +20,17 @@ import pandas as pd
 from kite_integration import kite_manager
 
 # ── Constants ─────────────────────────────────────────────────────
-MCX_CRUDE_LOT_SIZE   = 100      # barrels per lot
-MCX_CRUDE_STRIKE_STEP = 50      # option strikes at every ₹50
-MCX_CRUDE_NAME       = "CRUDEOIL"
-MCX_OPEN_TIME        = "09:00"  # MCX opens 9:00 AM (not 9:15 like NSE)
-MCX_CLOSE_TIME       = "23:25" # exit before 23:30 close
+MCX_CRUDE_LOT_SIZE      = 100   # barrels per lot (CRUDEOIL full)
+MCX_CRUDE_MINI_LOT_SIZE = 10    # barrels per lot (CRUDEOILM mini)
+MCX_CRUDE_STRIKE_STEP   = 50    # option strikes at every ₹50
+MCX_CRUDE_NAME          = "CRUDEOIL"
+MCX_CRUDE_MINI_NAME     = "CRUDEOILM"
+MCX_OPEN_TIME           = "09:00"  # MCX opens 9:00 AM (not 9:15 like NSE)
+MCX_CLOSE_TIME          = "23:25"  # exit before 23:30 close
+
+# Capital threshold below which we auto-switch to CRUDEOILM mini contracts.
+# Full CRUDEOIL ATM options cost ~₹1,00,000+.  Mini = 1/10th.
+MCX_MINI_CAPITAL_THRESHOLD = 120_000  # use mini when capital < this (full ATM ~₹1,05,000)
 
 # ── Instrument cache (TTL = 4 hours) ─────────────────────────────
 _instruments_cache: list[dict] | None = None
@@ -98,40 +104,61 @@ def get_crude_spot() -> float | None:
         return None
 
 
+def get_crude_lot_size(tradingsymbol: str) -> int:
+    """Return the correct barrel multiplier for a MCX crude symbol.
+
+    Zerodha's API always returns lot_size=1 for crude contracts, which
+    is misleading. The real multipliers are:
+      CRUDEOIL  (full) = 100 barrels per lot
+      CRUDEOILM (mini) = 10  barrels per lot
+    """
+    return MCX_CRUDE_MINI_LOT_SIZE if "CRUDEOILM" in tradingsymbol else MCX_CRUDE_LOT_SIZE
+
+
 def get_crude_atm_option(
     spot: float,
     direction: str,
     strike_offset: int = 0,
-) -> tuple[str, int]:
-    """Return (full_symbol, instrument_token) for ATM Crude Oil option.
+    capital: float = 0.0,
+) -> tuple[str, int, int]:
+    """Return (full_symbol, instrument_token, lot_size_barrels).
 
-    direction: 'long'  → buy CE (betting crude goes up)
-               'short' → buy PE (betting crude goes down)
-    strike_offset: 0=ATM, 1=OTM1, -1=ITM1 etc. (in units of STRIKE_STEP)
+    direction: 'long'  → buy CE  'short' → buy PE
+    strike_offset: 0=ATM, 1=OTM1, -1=ITM1 (units of STRIKE_STEP)
+    capital: when < MCX_MINI_CAPITAL_THRESHOLD, auto-picks CRUDEOILM mini
+             (1/10th the cost of the full contract).
     """
-    option_type = 'CE' if direction == 'long' else 'PE'
-    atm_strike  = round(spot / MCX_CRUDE_STRIKE_STEP) * MCX_CRUDE_STRIKE_STEP
+    option_type  = 'CE' if direction == 'long' else 'PE'
+    atm_strike   = round(spot / MCX_CRUDE_STRIKE_STEP) * MCX_CRUDE_STRIKE_STEP
     target_strike = atm_strike + strike_offset * MCX_CRUDE_STRIKE_STEP
+    use_mini     = capital > 0 and capital < MCX_MINI_CAPITAL_THRESHOLD
 
     instruments = _get_mcx_instruments()
     today = date.today()
 
-    opts = [
-        i for i in instruments
-        if i.get('name') == MCX_CRUDE_NAME
-        and i.get('instrument_type') == option_type
-        and i.get('strike') == float(target_strike)
-        and i.get('expiry') and i['expiry'] >= today
-    ]
-    if not opts:
-        raise RuntimeError(
-            f"No MCX CRUDEOIL {option_type} at strike {target_strike} found"
-        )
-    opts.sort(key=lambda x: x['expiry'])
-    best = opts[0]
-    symbol = f"MCX:{best['tradingsymbol']}"
-    print(f"🛢️  Option resolved: {symbol} (strike={target_strike}, type={option_type})")
-    return symbol, best['instrument_token']
+    # Try preferred contract type first; fall back to the other.
+    for name in ([MCX_CRUDE_MINI_NAME, MCX_CRUDE_NAME] if use_mini
+                 else [MCX_CRUDE_NAME, MCX_CRUDE_MINI_NAME]):
+        opts = [
+            i for i in instruments
+            if i.get('name') == name
+            and i.get('instrument_type') == option_type
+            and i.get('strike') == float(target_strike)
+            and i.get('expiry') and i['expiry'] >= today
+        ]
+        if opts:
+            opts.sort(key=lambda x: x['expiry'])
+            best    = opts[0]
+            symbol  = f"MCX:{best['tradingsymbol']}"
+            lot_sz  = get_crude_lot_size(best['tradingsymbol'])
+            tag     = 'MINI' if use_mini else 'FULL'
+            print(f"🛢️  Option resolved [{tag}]: {symbol} "
+                  f"(strike={target_strike}, lot={lot_sz} bbl)")
+            return symbol, best['instrument_token'], lot_sz
+
+    raise RuntimeError(
+        f"No MCX CRUDEOIL {option_type} at strike {target_strike} found"
+    )
 
 
 def get_crude_option_ltp(tradingsymbol: str) -> float | None:
