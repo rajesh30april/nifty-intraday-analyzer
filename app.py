@@ -2347,12 +2347,11 @@ async def auto_trader_configure(
     qty_mode:           str   | None = Query(None),
     manual_qty:         int   | None = Query(None),
     capital:            float | None = Query(None),
-    # Accept as str — FastAPI silently drops negative int query params (pydantic quirk)
     strike_offset:      str   | None = Query(None),
     max_trades_per_day: int   | None = Query(None),
+    cooldown_minutes:   int   | None = Query(None),
 ):
-    """Update runtime trade settings (SL, trail, R:R, qty, strike, max trades) without restarting."""
-    # Parse strike_offset manually to support negative values (ITM)
+    """Update runtime trade settings without restarting."""
     parsed_offset: int | None = None
     if strike_offset is not None:
         try:
@@ -2365,6 +2364,7 @@ async def auto_trader_configure(
         manual_qty=manual_qty, capital=capital,
         strike_offset=parsed_offset,
         max_trades_per_day=max_trades_per_day,
+        cooldown_minutes=cooldown_minutes,
     )
     return {"success": True, **result}
 

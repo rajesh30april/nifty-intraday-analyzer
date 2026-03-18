@@ -111,6 +111,7 @@ class TraderState:
     manual_qty:         int   = DEFAULT_QUANTITY    # used when qty_mode=manual
     strike_offset:      int   = 0                   # -3=ITM3,-2=ITM2,-1=ITM1,0=ATM,1=OTM1,2=OTM2,3=OTM3
     max_trades_per_day: int   = MAX_ORDERS_PER_DAY  # runtime-overridable (1-15)
+    cooldown_minutes:   int   = int(os.getenv("COOLDOWN_MINUTES", "5"))  # post-exit wait
     recovery_mode: bool = False    # True if state was restored after a crash
     recovery_message: str = ""     # Human-readable description of what was recovered
     recovery_type: str = ""        # 'open' = trade still live | 'closed' = already exited | 'clean' = no trade
@@ -211,6 +212,7 @@ def _save_state_snapshot():
         "capital":            state.capital,
         "strike_offset":      state.strike_offset,
         "max_trades_per_day": state.max_trades_per_day,
+        "cooldown_minutes":   state.cooldown_minutes,
         # cooldown — survive restarts so re-entry filter stays intact
         "last_exit_time":      state.last_exit_time.isoformat() if state.last_exit_time else None,
         "last_exit_direction": state.last_exit_direction,
@@ -298,6 +300,7 @@ def _recover_state(snapshot_file: Path | None = None):
     state.rr_ratio           = snap.get("rr_ratio",           2.0)
     state.qty_mode           = snap.get("qty_mode",           "manual")
     state.manual_qty         = snap.get("manual_qty",         DEFAULT_QUANTITY)
+    state.cooldown_minutes   = snap.get("cooldown_minutes",   state.cooldown_minutes)
     state.capital            = snap.get("capital",            DEFAULT_CAPITAL)
     state.strike_offset      = snap.get("strike_offset",      0)   # default ATM
     state.max_trades_per_day = snap.get("max_trades_per_day", MAX_ORDERS_PER_DAY)
@@ -425,10 +428,6 @@ def _now_time() -> dt_time:
     return datetime.now().time()
 
 
-# Cooldown between trades — prevents rapid-fire re-entry on same signal
-COOLDOWN_MINUTES = int(os.getenv("COOLDOWN_MINUTES", "15"))
-
-
 def _check_safety() -> tuple[bool, str]:
     """Check all safety limits before placing an order."""
     if state.kill_switch:
@@ -451,11 +450,11 @@ def _check_safety() -> tuple[bool, str]:
     # ── Post-exit cooldown ────────────────────────────────────────
     # After any exit, wait COOLDOWN_MINUTES before re-entering.
     # Prevents chasing a trending instrument that already hit SL.
-    if state.last_exit_time is not None:
+    if state.last_exit_time is not None and state.cooldown_minutes > 0:
         elapsed = (datetime.now() - state.last_exit_time).total_seconds() / 60
-        if elapsed < COOLDOWN_MINUTES:
-            remaining = int(COOLDOWN_MINUTES - elapsed)
-            return False, f"Cooldown: {remaining}m left after last exit (wait {COOLDOWN_MINUTES}m)"
+        if elapsed < state.cooldown_minutes:
+            remaining = int(state.cooldown_minutes - elapsed)
+            return False, f"Cooldown: {remaining}m left after last exit (wait {state.cooldown_minutes}m)"
 
     return True, "All safety checks passed"
 
@@ -1405,9 +1404,9 @@ def get_trader_status() -> dict:
         "trailing_sl_points": TRAILING_SL_POINTS,
         "selected_strategy": state.selected_strategy,
         "block_reason":     state.last_block_reason,
-        "cooldown_minutes":  COOLDOWN_MINUTES,
+        "cooldown_minutes":  state.cooldown_minutes,
         "cooldown_remaining": (
-            max(0, round(COOLDOWN_MINUTES - (datetime.now() - state.last_exit_time).total_seconds() / 60, 1))
+            max(0, round(state.cooldown_minutes - (datetime.now() - state.last_exit_time).total_seconds() / 60, 1))
             if state.last_exit_time else 0
         ),
         "recovery_mode":    state.recovery_mode,
@@ -1434,8 +1433,9 @@ def configure_auto_trader(
     qty_mode:           str   | None = None,
     manual_qty:         int   | None = None,
     capital:            float | None = None,
-    strike_offset:      int   | None = None,   # 0=ATM, 1=1-OTM, 2=2-OTM
-    max_trades_per_day: int   | None = None,   # 1-15
+    strike_offset:      int   | None = None,
+    max_trades_per_day: int   | None = None,
+    cooldown_minutes:   int   | None = None,   # 0=off, 5/10/15/20/30
 ) -> dict:
     """Update runtime trade settings without restarting."""
     if sl_points          is not None: state.sl_points          = sl_points
@@ -1446,6 +1446,7 @@ def configure_auto_trader(
     if capital            is not None: state.capital            = capital
     if strike_offset      is not None: state.strike_offset      = max(-3, min(3, strike_offset))
     if max_trades_per_day is not None: state.max_trades_per_day = max(1, min(15, max_trades_per_day))
+    if cooldown_minutes   is not None: state.cooldown_minutes   = max(0, min(60, cooldown_minutes))
     _save_state_snapshot()
     return {
         "sl_points":          state.sl_points,
@@ -1456,6 +1457,7 @@ def configure_auto_trader(
         "capital":            state.capital,
         "strike_offset":      state.strike_offset,
         "max_trades_per_day": state.max_trades_per_day,
+        "cooldown_minutes":   state.cooldown_minutes,
     }
 
 

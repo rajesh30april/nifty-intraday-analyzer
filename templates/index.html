@@ -593,6 +593,22 @@
                       </div>
                     </div>
 
+                    <!-- Cooldown pill-selector -->
+                    <div class="col-span-2 md:col-span-2">
+                      <label class="text-[10px] text-gray-400 block mb-1">
+                        ⏳ Cooldown after exit
+                        <span class="ml-1 text-gray-500">(wait before next trade)</span>
+                      </label>
+                      <div id="at-cooldown-pills" class="flex gap-1">
+                        <button onclick="setAtCooldown(0)"  data-mins="0"  class="at-cooldown-pill flex-1 text-[11px] py-1 rounded border border-gray-600 text-gray-400 hover:bg-gray-700 transition">Off</button>
+                        <button onclick="setAtCooldown(5)"  data-mins="5"  class="at-cooldown-pill flex-1 text-[11px] py-1 rounded border border-gray-600 text-gray-400 hover:bg-gray-700 transition">5m</button>
+                        <button onclick="setAtCooldown(10)" data-mins="10" class="at-cooldown-pill flex-1 text-[11px] py-1 rounded border border-gray-600 text-gray-400 hover:bg-gray-700 transition">10m</button>
+                        <button onclick="setAtCooldown(15)" data-mins="15" class="at-cooldown-pill flex-1 text-[11px] py-1 rounded border border-gray-600 text-gray-400 hover:bg-gray-700 transition">15m</button>
+                        <button onclick="setAtCooldown(20)" data-mins="20" class="at-cooldown-pill flex-1 text-[11px] py-1 rounded border border-gray-600 text-gray-400 hover:bg-gray-700 transition">20m</button>
+                        <button onclick="setAtCooldown(30)" data-mins="30" class="at-cooldown-pill flex-1 text-[11px] py-1 rounded border border-gray-600 text-gray-400 hover:bg-gray-700 transition">30m</button>
+                      </div>
+                    </div>
+
                     <!-- Qty mode toggle -->
                     <div class="col-span-2 md:col-span-2">
                       <label class="text-[10px] text-gray-400 block mb-1">How to size each trade?</label>

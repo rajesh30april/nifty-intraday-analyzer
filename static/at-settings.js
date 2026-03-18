@@ -52,6 +52,10 @@ function syncAtSettingsFromStatus(data) {
         if (el) { el.value = data.max_trades_per_day; }
         _updateMaxTradesBadge(data.max_trades_per_day);
     }
+    if (data.cooldown_minutes !== undefined) {
+        _atCooldownMinutes = data.cooldown_minutes;
+        _applyCooldownUI(data.cooldown_minutes);
+    }
     _updateLotsHint();
     _updateCapitalEstimate();
 }
@@ -74,6 +78,27 @@ function _updateMaxTradesBadge(val) {
     if (val <= 5)       badge.classList.add('bg-green-400', 'text-gray-900');
     else if (val <= 10) badge.classList.add('bg-[#ffc220]', 'text-gray-900');
     else                badge.classList.add('bg-red-400',   'text-white');
+}
+
+// ── Cooldown pill-selector ─────────────────────────────────────
+let _atCooldownMinutes = 5;  // default 5 min
+
+function setAtCooldown(mins) {
+    _atCooldownMinutes = mins;
+    _applyCooldownUI(mins);
+    _atMarkDirty();
+}
+
+function _applyCooldownUI(mins) {
+    document.querySelectorAll('.at-cooldown-pill').forEach(btn => {
+        const val    = parseInt(btn.dataset.mins);
+        const active = val === mins;
+        btn.classList.toggle('bg-[#0053e2]', active);
+        btn.classList.toggle('text-white',   active);
+        btn.classList.toggle('border-[#0053e2]', active);
+        btn.classList.toggle('text-gray-400', !active);
+        btn.classList.toggle('border-gray-600', !active);
+    });
 }
 
 // ── Strike offset picker ────────────────────────────────────────
@@ -329,6 +354,7 @@ async function applyAtSettings() {
         qty_mode: mode, manual_qty: manQty, capital,
         strike_offset: _atStrikeOffset,
         max_trades_per_day: maxTrades,
+        cooldown_minutes: _atCooldownMinutes,
     });
 
     try {
@@ -545,4 +571,5 @@ document.addEventListener('DOMContentLoaded', () => {
     _updateLotsHint();
     _updateCapitalEstimate();
     _applyStrikeUI(_atStrikeOffset);
+    _applyCooldownUI(_atCooldownMinutes);   // highlight the default 5m pill on load
 });
