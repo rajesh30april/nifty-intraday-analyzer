@@ -1035,6 +1035,28 @@ async def get_app_trades():
     return {"success": True, "data": analyse(trades), "count": len(trades)}
 
 
+@app.get("/api/report/autoload")
+async def autoload_zerodha_csv():
+    """Auto-load the most recent Zerodha tradebook CSV from ~/Downloads."""
+    from trade_report import parse_zerodha_csv, pair_legs_into_trades, analyse
+    downloads = Path.home() / "Downloads"
+    candidates = sorted(
+        [f for f in downloads.glob("tradebook-*.csv")],
+        key=lambda f: f.stat().st_mtime, reverse=True
+    )
+    if not candidates:
+        return {"success": False, "error": "No tradebook-*.csv found in ~/Downloads"}
+    csv_file = candidates[0]
+    try:
+        content = csv_file.read_text(encoding="utf-8", errors="replace")
+        trades  = parse_zerodha_csv(content)
+        result  = analyse(trades)
+        return {"success": True, "data": result, "count": len(trades),
+                "filename": csv_file.name}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 @app.post("/api/report/upload-csv")
 async def upload_zerodha_csv(file: UploadFile):
     """Upload Zerodha Console tradebook CSV → analyse all historical trades."""

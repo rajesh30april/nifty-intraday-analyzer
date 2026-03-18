@@ -1,186 +1,120 @@
-"""Trade report analyser — parses Zerodha Console tradebook CSV + app trade log.
-
-Zerodha Console tradebook CSV columns (typical):
-  trade_date, order_id, trade_id, security_name, isin,
-  quantity, price, trade_type, order_type, exchange, segment
-
-We pair BUY/SELL legs by security + date to reconstruct full trades,
-then run pattern analysis:
-  - Win / loss rate by time-of-day, day-of-week, direction (CE/PE),
-    option type, exit reason, holding duration
-"""
+"""Trade report analyser — Zerodha FO tradebook CSV parser + pattern analysis."""
 from __future__ import annotations
 
-import json
 import re
 from collections import defaultdict
-from datetime import datetime, date
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
 
-# ── Zerodha Console CSV parsers ──────────────────────────────────────────────
+# ── Zerodha FO Tradebook parser ──────────────────────────────────────────────
+# Columns: symbol,isin,trade_date,exchange,segment,series,trade_type,auction,
+#          quantity,price,trade_id,order_id,order_execution_time,expiry_date
 
-ZERODHA_DATE_FORMATS = [
-    "%Y-%m-%d %H:%M:%S",
-    "%d-%m-%Y %H:%M:%S",
-    "%Y-%m-%dT%H:%M:%S",
-    "%d/%m/%Y %H:%M",
-    "%Y-%m-%d",
-]
-
-
-def _parse_dt(val: str) -> datetime | None:
-    for fmt in ZERODHA_DATE_FORMATS:
-        try:
-            return datetime.strptime(str(val).strip(), fmt)
-        except ValueError:
-            continue
-    return None
-
-
-def parse_zerodha_csv(content: str) -> list[dict]:
-    """Parse Zerodha Console tradebook CSV → list of raw trade-leg dicts."""
+def parse_zerodha_fo_csv(content: str) -> list[dict]:
+    """Parse Zerodha FO tradebook CSV → list of matched trade dicts."""
     from io import StringIO
     df = pd.read_csv(StringIO(content))
-    df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
+    df.columns = [c.strip().lower() for c in df.columns]
 
-    # Normalise common column name variants
-    rename = {
-        "symbol": "security_name",
-        "scrip": "security_name",
-        "trade_type": "trade_type",
-        "buy/sell": "trade_type",
-        "b/s": "trade_type",
-        "qty": "quantity",
-        "trade_date": "trade_date",
-        "date": "trade_date",
-    }
-    df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
+    df["order_execution_time"] = pd.to_datetime(df["order_execution_time"], errors="coerce")
+    df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0)
+    df["price"]    = pd.to_numeric(df["price"],    errors="coerce").fillna(0)
 
-    required = {"security_name", "quantity", "price", "trade_type", "trade_date"}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"CSV missing columns: {missing}. Found: {list(df.columns)}")
+    # Aggregate partial fills → one row per order
+    orders = (
+        df.groupby(["order_id", "symbol", "trade_type", "trade_date"])
+        .agg(quantity=("quantity", "sum"),
+             avg_price=("price", "mean"),
+             time=("order_execution_time", "min"),
+             expiry_date=("expiry_date", "first"))
+        .reset_index()
+    )
 
-    legs = []
-    for _, row in df.iterrows():
-        dt = _parse_dt(str(row["trade_date"]))
-        legs.append({
-            "security":   str(row["security_name"]).strip(),
-            "qty":        abs(float(str(row["quantity"]).replace(",", ""))),
-            "price":      float(str(row["price"]).replace(",", "")),
-            "side":       str(row["trade_type"]).strip().upper()[0],   # B or S
-            "dt":         dt,
-            "date":       dt.date() if dt else None,
-        })
-    return legs
+    trades: list[dict] = []
 
+    for symbol, grp in orders.groupby("symbol"):
+        grp    = grp.sort_values("time")
+        meta   = _option_meta(symbol)
+        buys   = grp[grp["trade_type"] == "buy"].copy()
+        sells  = grp[grp["trade_type"] == "sell"].copy()
 
-# ── Pair legs into trades ─────────────────────────────────────────────────────
+        buy_pool  = [(r.avg_price, r.quantity, r.time, r.trade_date) for r in buys.itertuples()]
+        sell_pool = [(r.avg_price, r.quantity, r.time, r.trade_date) for r in sells.itertuples()]
 
-def _option_meta(symbol: str) -> dict:
-    """Extract CE/PE, strike, expiry from symbol like NIFTY2631723450PE."""
-    m = re.search(r"(NIFTY|BANKNIFTY|FINNIFTY)(\d{5})(\d{5})(CE|PE)", symbol.upper())
-    if m:
-        return {
-            "underlying": m.group(1),
-            "expiry_code": m.group(2),
-            "strike":      int(m.group(3)),
-            "opt_type":    m.group(4),
-        }
-    return {"underlying": symbol, "expiry_code": "", "strike": 0, "opt_type": ""}
+        bi = si = 0
+        while bi < len(buy_pool) and si < len(sell_pool):
+            bp, bq, bt, bd = buy_pool[bi]
+            sp, sq, st, sd = sell_pool[si]
+            matched = min(bq, sq)
+            pnl     = (sp - bp) * matched
 
+            entry_dt = bt if bt <= st else st
+            exit_dt  = st if bt <= st else bt
+            direction = "LONG" if bt <= st else "SHORT"
+            dur_min   = (exit_dt - entry_dt).total_seconds() / 60 if pd.notna(entry_dt) and pd.notna(exit_dt) else None
 
-def pair_legs_into_trades(legs: list[dict]) -> list[dict]:
-    """Match BUY legs with SELL legs (FIFO) per security per date."""
-    by_sec: dict[str, list[dict]] = defaultdict(list)
-    for leg in legs:
-        by_sec[leg["security"]].append(leg)
-
-    trades = []
-    for security, sec_legs in by_sec.items():
-        sec_legs.sort(key=lambda x: x["dt"] or datetime.min)
-        buys:  list[dict] = []
-        sells: list[dict] = []
-        for leg in sec_legs:
-            (buys if leg["side"] == "B" else sells).append(leg)
-
-        # Simple FIFO pair: each BUY matched with a SELL
-        for buy, sell in zip(buys, sells):
-            pnl_per_unit = sell["price"] - buy["price"]
-            qty          = min(buy["qty"], sell["qty"])
-            pnl          = pnl_per_unit * qty
-            meta         = _option_meta(security)
-            entry_dt     = buy["dt"]
-            exit_dt      = sell["dt"]
-            dur_min      = (
-                (exit_dt - entry_dt).total_seconds() / 60
-                if entry_dt and exit_dt else None
-            )
             trades.append({
-                "security":    security,
-                "opt_type":    meta["opt_type"] or "EQ",
-                "strike":      meta["strike"],
-                "underlying":  meta["underlying"],
-                "direction":   "LONG",
-                "entry_price": buy["price"],
-                "exit_price":  sell["price"],
-                "qty":         qty,
-                "pnl":         round(pnl, 2),
-                "entry_dt":    entry_dt.isoformat() if entry_dt else "",
-                "exit_dt":     exit_dt.isoformat() if exit_dt else "",
-                "entry_date":  entry_dt.date().isoformat() if entry_dt else "",
-                "entry_time":  entry_dt.strftime("%H:%M") if entry_dt else "",
-                "exit_time":   exit_dt.strftime("%H:%M") if exit_dt else "",
-                "day_of_week": entry_dt.strftime("%A") if entry_dt else "",
-                "hour":        entry_dt.hour if entry_dt else 0,
+                "security":     symbol,
+                "opt_type":     meta["opt_type"],
+                "strike":       meta["strike"],
+                "underlying":   meta["underlying"],
+                "direction":    direction,
+                "entry_price":  round(bp if direction == "LONG" else sp, 2),
+                "exit_price":   round(sp if direction == "LONG" else bp, 2),
+                "qty":          matched,
+                "pnl":          round(pnl, 2),
+                "entry_dt":     entry_dt.isoformat() if pd.notna(entry_dt) else "",
+                "exit_dt":      exit_dt.isoformat()  if pd.notna(exit_dt)  else "",
+                "entry_date":   str(bd if direction == "LONG" else sd),
+                "entry_time":   entry_dt.strftime("%H:%M") if pd.notna(entry_dt) else "",
+                "exit_time":    exit_dt.strftime("%H:%M")  if pd.notna(exit_dt)  else "",
+                "day_of_week":  entry_dt.strftime("%A") if pd.notna(entry_dt) else "",
+                "hour":         entry_dt.hour if pd.notna(entry_dt) else 0,
                 "duration_min": round(dur_min, 1) if dur_min is not None else None,
-                "won":         pnl > 0,
-                "source":      "zerodha_csv",
+                "won":          pnl > 0,
+                "exit_reason":  "",
+                "source":       "zerodha_csv",
             })
-        # Handle SHORT legs (SELL first, BUY to close)
-        for sell, buy in zip(sells[len(buys):], buys[len(sells):]):
-            pnl_per_unit = sell["price"] - buy["price"]
-            qty          = min(buy["qty"], sell["qty"])
-            pnl          = pnl_per_unit * qty
-            meta         = _option_meta(security)
-            entry_dt     = sell["dt"]
-            exit_dt      = buy["dt"]
-            dur_min      = (
-                (exit_dt - entry_dt).total_seconds() / 60
-                if entry_dt and exit_dt else None
-            )
-            trades.append({
-                "security":    security,
-                "opt_type":    meta["opt_type"] or "EQ",
-                "strike":      meta["strike"],
-                "underlying":  meta["underlying"],
-                "direction":   "SHORT",
-                "entry_price": sell["price"],
-                "exit_price":  buy["price"],
-                "qty":         qty,
-                "pnl":         round(pnl, 2),
-                "entry_dt":    entry_dt.isoformat() if entry_dt else "",
-                "exit_dt":     exit_dt.isoformat() if exit_dt else "",
-                "entry_date":  entry_dt.date().isoformat() if entry_dt else "",
-                "entry_time":  entry_dt.strftime("%H:%M") if entry_dt else "",
-                "exit_time":   exit_dt.strftime("%H:%M") if exit_dt else "",
-                "day_of_week": entry_dt.strftime("%A") if entry_dt else "",
-                "hour":        entry_dt.hour if entry_dt else 0,
-                "duration_min": round(dur_min, 1) if dur_min is not None else None,
-                "won":         pnl > 0,
-                "source":      "zerodha_csv",
-            })
+
+            buy_pool[bi]  = (bp, bq  - matched, bt, bd)
+            sell_pool[si] = (sp, sq  - matched, st, sd)
+            if buy_pool[bi][1]  <= 0: bi += 1
+            if sell_pool[si][1] <= 0: si += 1
+
     return sorted(trades, key=lambda t: t["entry_dt"])
 
 
-# ── App trade log loader ──────────────────────────────────────────────────────
+# ── Legacy generic CSV parser (drag-drop fallback) ────────────────────────────
+def parse_zerodha_csv(content: str) -> list[dict]:
+    """Auto-detect Zerodha FO tradebook and parse it."""
+    from io import StringIO
+    df = pd.read_csv(StringIO(content), nrows=1)
+    cols = [c.strip().lower() for c in df.columns]
+    if "order_execution_time" in cols:
+        return parse_zerodha_fo_csv(content)
+    raise ValueError(f"Unrecognised CSV format. Columns found: {cols}")
 
+
+def pair_legs_into_trades(legs: list[dict]) -> list[dict]:
+    """No-op shim — FO parser already returns paired trades."""
+    return legs
+
+
+# ── Option metadata ───────────────────────────────────────────────────────────
+def _option_meta(symbol: str) -> dict:
+    m = re.search(r"(NIFTY|BANKNIFTY|FINNIFTY|SENSEX)(\d+)(\d{5})(CE|PE)", symbol.upper())
+    if m:
+        return {"underlying": m.group(1), "strike": int(m.group(3)), "opt_type": m.group(4)}
+    return {"underlying": symbol, "strike": 0, "opt_type": ""}
+
+
+# ── App trade log loader ──────────────────────────────────────────────────────
 def load_app_trade_log(path: Path) -> list[dict]:
-    """Load trades from app's trade_log.json (today's trades)."""
+    import json
     if not path.exists():
         return []
     with open(path) as f:
@@ -189,14 +123,14 @@ def load_app_trade_log(path: Path) -> list[dict]:
     for t in data.get("trades", []):
         if t.get("status") != "exited":
             continue
-        entry_dt = _parse_dt(t.get("timestamp", ""))
-        exit_dt  = _parse_dt(t.get("exit_time", ""))
-        dur_min  = (
-            (exit_dt - entry_dt).total_seconds() / 60
-            if entry_dt and exit_dt else None
-        )
-        meta = _option_meta(t.get("instrument", ""))
-        pnl  = t.get("pnl", 0) or 0
+        def _pdt(s):
+            try: return datetime.fromisoformat(s)
+            except: return None
+        entry_dt = _pdt(t.get("timestamp", ""))
+        exit_dt  = _pdt(t.get("exit_time", ""))
+        dur_min  = (exit_dt - entry_dt).total_seconds() / 60 if entry_dt and exit_dt else None
+        meta     = _option_meta(t.get("instrument", ""))
+        pnl      = t.get("pnl", 0) or 0
         trades.append({
             "security":    t.get("instrument", "").replace("NFO:", ""),
             "opt_type":    meta["opt_type"] or "EQ",
@@ -204,14 +138,14 @@ def load_app_trade_log(path: Path) -> list[dict]:
             "underlying":  meta["underlying"],
             "direction":   t.get("direction", "").upper(),
             "entry_price": t.get("entry_premium", t.get("entry_price", 0)),
-            "exit_price":  t.get("exit_premium", t.get("exit_price", 0)),
+            "exit_price":  t.get("exit_premium",  t.get("exit_price",  0)),
             "qty":         t.get("quantity", 0),
             "pnl":         round(pnl, 2),
             "entry_dt":    t.get("timestamp", ""),
-            "exit_dt":     t.get("exit_time", ""),
+            "exit_dt":     t.get("exit_time",  ""),
             "entry_date":  entry_dt.date().isoformat() if entry_dt else "",
             "entry_time":  entry_dt.strftime("%H:%M") if entry_dt else "",
-            "exit_time":   exit_dt.strftime("%H:%M") if exit_dt else "",
+            "exit_time":   exit_dt.strftime("%H:%M")  if exit_dt  else "",
             "day_of_week": entry_dt.strftime("%A") if entry_dt else "",
             "hour":        entry_dt.hour if entry_dt else 0,
             "duration_min": round(dur_min, 1) if dur_min is not None else None,
@@ -223,24 +157,31 @@ def load_app_trade_log(path: Path) -> list[dict]:
 
 
 # ── Pattern analysis ──────────────────────────────────────────────────────────
-
 def analyse(trades: list[dict]) -> dict:
-    """Generate pattern analysis from trade list."""
     if not trades:
-        return {}
+        return {"summary": {}, "by_direction": {}, "by_opt_type": {}, "by_day": {}, "by_time": {}, "trades": []}
 
-    total       = len(trades)
-    winners     = [t for t in trades if t["won"]]
-    losers      = [t for t in trades if not t["won"]]
-    win_rate    = len(winners) / total * 100
-    total_pnl   = sum(t["pnl"] for t in trades)
-    avg_win     = sum(t["pnl"] for t in winners) / len(winners) if winners else 0
-    avg_loss    = sum(t["pnl"] for t in losers)  / len(losers)  if losers  else 0
-    profit_factor = (
-        abs(sum(t["pnl"] for t in winners)) /
-        abs(sum(t["pnl"] for t in losers))
-        if losers and any(t["pnl"] < 0 for t in trades) else None
-    )
+    total     = len(trades)
+    winners   = [t for t in trades if t["won"]]
+    losers    = [t for t in trades if not t["won"]]
+    win_rate  = len(winners) / total * 100
+    total_pnl = sum(t["pnl"] for t in trades)
+    avg_win   = sum(t["pnl"] for t in winners) / len(winners) if winners else 0
+    avg_loss  = sum(t["pnl"] for t in losers)  / len(losers)  if losers  else 0
+    gross_win = abs(sum(t["pnl"] for t in winners))
+    gross_loss= abs(sum(t["pnl"] for t in losers))
+    pf        = round(gross_win / gross_loss, 2) if gross_loss else None
+
+    # Monthly P&L
+    monthly: dict[str, float] = defaultdict(float)
+    for t in trades:
+        m = t["entry_date"][:7] if t["entry_date"] else "unknown"
+        monthly[m] += t["pnl"]
+
+    # Daily P&L
+    daily: dict[str, float] = defaultdict(float)
+    for t in trades:
+        daily[t["entry_date"]] += t["pnl"]
 
     def _group(key: str) -> dict:
         g: dict[str, list] = defaultdict(list)
@@ -257,49 +198,49 @@ def analyse(trades: list[dict]) -> dict:
             for k, v in sorted(g.items())
         }
 
-    # Time-of-day buckets
     def _time_bucket(t: dict) -> str:
         h = t.get("hour", 0)
-        if h < 10:  return "09:15–10:00 (Open)"
+        if h < 10:  return "09:15–10:00"
         if h < 11:  return "10:00–11:00"
         if h < 12:  return "11:00–12:00"
         if h < 13:  return "12:00–13:00"
         if h < 14:  return "13:00–14:00"
-        return              "14:00–15:30 (Close)"
+        return              "14:00–15:30"
 
     time_groups: dict[str, list] = defaultdict(list)
     for t in trades:
         time_groups[_time_bucket(t)].append(t)
-    time_analysis = {
-        k: {
-            "total":    len(v),
-            "wins":     sum(1 for t in v if t["won"]),
-            "win_rate": round(sum(1 for t in v if t["won"]) / len(v) * 100, 1),
-            "pnl":      round(sum(t["pnl"] for t in v), 2),
-        }
-        for k, v in sorted(time_groups.items())
-    }
 
     return {
         "summary": {
-            "total_trades":   total,
-            "winners":        len(winners),
-            "losers":         len(losers),
-            "win_rate":       round(win_rate, 1),
-            "total_pnl":      round(total_pnl, 2),
-            "avg_win":        round(avg_win, 2),
-            "avg_loss":       round(avg_loss, 2),
-            "profit_factor":  round(profit_factor, 2) if profit_factor else None,
-            "best_trade":     round(max(t["pnl"] for t in trades), 2),
-            "worst_trade":    round(min(t["pnl"] for t in trades), 2),
-            "avg_duration":   round(
+            "total_trades":  total,
+            "winners":       len(winners),
+            "losers":        len(losers),
+            "win_rate":      round(win_rate, 1),
+            "total_pnl":     round(total_pnl, 2),
+            "avg_win":       round(avg_win, 2),
+            "avg_loss":      round(avg_loss, 2),
+            "profit_factor": pf,
+            "best_trade":    round(max(t["pnl"] for t in trades), 2),
+            "worst_trade":   round(min(t["pnl"] for t in trades), 2),
+            "avg_duration":  round(
                 sum(t["duration_min"] for t in trades if t["duration_min"] is not None) /
-                sum(1 for t in trades if t["duration_min"] is not None), 1
-            ) if any(t["duration_min"] for t in trades) else None,
+                max(1, sum(1 for t in trades if t["duration_min"] is not None)), 1
+            ),
         },
-        "by_direction":  _group("direction"),
-        "by_opt_type":   _group("opt_type"),
-        "by_day":        _group("day_of_week"),
-        "by_time":       time_analysis,
-        "trades":        trades,
+        "by_direction": _group("direction"),
+        "by_opt_type":  _group("opt_type"),
+        "by_day":       _group("day_of_week"),
+        "by_time": {
+            k: {
+                "total":    len(v),
+                "wins":     sum(1 for t in v if t["won"]),
+                "win_rate": round(sum(1 for t in v if t["won"]) / len(v) * 100, 1),
+                "pnl":      round(sum(t["pnl"] for t in v), 2),
+            }
+            for k, v in sorted(time_groups.items())
+        },
+        "monthly": {k: round(v, 2) for k, v in sorted(monthly.items())},
+        "daily":   {k: round(v, 2) for k, v in sorted(daily.items())},
+        "trades":  trades,
     }
