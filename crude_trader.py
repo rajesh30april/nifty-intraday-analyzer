@@ -163,16 +163,40 @@ def _save_log():
 
 # ── Order placement ───────────────────────────────────────────────
 
+def _limit_price_for(symbol: str, side: str) -> float | None:
+    """Fetch LTP for an MCX option and add slippage for reliable fills.
+
+    MCX blocks MARKET orders on options — must use LIMIT with a price
+    within the exchange's market-protection band (~2% of LTP).
+    BUY  → LTP + 1%  (aggressive, ensures fill)
+    SELL → LTP - 1%  (still fills quickly, better price)
+    """
+    try:
+        ltp = get_crude_option_ltp(symbol)
+        if not isinstance(ltp, (int, float)) or ltp <= 0:
+            return None
+        slippage = max(1.0, round(ltp * 0.01, 1))  # 1% or min ₹1
+        return round(ltp + slippage, 1) if side == "BUY" else round(ltp - slippage, 1)
+    except Exception:
+        return None
+
+
 def _place_order(symbol: str, direction: Direction, qty: int, price: float) -> str | None:
     clean = symbol.replace("MCX:", "")
     mode  = "📝 PAPER" if state.is_paper_mode else "🟢 LIVE"
     tx    = "BUY"  # always buy options (CE or PE)
 
-    print(f"🛢️  [{mode}] {tx} {qty} × {clean} @ ₹{price:.0f} ({direction.value})")
-
     if state.is_paper_mode:
+        print(f"🛢️  [{mode}] {tx} {qty} × {clean} @ ₹{price:.0f} ({direction.value})")
         return f"PAPER-CRUDE-{datetime.now().strftime('%H%M%S')}"
 
+    # MCX options require LIMIT orders (MARKET is blocked by exchange)
+    limit_px = _limit_price_for(symbol, "BUY")
+    if limit_px is None:
+        state.last_block_reason = "Could not fetch option LTP for LIMIT price"
+        return None
+
+    print(f"🛢️  [{mode}] {tx} {qty} × {clean} LIMIT ₹{limit_px:.1f} ({direction.value})")
     try:
         oid = kite_manager.kite.place_order(
             variety=kite_manager.kite.VARIETY_REGULAR,
@@ -181,10 +205,11 @@ def _place_order(symbol: str, direction: Direction, qty: int, price: float) -> s
             transaction_type=kite_manager.kite.TRANSACTION_TYPE_BUY,
             quantity=qty,
             product=kite_manager.kite.PRODUCT_MIS,
-            order_type=kite_manager.kite.ORDER_TYPE_MARKET,
+            order_type=kite_manager.kite.ORDER_TYPE_LIMIT,
+            price=limit_px,
             validity="DAY",
         )
-        print(f"✅ Crude order placed: {oid}")
+        print(f"✅ Crude entry order placed: {oid}")
         return str(oid)
     except Exception as e:
         print(f"❌ Crude order failed: {e}")
@@ -263,7 +288,9 @@ def _exit_position(reason: str, price: float):
     exit_prem = exit_ltp if isinstance(exit_ltp, (int, float)) and exit_ltp > 0 else trade.entry_premium
 
     if not state.is_paper_mode:
-        clean = trade.instrument.replace("MCX:", "")
+        clean    = trade.instrument.replace("MCX:", "")
+        # MCX options: LIMIT order required (MARKET is exchange-blocked)
+        limit_px = _limit_price_for(trade.instrument, "SELL")
         try:
             kite_manager.kite.place_order(
                 variety=kite_manager.kite.VARIETY_REGULAR,
@@ -272,7 +299,11 @@ def _exit_position(reason: str, price: float):
                 transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
                 quantity=trade.quantity,
                 product=kite_manager.kite.PRODUCT_MIS,
-                order_type=kite_manager.kite.ORDER_TYPE_MARKET,
+                order_type=(
+                    kite_manager.kite.ORDER_TYPE_LIMIT if limit_px
+                    else kite_manager.kite.ORDER_TYPE_MARKET
+                ),
+                price=limit_px,
                 validity="DAY",
             )
         except Exception as e:
