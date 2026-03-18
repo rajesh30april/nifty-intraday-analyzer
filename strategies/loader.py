@@ -21,3 +21,6 @@ import strategies.candlestick_patterns # noqa: F401 — Candlestick Patterns (En
 import strategies.chart_patterns       # noqa: F401 — Chart Patterns (Flag, Double Top, Triangle)
 import strategies.pdhl_breakout        # noqa: F401 — Previous Day High/Low Breakout
 import strategies.first_candle_range   # noqa: F401 — First Candle Range (FCR)
+import strategies.volume_spike         # noqa: F401 — Volume Spike Breakout
+import strategies.obv_divergence       # noqa: F401 — OBV Divergence
+import strategies.volume_profile       # noqa: F401 — Volume Profile HVN/LVN

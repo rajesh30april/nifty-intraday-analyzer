@@ -109,6 +109,28 @@ _TIME_BONUS: dict[str, list[tuple[dt_time, dt_time, float]]] = {
         (dt_time(12, 0), dt_time(14, 30), 0.9),  # fading relevance midday
         (dt_time(14, 30), dt_time(15, 30), 0.0), # too late, no new entries
     ],
+    # Volume Spike — skip first chaotic candle, great all morning
+    "volume_spike": [
+        (dt_time(9, 15), dt_time(9, 20), 0.0),   # 9:15 candle always spikes — skip
+        (dt_time(9, 20), dt_time(11, 30), 1.3),  # morning breakouts
+        (dt_time(11, 30), dt_time(14, 0), 1.0),  # midday — still valid
+        (dt_time(14, 0), dt_time(14, 45), 0.8),  # fading
+        (dt_time(14, 45), dt_time(15, 30), 0.0), # too late
+    ],
+    # OBV Divergence — needs at least 30 min of data to form a divergence
+    "obv_divergence": [
+        (dt_time(9, 15), dt_time(9, 30), 0.0),   # too early — no history
+        (dt_time(9, 30), dt_time(12, 0), 1.2),   # morning divergences strongest
+        (dt_time(12, 0), dt_time(14, 30), 1.1),  # still valid
+        (dt_time(14, 30), dt_time(15, 30), 0.0), # too late
+    ],
+    # Volume Profile — needs at least 30 min of today's data to be meaningful
+    "volume_profile": [
+        (dt_time(9, 15), dt_time(9, 45), 0.0),   # profile not formed yet
+        (dt_time(9, 45), dt_time(14, 0), 1.2),   # sweet spot — HVNs well tested
+        (dt_time(14, 0), dt_time(14, 45), 1.0),  # still valid
+        (dt_time(14, 45), dt_time(15, 30), 0.0), # too late
+    ],
     # PDH/PDL valid all day but sweet spot is morning + post-lunch breakout
     "pdhl_breakout": [
         (dt_time(9, 15), dt_time(9, 25), 0.8),   # too early — level not confirmed
