@@ -228,50 +228,170 @@ def evaluate_all(df: pd.DataFrame) -> MetaRouterResult:
     # Sort by composite score descending
     candidates.sort(key=lambda x: x["composite"], reverse=True)
 
-    # Pick best entry signal
-    entry_candidates = [c for c in candidates if c["should_enter"] and c["time_mult"] > 0]
-    chosen = entry_candidates[0] if entry_candidates else None
+    return _consensus_pick(candidates, regime, regime_result, current_vix, df)
 
-    if chosen:
-        sig = chosen["signal"]
-        vix_tag = f"VIX={current_vix:.1f}"
-        sig.reason = (
-            f"[META: {regime.value.upper()}] → {chosen['emoji']} {chosen['name']} "
-            f"| score={chosen['composite']:.0f} "
-            f"(conf={chosen['confidence']:.0f}% × regime={chosen['regime_fit']} "
-            f"× time={chosen['time_mult']} × vix={chosen.get('vix_boost', 1.0)}) "
-            f"| {vix_tag} | {sig.reason}"
-        )
+
+# ── Consensus thresholds (tune these if too many / too few trades) ─
+# MIN_SCORE:       a strategy must score at least this to count as a vote
+# MIN_VOTE_SCORE:  the winning direction's total must reach this
+# MIN_RATIO:       winning direction must outvote the other by this factor
+# MIN_AGREEING:    at least N strategiesvote the same direction
+MIN_SCORE        = 60    # individual strategy minimum to count as a vote
+MIN_VOTE_SCORE   = 100   # total directional vote score needed
+MIN_RATIO        = 1.5   # e.g. LONG 180 vs SHORT 100 → ratio 1.8 ✅
+MIN_AGREEING     = 2     # at least 2 strategies must agree
+
+
+def _consensus_pick(
+    candidates: list[dict],
+    regime: MarketRegime,
+    regime_result,
+    current_vix: float,
+    df: pd.DataFrame,
+) -> MetaRouterResult:
+    """Directional vote consensus.
+
+    Instead of letting ONE strategy win, we tally scores by direction.
+    Both LONG and SHORT voters must earn their way in:
+      - individual score  >= MIN_SCORE      (no weak signals)
+      - winning direction >= MIN_VOTE_SCORE (enough conviction)
+      - winning / losing  >= MIN_RATIO      (clear majority)
+      - at least           MIN_AGREEING strategies agree
+
+    This prevents a single high-confidence contrarian strategy
+    from overriding all the other evidence.
+    """
+    from strategy import Direction  # noqa: PLC0415
+
+    vix_tag = f"VIX={current_vix:.1f}"
+
+    # Only strategies that WANT to enter AND score high enough get a vote
+    voters = [
+        c for c in candidates
+        if c["should_enter"]
+        and c["time_mult"] > 0
+        and c["composite"] >= MIN_SCORE
+    ]
+
+    long_voters  = [c for c in voters if c["direction"] == Direction.LONG]
+    short_voters = [c for c in voters if c["direction"] == Direction.SHORT]
+
+    long_score  = sum(c["composite"] for c in long_voters)
+    short_score = sum(c["composite"] for c in short_voters)
+
+    # Volume confirmation — avoid entering on thin candles
+    vol_ok, vol_note = _volume_ok(df)
+
+    def _no_entry(why: str) -> MetaRouterResult:
+        top = candidates[0] if candidates else None
         return MetaRouterResult(
             regime=regime.value,
             regime_detail=regime_result.detail,
             adx=regime_result.adx,
-            selected_strategy=chosen["name"],
-            selected_emoji=chosen["emoji"],
-            signal=sig,
+            selected_strategy=top["name"] if top else "none",
+            selected_emoji=top["emoji"] if top else "❓",
+            signal=StrategySignal(
+                should_enter=False,
+                reason=(
+                    f"[META: {regime.value.upper()}] {why} "
+                    f"| LONG {long_score:.0f} ({len(long_voters)} strats) "
+                    f"vs SHORT {short_score:.0f} ({len(short_voters)} strats) "
+                    f"| {vix_tag}"
+                ),
+            ),
             scores=candidates,
-            reason=sig.reason,
+            reason=why,
         )
 
-    # No entry signal — return highest composite (for transparency)
-    top = candidates[0] if candidates else None
-    no_signal = StrategySignal(
-        should_enter=False,
-        reason=(
-            f"[META: {regime.value.upper()}] No strategy fired. "
-            f"Best candidate: {top['emoji'] if top else '?'} {top['name'] if top else 'none'} "
-            f"score={top['composite'] if top else 0:.0f}"
-        ),
+    # Guard: no voters at all
+    if not voters:
+        return _no_entry("No strategy fired with score ≥ {MIN_SCORE}")
+
+    # Guard: volume too low
+    if not vol_ok:
+        return _no_entry(f"Low volume — {vol_note}")
+
+    # Determine winning direction
+    if long_score >= short_score:
+        win_dir, win_voters, win_score = Direction.LONG,  long_voters,  long_score
+        los_score                       =                               short_score
+    else:
+        win_dir, win_voters, win_score = Direction.SHORT, short_voters, short_score
+        los_score                       =                               long_score
+
+    ratio = win_score / los_score if los_score > 0 else 999
+
+    # Guard: not enough total conviction
+    if win_score < MIN_VOTE_SCORE:
+        return _no_entry(
+            f"Consensus too weak — winning dir score {win_score:.0f} < {MIN_VOTE_SCORE}"
+        )
+
+    # Guard: not enough strategies agree
+    if len(win_voters) < MIN_AGREEING:
+        return _no_entry(
+            f"Only {len(win_voters)} strat(s) agree on "
+            f"{'LONG' if win_dir==Direction.LONG else 'SHORT'} — need {MIN_AGREEING}"
+        )
+
+    # Guard: ratio too low (contested signal — market unclear)
+    if ratio < MIN_RATIO:
+        return _no_entry(
+            f"Contested — LONG {long_score:.0f} vs SHORT {short_score:.0f} "
+            f"(ratio {ratio:.1f}× < {MIN_RATIO}×)"
+        )
+
+    # ✅ Consensus reached — build signal from the top-scoring voter
+    top_voter = win_voters[0]  # highest composite in winning direction
+    sig = top_voter["signal"]
+    voter_names = ", ".join(
+        f"{c['emoji']}{c['name']} ({c['composite']:.0f})"
+        for c in win_voters
+    )
+    sig.reason = (
+        f"[META: {regime.value.upper()}] CONSENSUS {'LONG' if win_dir==Direction.LONG else 'SHORT'} "
+        f"| score {win_score:.0f} vs {los_score:.0f} (ratio {ratio:.1f}×) "
+        f"| {len(win_voters)} agree: {voter_names} "
+        f"| {vix_tag} | {vol_note}"
     )
     return MetaRouterResult(
         regime=regime.value,
         regime_detail=regime_result.detail,
         adx=regime_result.adx,
-        selected_strategy=top["name"] if top else "none",
-        selected_emoji=top["emoji"] if top else "❓",
-        signal=no_signal,
+        selected_strategy=top_voter["name"],
+        selected_emoji=top_voter["emoji"],
+        signal=sig,
         scores=candidates,
-        reason=no_signal.reason,
+        reason=sig.reason,
+    )
+
+
+def _volume_ok(df: pd.DataFrame) -> tuple[bool, str]:
+    """Check if the latest candle has at least 70% of the 20-candle avg volume.
+
+    Breakouts on thin volume are unreliable — this filters the worst cases
+    without being too restrictive (uses 70% not 100% so minor slow periods
+    don't block valid signals).
+    """
+    if "volume" not in df.columns or len(df) < 21:
+        return True, "vol=N/A"  # can't check → allow
+    vol       = df["volume"]
+    avg20     = float(vol.iloc[-21:-1].mean())
+    latest    = float(vol.iloc[-1])
+    if avg20 <= 0:
+        return True, "vol=N/A"
+    pct       = latest / avg20 * 100
+    ok        = pct >= 70
+    note      = f"vol={latest/1000:.0f}K ({pct:.0f}% of avg)"
+    return ok, note
+
+
+def _empty_result(reason: str) -> MetaRouterResult:
+    return MetaRouterResult(
+        regime="unknown", regime_detail=reason, adx=0,
+        selected_strategy="none", selected_emoji="❓",
+        signal=StrategySignal(should_enter=False, reason=reason),
+        scores=[], reason=reason,
     )
 
 
