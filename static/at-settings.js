@@ -443,12 +443,14 @@ async function fetchZerodhaBalance() {
         // 1. Switch to capital mode automatically
         _applyQtyModeUI('capital', true);
 
-        // 2. Fill in the live balance as capital
+        // 2. Fill in the live balance and lock the max cap
         const balEl = document.getElementById('at-capital');
         if (balEl) {
             balEl.value = Math.floor(data.balance);
             _updateCapitalEstimate();
         }
+        // Apply hard cap so user can't type more than their balance
+        if (typeof _setCapitalMax === 'function') _setCapitalMax(data.balance);
 
         // 3. Mark dirty so polling doesn't overwrite
         _atMarkDirty();

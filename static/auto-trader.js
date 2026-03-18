@@ -628,6 +628,11 @@ function renderAutoTrader(data) {
 
     // ── Sync settings panel inputs from server state ─────────────
     if (typeof syncAtSettingsFromStatus === 'function') syncAtSettingsFromStatus(data);
+
+    // ── Refresh manual controls visibility ────────────────────────
+    if (typeof _atRefreshManualControls === 'function') {
+        _atRefreshManualControls(!!data.active_trade);
+    }
 }
 
 function _renderServerEventLog(events) {

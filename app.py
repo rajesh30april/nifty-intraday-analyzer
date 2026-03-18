@@ -2432,6 +2432,77 @@ async def auto_trader_evaluate():
         return {"success": False, "error": str(e)}
 
 
+@app.post("/api/auto-trader/force-exit")
+async def auto_trader_force_exit():
+    """Manually exit the active trade at market price immediately."""
+    from auto_trader import state as at_state, _exit_position
+    if not at_state.active_trade:
+        return {"success": False, "error": "No active trade to exit"}
+    try:
+        import asyncio
+        nifty = at_state.last_nifty_price or 0
+        loop  = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _exit_position, "MANUAL EXIT", nifty)
+        return {"success": True, "message": "Manual exit triggered"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/auto-trader/force-entry")
+async def auto_trader_force_entry(direction: str = Query(...)):
+    """Manually force a trade entry (LONG or SHORT) bypassing signal check."""
+    from auto_trader import (
+        state as at_state, Direction, _enter_trade,
+        fetch_intraday_data
+    )
+    direction = direction.upper()
+    if direction not in ("LONG", "SHORT"):
+        return {"success": False, "error": "direction must be LONG or SHORT"}
+    if at_state.active_trade:
+        return {"success": False, "error": "Already in a trade — exit first"}
+    if not at_state.is_running:
+        return {"success": False, "error": "Auto-trader not running — press Start first"}
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        def _run():
+            df    = fetch_intraday_data(interval="5m", period="5d")
+            price = float(df["close"].iloc[-1]) if df is not None and not df.empty else (at_state.last_nifty_price or 0)
+            _enter_trade(Direction(direction.lower()), price)
+            return get_trader_status()
+        result = await loop.run_in_executor(None, _run)
+        return {"success": True, **result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/auto-trader/update-trail-sl")
+async def auto_trader_update_trail_sl(new_sl_points: float = Query(...)):
+    """Manually update the trailing SL points on the fly."""
+    from auto_trader import state as at_state, _sync_trailing_sl_to_exchange
+    if new_sl_points < 5 or new_sl_points > 200:
+        return {"success": False, "error": "SL must be between 5 and 200 Nifty points"}
+    old = at_state.trailing_sl_points
+    at_state.trailing_sl_points = new_sl_points
+    at_state.sl_points = max(at_state.sl_points, new_sl_points)  # hard SL >= trail SL
+    # If trade is active, recalculate SL level immediately
+    if at_state.active_trade:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        try:
+            await loop.run_in_executor(None, _sync_trailing_sl_to_exchange)
+        except Exception:
+            pass
+    from auto_trader import _save_state_snapshot
+    _save_state_snapshot()
+    return {
+        "success": True,
+        "old_trail_sl": old,
+        "new_trail_sl": at_state.trailing_sl_points,
+        "sl_points":    at_state.sl_points,
+    }
+
+
 @app.get("/api/auto-trader/history")
 async def auto_trader_history():
     """Return trade history from trade log."""

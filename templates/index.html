@@ -640,11 +640,18 @@
                     <!-- ── Auto Capital mode ── -->
                     <div id="at-qty-capital-row" class="hidden">
                       <div class="flex items-end gap-3 flex-wrap">
-                        <div class="w-36">
-                          <label class="text-[10px] text-gray-400 block mb-1" for="at-capital">Your trading capital (₹)</label>
-                          <input id="at-capital" type="number" value="96000" min="10000" max="10000000" step="5000"
-                            class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-sm text-white font-bold"
-                            onfocus="_atMarkDirty()" oninput="_updateCapitalEstimate()">
+                        <div class="w-44">
+                          <div class="flex items-center justify-between mb-1">
+                            <label class="text-[10px] text-gray-400" for="at-capital">Trading Capital (₹)</label>
+                            <span id="at-capital-lock-badge" class="hidden text-[8px] bg-yellow-600 text-black font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">🔒 MAX</span>
+                          </div>
+                          <div class="relative">
+                            <input id="at-capital" type="number" value="96000" min="1000" max="10000000" step="1000"
+                              class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-sm text-white font-bold"
+                              onfocus="_atMarkDirty()" oninput="_onCapitalInput(event)">
+                            <span id="at-capital-lock-icon" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-yellow-400 text-xs pointer-events-none">🔒</span>
+                          </div>
+                          <div id="at-capital-max-hint" class="hidden text-[9px] text-yellow-500 mt-0.5">Capped at Zerodha balance</div>
                         </div>
                         <!-- Fetch from Zerodha button -->
                         <button onclick="fetchZerodhaBalance()"
@@ -807,12 +814,61 @@
                   <div class="text-2xl mb-1">⏳</div>
                   <div class="text-xs text-gray-500 font-semibold">No open position</div>
                   <div id="at-no-pos-msg" class="text-[10px] text-gray-600">Waiting for entry signal…</div>
-                  <!-- Sync from Zerodha — for trades placed outside the app -->
                   <button id="at-sync-zd-btn" onclick="syncFromZerodha()"
                     class="mt-2 text-[10px] bg-gray-700 hover:bg-gray-600 border border-gray-500 text-gray-300 px-3 py-1 rounded-lg">
                     🔗 Sync trade from Zerodha
                   </button>
                   <div id="at-sync-zd-msg" class="text-[10px] mt-1 hidden"></div>
+                </div>
+
+                <!-- ── MANUAL CONTROLS ────────────────────────── -->
+                <div class="bg-gray-900 border border-gray-700 rounded-xl p-3 space-y-2">
+                  <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">🕹️ Manual Controls</p>
+
+                  <!-- Evaluate + Force Entry row -->
+                  <div id="at-manual-entry-row" class="flex items-center gap-2 flex-wrap">
+                    <button onclick="atManualEvaluate()"
+                      id="at-btn-evaluate"
+                      class="flex-1 text-[11px] font-bold bg-blue-900 hover:bg-blue-800 border border-blue-600 text-blue-200 px-3 py-2 rounded-lg transition flex items-center justify-center gap-1.5">
+                      🔍 Evaluate Now
+                    </button>
+                    <button onclick="atForceEntry('LONG')"
+                      id="at-btn-long"
+                      class="flex-1 text-[11px] font-bold bg-green-900 hover:bg-green-800 border border-green-600 text-green-300 px-3 py-2 rounded-lg transition flex items-center justify-center gap-1.5">
+                      📈 Force LONG
+                    </button>
+                    <button onclick="atForceEntry('SHORT')"
+                      id="at-btn-short"
+                      class="flex-1 text-[11px] font-bold bg-red-900 hover:bg-red-800 border border-red-600 text-red-300 px-3 py-2 rounded-lg transition flex items-center justify-center gap-1.5">
+                      📉 Force SHORT
+                    </button>
+                  </div>
+
+                  <!-- Manual Exit row (visible only when trade is active) -->
+                  <div id="at-manual-exit-row" class="hidden flex items-center gap-2">
+                    <button onclick="atManualExit()"
+                      id="at-btn-exit"
+                      class="flex-1 text-[11px] font-bold bg-orange-900 hover:bg-orange-800 border border-orange-500 text-orange-200 px-3 py-2 rounded-lg transition flex items-center justify-center gap-1.5">
+                      🚪 Manual Exit Trade
+                    </button>
+                  </div>
+
+                  <!-- Manual Trail SL row (visible only when trade is active) -->
+                  <div id="at-manual-sl-row" class="hidden">
+                    <div class="flex items-center gap-2">
+                      <label class="text-[10px] text-gray-400 whitespace-nowrap">Update Trail SL (pts):</label>
+                      <input id="at-manual-sl-input" type="number" value="15" min="5" max="200" step="5"
+                        class="w-20 bg-gray-800 border border-gray-600 rounded-lg px-2 py-1 text-xs text-white font-bold text-center"
+                        onkeydown="if(event.key==='Enter') atUpdateTrailSL()">
+                      <button onclick="atUpdateTrailSL()"
+                        class="text-[11px] font-bold bg-yellow-800 hover:bg-yellow-700 border border-yellow-600 text-yellow-200 px-3 py-1.5 rounded-lg transition">
+                        ✅ Apply SL
+                      </button>
+                      <span id="at-sl-update-msg" class="text-[10px] text-gray-500"></span>
+                    </div>
+                  </div>
+
+                  <div id="at-manual-msg" class="text-[10px] text-gray-500 text-center hidden"></div>
                 </div>
 
                 <!-- Signal / conditions -->
@@ -1715,6 +1771,150 @@
     }
     </script>
 <script>
+// ═══════════════════════════════════════════════════════════
+//  MANUAL CONTROLS + CAPITAL LOCK
+// ═══════════════════════════════════════════════════════════
+let _atZerodhaMaxCapital = null;   // null = no lock, number = hard cap
+
+// Called by fetchZerodhaBalance after getting real balance
+function _setCapitalMax(balance) {
+    _atZerodhaMaxCapital = Math.floor(balance);
+    const inp  = document.getElementById('at-capital');
+    const badge = document.getElementById('at-capital-lock-badge');
+    const icon  = document.getElementById('at-capital-lock-icon');
+    const hint  = document.getElementById('at-capital-max-hint');
+    if (!inp) return;
+    inp.max = _atZerodhaMaxCapital;
+    // If current value exceeds balance, cap it
+    if (parseFloat(inp.value) > _atZerodhaMaxCapital) {
+        inp.value = _atZerodhaMaxCapital;
+    }
+    badge?.classList.remove('hidden');
+    icon?.classList.remove('hidden');
+    hint?.classList.remove('hidden');
+}
+
+function _onCapitalInput(e) {
+    _atMarkDirty();
+    if (_atZerodhaMaxCapital !== null) {
+        const v = parseFloat(e.target.value);
+        if (v > _atZerodhaMaxCapital) {
+            e.target.value = _atZerodhaMaxCapital;
+            _atShowToast(`🔒 Capped at Zerodha balance ₹${_atZerodhaMaxCapital.toLocaleString('en-IN')}`, 'warn');
+        }
+    }
+    _updateCapitalEstimate();
+}
+
+// Show/hide manual exit + SL rows based on whether trade is active
+function _atRefreshManualControls(hasActiveTrade) {
+    const exitRow = document.getElementById('at-manual-exit-row');
+    const slRow   = document.getElementById('at-manual-sl-row');
+    const entryRow= document.getElementById('at-manual-entry-row');
+    exitRow?.classList.toggle('hidden', !hasActiveTrade);
+    slRow?.classList.toggle('hidden', !hasActiveTrade);
+    // Disable force entry buttons when trade is already active
+    ['at-btn-long','at-btn-short','at-btn-evaluate'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.disabled = hasActiveTrade;
+        btn.classList.toggle('opacity-40', hasActiveTrade);
+        btn.classList.toggle('cursor-not-allowed', hasActiveTrade);
+    });
+    // Pre-fill trail SL input with current config value
+    if (hasActiveTrade) {
+        const inp = document.getElementById('at-manual-sl-input');
+        const trailEl = document.getElementById('at-trail-sl');
+        if (inp && trailEl) inp.value = trailEl.value || '15';
+    }
+}
+
+async function atManualEvaluate() {
+    const btn = document.getElementById('at-btn-evaluate');
+    const msg = document.getElementById('at-manual-msg');
+    btn.disabled = true; btn.innerHTML = '⏳ Evaluating…';
+    msg.classList.remove('hidden');
+    msg.textContent = 'Running signal check…';
+    try {
+        const r = await fetch('/api/auto-trader/evaluate', { method: 'POST' });
+        const d = await r.json();
+        if (d.success) {
+            const sig = d.last_signal || d.conditions || 'Check complete';
+            msg.textContent = '🔍 ' + (typeof sig === 'string' ? sig : JSON.stringify(sig));
+            _atShowToast('🔍 Evaluation done — check event log', 'info');
+        } else {
+            msg.textContent = '❌ ' + d.error;
+            _atShowToast('❌ ' + d.error, 'error');
+        }
+    } catch(e) { msg.textContent = '❌ ' + e.message; }
+    btn.disabled = false; btn.innerHTML = '🔍 Evaluate Now';
+}
+
+async function atForceEntry(direction) {
+    const id  = direction === 'LONG' ? 'at-btn-long' : 'at-btn-short';
+    const btn = document.getElementById(id);
+    const msg = document.getElementById('at-manual-msg');
+    const confirmed = confirm(`⚠️ Force ${direction} entry at market price?\n\nThis will place a REAL order if not in paper mode.`);
+    if (!confirmed) return;
+    btn.disabled = true; btn.innerHTML = '⏳ Entering…';
+    msg.classList.remove('hidden'); msg.textContent = `Placing ${direction} trade…`;
+    try {
+        const r = await fetch(`/api/auto-trader/force-entry?direction=${direction}`, { method: 'POST' });
+        const d = await r.json();
+        if (d.success) {
+            msg.textContent = `✅ ${direction} entered`;
+            _atShowToast(`✅ ${direction} trade entered manually`, 'info');
+        } else {
+            msg.textContent = '❌ ' + d.error;
+            _atShowToast('❌ ' + d.error, 'error');
+        }
+    } catch(e) { msg.textContent = '❌ ' + e.message; }
+    btn.disabled = false; btn.innerHTML = direction === 'LONG' ? '📈 Force LONG' : '📉 Force SHORT';
+}
+
+async function atManualExit() {
+    const btn = document.getElementById('at-btn-exit');
+    const confirmed = confirm('⚠️ Exit active trade at market price NOW?\n\nThis will place a REAL SELL order if not in paper mode.');
+    if (!confirmed) return;
+    btn.disabled = true; btn.innerHTML = '⏳ Exiting…';
+    try {
+        const r = await fetch('/api/auto-trader/force-exit', { method: 'POST' });
+        const d = await r.json();
+        if (d.success) {
+            _atShowToast('🚪 Trade exited manually', 'info');
+        } else {
+            _atShowToast('❌ ' + d.error, 'error');
+        }
+    } catch(e) { _atShowToast('❌ ' + e.message, 'error'); }
+    btn.disabled = false; btn.innerHTML = '🚪 Manual Exit Trade';
+}
+
+async function atUpdateTrailSL() {
+    const pts = parseFloat(document.getElementById('at-manual-sl-input')?.value || '15');
+    const msg = document.getElementById('at-sl-update-msg');
+    if (isNaN(pts) || pts < 5 || pts > 200) {
+        _atShowToast('⚠️ Trail SL must be 5–200 pts', 'warn'); return;
+    }
+    msg.textContent = '⏳ Updating…';
+    try {
+        const r = await fetch(`/api/auto-trader/update-trail-sl?new_sl_points=${pts}`, { method: 'POST' });
+        const d = await r.json();
+        if (d.success) {
+            msg.textContent = `✅ Trail SL → ${d.new_trail_sl}pts`;
+            // Sync the settings panel input too
+            const trailEl = document.getElementById('at-trail-sl');
+            if (trailEl) trailEl.value = d.new_trail_sl;
+            _atShowToast(`✅ Trail SL updated to ${d.new_trail_sl} Nifty pts`, 'info');
+        } else {
+            msg.textContent = '❌ ' + d.error;
+            _atShowToast('❌ ' + d.error, 'error');
+        }
+    } catch(e) { msg.textContent = '❌ ' + e.message; }
+}
+
+// Hook into existing status poll to update manual control visibility
+const _origRenderStatus = typeof _renderAutoTraderStatus === 'function' ? _renderAutoTraderStatus : null;
+
 // ═══════════════════════════════════════════════════════════
 //  TRADE REPORT  — inline JS
 // ═══════════════════════════════════════════════════════════
