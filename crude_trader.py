@@ -219,21 +219,49 @@ def _place_order(symbol: str, direction: Direction, qty: int, price: float) -> s
         return None
 
 
+def _fetch_available_margin() -> float | None:
+    """Pull actual available funds from Zerodha.
+
+    MCX (commodity) orders are funded from the equity segment when the
+    commodity segment is not separately activated. We therefore check
+    commodity first; if disabled / zero, fall back to equity net.
+    """
+    try:
+        m = kite_manager.kite.margins()
+        commodity = m.get('commodity', {})
+        equity    = m.get('equity',    {})
+
+        if commodity.get('enabled') and float(commodity.get('net', 0)) > 0:
+            avail = float(commodity['net'])
+            print(f"💰 Margin source: COMMODITY  net=₹{avail:,.2f}")
+        else:
+            # Commodity not funded separately — equity live_balance funds MCX
+            avail = float(equity.get('net', equity.get('available', {}).get('live_balance', 0)))
+            print(f"💰 Margin source: EQUITY (commodity disabled)  net=₹{avail:,.2f}")
+        return avail if avail > 0 else None
+    except Exception as e:
+        print(f"⚠️  Margin fetch failed: {e}")
+        return None
+
+
 def _resolve_qty(spot: float, real_premium: float | None = None,
                  lot_size: int = MCX_CRUDE_LOT_SIZE) -> int:
-    """Return order quantity (units = lots × barrel_multiplier).
+    """Return order quantity in LOTS (what the exchange expects).
 
+    MCX quantity unit = LOTS, NOT barrels.
+      1 lot CRUDEOIL  = 100 barrels  → qty=1 buys 100 barrels
+      1 lot CRUDEOILM = 10  barrels  → qty=1 buys 10  barrels
+    Cost per lot = LTP (per barrel) × barrel_count (lot_size).
     Returns 0 if capital is insufficient — caller must block the trade.
     """
     premium = real_premium if real_premium and real_premium > 0 else estimate_crude_premium(spot)
-    cost_per_lot = premium * lot_size
+    cost_per_lot = premium * lot_size          # ₹ per lot
     if cost_per_lot <= 0:
-        return lot_size
-    lots = int(state.capital * 0.9 / cost_per_lot)   # 90% of capital, no max(1,…)
-    qty  = lots * lot_size
-    print(f"📐 Qty: Rs{state.capital:,.0f} × 90% ÷ Rs{cost_per_lot:,.0f}/lot "
-          f"= {lots} lots → {qty} units  (lot_sz={lot_size} bbl)")
-    return qty
+        return 0
+    lots = int(state.capital * 0.9 / cost_per_lot)   # 90% of capital
+    print(f"📐 Qty: ₹{state.capital:,.0f} × 90% ÷ ₹{cost_per_lot:,.0f}/lot "
+          f"= {lots} lots  (lot_sz={lot_size} bbl, total cost ₹{lots*cost_per_lot:,.0f})")
+    return lots   # ← LOTS, not lots × barrels
 
 
 # ── Enter / Exit ──────────────────────────────────────────────────
@@ -248,17 +276,23 @@ def _enter_trade(direction: Direction, price: float):
         state.last_block_reason = str(e)
         return
 
+    # ── Sync capital from Zerodha before every trade ─────────────
+    live_margin = _fetch_available_margin()
+    if live_margin is not None:
+        if abs(live_margin - state.capital) > 100:   # only log meaningful changes
+            print(f"💰 Capital synced: ₹{state.capital:,.0f} → ₹{live_margin:,.0f} (live Zerodha balance)")
+        state.capital = live_margin
+
     real_ltp = get_crude_option_ltp(symbol)
     qty      = _resolve_qty(price, real_ltp, lot_size=lot_size)
 
     # ── Capital guard — block before hitting exchange ──────────────
     if qty == 0:
-        premium    = real_ltp or estimate_crude_premium(price)
-        needed     = premium * lot_size
+        premium = real_ltp or estimate_crude_premium(price)
+        needed  = premium * lot_size
         state.last_block_reason = (
-            f"Insufficient capital: 1 lot costs ~Rs{needed:,.0f} "
-            f"but capital=Rs{state.capital:,.0f}. "
-            f"Need at least Rs{int(needed * 1.1):,} for 1 lot."
+            f"⛔ Need ₹{needed:,.0f} for 1 lot ({lot_size}bbl × ₹{premium:.0f}) "
+            f"but only ₹{state.capital:,.0f} available in Zerodha."
         )
         print(f"🚫 {state.last_block_reason}")
         return
