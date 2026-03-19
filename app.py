@@ -2328,7 +2328,26 @@ async def crude_kill():
     return await asyncio.to_thread(kill_crude_trader)
 
 
-@app.post("/api/crude/config")
+@app.post("/api/crude/reset-daily")
+async def crude_reset_daily():
+    """Manually reset daily counters (orders_placed, trades_today, total_pnl).
+
+    Use this if you want to allow more entries in the same session, or if
+    the automatic midnight reset didn't fire (e.g. server was restarted
+    mid-session with a stale snapshot).
+    """
+    from crude_trader import state as cs, _reset_daily_counters_if_new_day
+    # Force reset regardless of date
+    cs.trade_date    = ""   # blank so the date check always fires
+    _reset_daily_counters_if_new_day()
+    return {
+        'success':       True,
+        'orders_placed': cs.orders_placed,
+        'trade_date':    cs.trade_date,
+        'message':       f'Daily counters reset. orders_placed={cs.orders_placed}',
+    }
+
+
 async def crude_config(
     sl_points:      float | None = None,
     trail_points:   float | None = None,

@@ -295,7 +295,23 @@ async function saveCrudeConfig() {
     }
 }
 
-// ── Status poll ───────────────────────────────────────────────────
+async function crudeResetDaily() {
+    if (!confirm('Reset today’s trade counter?\nThis lets the trader take new entries again.\nActive positions are NOT affected.')) return;
+    try {
+        const resp = await fetch('/api/crude/reset-daily', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            _crudeToast(`🔄 Daily counter reset — ${data.message}`, 'ok');
+            await pollCrudeStatus();
+        } else {
+            _crudeToast('❌ Reset failed', 'error');
+        }
+    } catch (e) {
+        _crudeToast(`❌ ${e.message}`, 'error');
+    }
+}
+
+// ── Status poll ─────────────────────────────────────────────────────
 function _fmt(v, prefix = '₹') {
     if (v == null || v === '' || v === 0 && prefix === '') return '--';
     if (v == null) return '--';
@@ -408,11 +424,12 @@ function renderCrudeStatus(d) {
         const used  = d.orders_placed ?? 0;
         const limit = d.max_trades   ?? 4;
         const pct   = limit > 0 ? used / limit : 0;
-        usedBadge.textContent = `${used} / ${limit} used`;
+        const dateHint = d.trade_date ? ` (${d.trade_date})` : '';
+        usedBadge.textContent = `${used} / ${limit} used${dateHint}`;
         usedBadge.className   = [
             'text-[10px] shrink-0',
-            pct >= 1     ? 'text-red-400 font-bold'    // maxed out
-          : pct >= 0.75  ? 'text-yellow-400'           // nearly there
+            pct >= 1     ? 'text-red-400 font-bold'
+          : pct >= 0.75  ? 'text-yellow-400'
           :                'text-gray-500',
         ].join(' ');
     }

@@ -13,7 +13,7 @@ Set CRUDE_LIVE=true in .env to enable real orders.
 import os
 import json
 import threading
-from datetime import datetime, time as dt_time
+from datetime import datetime, time as dt_time, timedelta
 from dataclasses import dataclass, field
 from pathlib import Path
 from enum import Enum
@@ -102,6 +102,7 @@ class CrudeTraderState:
     trades_today:   list              = field(default_factory=list)
     total_pnl:      float             = 0.0
     orders_placed:  int               = 0
+    trade_date:     str               = ""  # ISO date of last reset (YYYY-MM-DD IST)
 
     # ── Runtime-tunable params (overrideable from UI) ─────────────────
     sl_points:      float = CRUDE_SL_POINTS
@@ -796,10 +797,48 @@ def _cache_indicators(df: pd.DataFrame) -> None:
         pass
 
 
+def _reset_daily_counters_if_new_day() -> bool:
+    """Reset orders_placed + trades_today if the IST calendar date has changed.
+
+    MCX trades across midnight (session closes at 11:25 PM IST).
+    We use the IST date of the MCX OPEN (9:00 AM) as the session marker:
+    - If current IST time is before 9:00 AM, the 'session date' is yesterday.
+    - At or after 9:00 AM the session date is today.
+
+    This means the counter resets once per day at 09:00 AM IST,
+    never in the middle of an evening session.
+    Returns True if a reset happened (for logging).
+    """
+    import pytz
+    IST      = pytz.timezone("Asia/Kolkata")
+    now_ist  = datetime.now(IST)
+    # Session date = today if past 09:00, else yesterday
+    if now_ist.hour < 9:
+        session_date = (now_ist - timedelta(days=1)).strftime("%Y-%m-%d")
+    else:
+        session_date = now_ist.strftime("%Y-%m-%d")
+
+    if state.trade_date == session_date:
+        return False   # same session, nothing to do
+
+    # New session detected — reset daily counters
+    old_date   = state.trade_date or "(none)"
+    state.trade_date    = session_date
+    state.orders_placed = 0
+    state.trades_today  = []
+    state.total_pnl     = 0.0   # reset daily P&L too
+    state.last_block_reason = None
+    print(f"🗓️  New session {session_date} (was {old_date}) — daily counters reset")
+    return True
+
+
 def evaluate_and_act_crude(df: pd.DataFrame, price: float):
     """Called on every 5-min candle close. Evaluates entry or manages trade."""
     if not state.is_running or state.kill_switch:
         return
+
+    # ── Daily counter reset (runs silently if same session) ────────────
+    _reset_daily_counters_if_new_day()
 
     # ── Cache ATR + ST so _manage_trade can use them ─────────────
     _cache_indicators(df)
@@ -1057,6 +1096,7 @@ def get_crude_status() -> dict:
         'is_paper_mode': state.is_paper_mode,
         'kill_switch':   state.kill_switch,
         'orders_placed': state.orders_placed,
+        'trade_date':    state.trade_date,
         'total_pnl':     round(state.total_pnl, 2),
         'crude_price':   round(state.last_crude_price, 2) if state.last_crude_price else None,
         'last_option_ltp': state.last_option_ltp or None,

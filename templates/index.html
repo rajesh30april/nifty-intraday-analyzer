@@ -1646,7 +1646,13 @@
                     </div>
 
                   </div><!-- /grid -->
-                  <button onclick="saveCrudeConfig()" class="mt-4 bg-[#0053e2] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition">💾 Save Settings</button>
+                  <div class="flex items-center gap-3 mt-4 flex-wrap">
+                    <button onclick="saveCrudeConfig()" class="bg-[#0053e2] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition">💾 Save Settings</button>
+                    <button onclick="crudeResetDaily()" title="Reset today's trade counter (keeps active position)"
+                      class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-gray-300 text-xs font-semibold px-3 py-2 rounded-lg transition">
+                      🔄 Reset Daily Counter
+                    </button>
+                  </div>
                 </div><!-- /settings -->
               </div>
 
