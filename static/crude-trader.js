@@ -257,11 +257,16 @@ async function saveCrudeConfig() {
     const trail     = parseFloat(document.getElementById('crude-trail')?.value);
     const rr        = parseFloat(document.getElementById('crude-rr')?.value);
     const capital   = parseFloat(document.getElementById('crude-capital')?.value);
+    const maxTrades = parseInt(document.getElementById('crude-max-trades')?.value || '4', 10);
     const trailMode = document.querySelector('input[name="crude-trail-mode"]:checked')?.value || 'fixed';
     const atrMult   = parseFloat(document.getElementById('crude-atr-mult')?.value || '1.5');
 
     if ([sl, rr, capital].some(isNaN)) {
         _crudeToast('⚠️ Invalid settings — check all fields', 'warn');
+        return;
+    }
+    if (isNaN(maxTrades) || maxTrades < 1 || maxTrades > 20) {
+        _crudeToast('⚠️ Max Trades must be between 1 and 20', 'warn');
         return;
     }
     if (trailMode === 'fixed' && (isNaN(trail) || trail >= sl)) {
@@ -271,14 +276,17 @@ async function saveCrudeConfig() {
 
     const params = new URLSearchParams({
         sl_points: sl, trail_points: trail || 25, rr_ratio: rr, capital,
-        trail_mode: trailMode, atr_multiplier: atrMult,
+        trail_mode: trailMode, atr_multiplier: atrMult, max_trades: maxTrades,
     });
     try {
         const resp = await fetch(`/api/crude/config?${params}`, { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
             const modeLabel = { fixed: `Fixed ₹${trail}`, atr: `ATR×${atrMult}`, supertrend: 'Supertrend' };
-            _crudeToast(`✅ Saved — SL:₹${sl}  Trail:${modeLabel[trailMode]}  R:R 1:${rr}`, 'ok');
+            _crudeToast(
+                `✅ Saved — SL:₹${sl}  Trail:${modeLabel[trailMode]}  R:R 1:${rr}  Max:${maxTrades}/day`,
+                'ok'
+            );
         } else {
             _crudeToast('❌ Save failed', 'error');
         }
@@ -376,7 +384,7 @@ function renderCrudeStatus(d) {
     _setText('crude-option-ltp', _fmt(d.last_option_ltp));
     _setText('crude-signal',     d.block_reason || d.last_signal || '--');
 
-    // ── Sync trail mode UI + live indicator values ────────────────
+    // ── Sync trail mode UI + live indicator values ────────────────────
     if (d.trail_mode) _applyCrudeTrailMode(d.trail_mode);
     if (d.last_atr) {
         const atrEl = document.getElementById('crude-atr-live');
@@ -385,6 +393,28 @@ function renderCrudeStatus(d) {
     if (d.last_st_line) {
         const stEl = document.getElementById('crude-st-live');
         if (stEl) stEl.textContent = `ST: ₹${d.last_st_line.toFixed(0)}`;
+    }
+
+    // ── Sync Max Trades input + live used badge ────────────────────
+    if (d.max_trades != null) {
+        const mtInput = document.getElementById('crude-max-trades');
+        if (mtInput && document.activeElement !== mtInput) {
+            // Only sync when user isn’t actively typing in the field
+            mtInput.value = d.max_trades;
+        }
+    }
+    const usedBadge = document.getElementById('crude-max-trades-used');
+    if (usedBadge) {
+        const used  = d.orders_placed ?? 0;
+        const limit = d.max_trades   ?? 4;
+        const pct   = limit > 0 ? used / limit : 0;
+        usedBadge.textContent = `${used} / ${limit} used`;
+        usedBadge.className   = [
+            'text-[10px] shrink-0',
+            pct >= 1     ? 'text-red-400 font-bold'    // maxed out
+          : pct >= 0.75  ? 'text-yellow-400'           // nearly there
+          :                'text-gray-500',
+        ].join(' ');
     }
 
     // ── P&L ───────────────────────────────────────────────────────

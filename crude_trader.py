@@ -103,12 +103,13 @@ class CrudeTraderState:
     total_pnl:      float             = 0.0
     orders_placed:  int               = 0
 
-    # ── Runtime-tunable params (overrideable from UI) ─────────────
+    # ── Runtime-tunable params (overrideable from UI) ─────────────────
     sl_points:      float = CRUDE_SL_POINTS
     trail_points:   float = CRUDE_TRAIL_POINTS
     rr_ratio:       float = CRUDE_RR_RATIO
     capital:        float = CRUDE_CAPITAL
     strike_offset:  int   = 0
+    max_trades:     int   = CRUDE_MAX_TRADES   # UI-tunable, default from env
 
     # ── Trail mode: 'fixed' | 'atr' | 'supertrend' ───────────────
     trail_mode:      str   = 'fixed'  # default: fixed points
@@ -826,8 +827,8 @@ def evaluate_and_act_crude(df: pd.DataFrame, price: float):
     if state.total_pnl <= -state.capital * 0.06:   # 6% of capital max loss
         state.last_block_reason = f"Max loss hit (₹{state.total_pnl:.0f})"
         return
-    if state.orders_placed >= CRUDE_MAX_TRADES:
-        state.last_block_reason = f"Max {CRUDE_MAX_TRADES} trades today"
+    if state.orders_placed >= state.max_trades:
+        state.last_block_reason = f"Max {state.max_trades} trades/day reached"
         return
 
     # ── Layer 1: directional signal (consensus from ≥2 strategies) ──
@@ -1068,6 +1069,7 @@ def get_crude_status() -> dict:
         'trail_points':  state.trail_points,
         'rr_ratio':      state.rr_ratio,
         'capital':       state.capital,
+        'max_trades':    state.max_trades,
         'trail_mode':    state.trail_mode,
         'atr_multiplier': state.atr_multiplier,
         'last_atr':      round(state.last_atr, 2) if state.last_atr else None,

@@ -2337,8 +2337,9 @@ async def crude_config(
     strike_offset:  int   | None = None,
     trail_mode:     str   | None = None,   # 'fixed' | 'atr' | 'supertrend'
     atr_multiplier: float | None = None,
+    max_trades:     int   | None = None,   # max entries per day (1-20)
 ):
-    from crude_trader import state as cs
+    from crude_trader import state as cs, CRUDE_MAX_TRADES
     if sl_points      is not None: cs.sl_points      = sl_points
     if trail_points   is not None: cs.trail_points   = trail_points
     if rr_ratio       is not None: cs.rr_ratio       = rr_ratio
@@ -2347,9 +2348,14 @@ async def crude_config(
     if trail_mode     is not None and trail_mode in ('fixed', 'atr', 'supertrend'):
         cs.trail_mode = trail_mode
     if atr_multiplier is not None: cs.atr_multiplier = atr_multiplier
-    return {'success': True, 'sl_points': cs.sl_points, 'trail_points': cs.trail_points,
-            'rr_ratio': cs.rr_ratio, 'capital': cs.capital,
-            'trail_mode': cs.trail_mode, 'atr_multiplier': cs.atr_multiplier}
+    if max_trades     is not None: cs.max_trades     = max(1, min(20, max_trades))
+    return {
+        'success': True,
+        'sl_points': cs.sl_points, 'trail_points': cs.trail_points,
+        'rr_ratio': cs.rr_ratio,   'capital': cs.capital,
+        'trail_mode': cs.trail_mode, 'atr_multiplier': cs.atr_multiplier,
+        'max_trades': cs.max_trades,
+    }
 
 
 @app.get("/api/crude/margin")

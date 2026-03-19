@@ -252,9 +252,28 @@ class TestCrudeTraderState:
         ct = _fresh_crude_state()
         status = ct.get_crude_status()
         required = ['is_running', 'is_paper_mode', 'kill_switch', 'crude_price',
-                    'total_pnl', 'active_trade', 'trades_today', 'sl_points']
+                    'total_pnl', 'active_trade', 'trades_today', 'sl_points',
+                    'max_trades']
         for k in required:
             assert k in status, f'Missing key in crude status: {k}'
+
+    def test_max_trades_defaults_to_env_constant(self):
+        """state.max_trades must start equal to CRUDE_MAX_TRADES."""
+        import crude_trader as ct
+        from crude_trader import CRUDE_MAX_TRADES
+        fresh = ct.CrudeTraderState()
+        assert fresh.max_trades == CRUDE_MAX_TRADES
+
+    def test_max_trades_clamped_to_1_20_by_api(self):
+        """API must clamp max_trades to [1, 20] — never 0 or 99."""
+        import crude_trader as ct
+        ct.state.max_trades = 4   # reset
+        # Over-limit
+        ct.state.max_trades = max(1, min(20, 99))
+        assert ct.state.max_trades == 20
+        # Under-limit
+        ct.state.max_trades = max(1, min(20, 0))
+        assert ct.state.max_trades == 1
 
     def test_tick_guard_exits_sl_breach(self):
         """crude_tick_guard must exit trade when SL is breached."""

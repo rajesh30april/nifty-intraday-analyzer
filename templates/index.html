@@ -1556,7 +1556,7 @@
                 <!-- ── Settings ──────────────────────────────────── -->
                 <div class="border-t border-gray-700 pt-3">
                   <p class="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-3">⚙️ Trade Settings</p>
-                  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                  <div class="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs">
 
                     <!-- SL Points -->
                     <label class="flex flex-col gap-1">
@@ -1591,6 +1591,18 @@
                       <input id="crude-capital" type="number" value="50000" min="1000" step="1"
                         class="bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-white" />
                       <span id="crude-capital-hint" class="text-[10px] text-gray-500">Use 🔄 Sync to load live balance</span>
+                    </label>
+
+                    <!-- Max Trades / Day -->
+                    <label class="flex flex-col gap-1">
+                      <span class="text-gray-400 font-semibold">Max Trades / Day</span>
+                      <div class="flex items-center gap-2">
+                        <input id="crude-max-trades" type="number" value="4" min="1" max="20" step="1"
+                          class="bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-white w-20" />
+                        <span id="crude-max-trades-used"
+                          class="text-[10px] text-gray-500 shrink-0">— / — used</span>
+                      </div>
+                      <span class="text-[10px] text-gray-600">Entries today (1–20). Resets at midnight.</span>
                     </label>
 
                     <!-- Trailing SL Mode -->
