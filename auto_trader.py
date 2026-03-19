@@ -1105,13 +1105,16 @@ def _enter_trade(direction: Direction, price: float):
         paper=state.is_paper_mode,
     )
 
-    state.active_trade = trade
-    state.trades_today.append(trade)
-    state.orders_placed += 1
+    # Reset price extremes BEFORE exposing the trade to the tick thread.
+    # If we set active_trade first the tick handler can read stale
+    # highest/lowest from the previous trade and fire an instant SL.
     state.highest_price_since_entry    = price
     state.lowest_price_since_entry     = price
     state.entry_nifty_sl               = sl        # original SL for delta math
     state.pending_sl_exchange_update   = False
+    state.active_trade = trade
+    state.trades_today.append(trade)
+    state.orders_placed += 1
 
     mode = "📝 PAPER" if trade.paper else "🟢 LIVE"
     lots = max(1, qty // LOT_SIZE)
@@ -1208,10 +1211,19 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
     new_sl = None
 
     if mode == "fixed":
-        new_sl = (
-            state.highest_price_since_entry - state.trailing_sl_points if is_long
-            else state.lowest_price_since_entry + state.trailing_sl_points
-        )
+        # Trailing SL must NOT tighten the initial stop-loss.
+        # Only activate once price has moved at least `trailing_sl_points`
+        # in our favour — at that point the first trail lands at breakeven.
+        # Without this gate, the trail fires instantly at entry (peak = entry)
+        # and silently cuts the user's intended 30-pt buffer to 15 pts.
+        entry = trade.entry_price
+        trail = state.trailing_sl_points
+        if is_long:
+            activated = state.highest_price_since_entry >= entry + trail
+            new_sl = (state.highest_price_since_entry - trail) if activated else None
+        else:
+            activated = state.lowest_price_since_entry <= entry - trail
+            new_sl = (state.lowest_price_since_entry + trail) if activated else None
     elif mode in ("atr", "supertrend"):
         new_sl = state.cached_trail_sl   # pre-computed in candle loop
     elif mode == "manual":
