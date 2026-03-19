@@ -2348,6 +2348,7 @@ async def crude_reset_daily():
     }
 
 
+@app.post("/api/crude/config")
 async def crude_config(
     sl_points:      float | None = None,
     trail_points:   float | None = None,
