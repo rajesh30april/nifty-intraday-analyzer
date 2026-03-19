@@ -1,4 +1,4 @@
-"""Crude Oil strategy evaluators — 5 strategies + consensus gate.
+"""Crude Oil strategy evaluators — 6 strategies + consensus gate.
 
 Bug fixes vs original:
   BUG-01: VWAP now resets at 09:00 each session (was multi-day cumsum)
@@ -7,6 +7,7 @@ Bug fixes vs original:
 
 New additions:
   Strategy 5: BB Squeeze Breakout — fires on squeeze release with momentum
+  Strategy 6: Chart Patterns — Flag, Double Top/Bottom, Triangle (breakout)
   ADX filter on SuperTrend, VWAP, EMA Cross — blocks entry in choppy markets
   Multi-timeframe bias check on all trend strategies (15-candle lookback)
 
@@ -25,6 +26,16 @@ import pandas as pd
 
 from strategy import Direction, StrategyCondition, StrategySignal
 import indicators as ind
+from strategies.chart_patterns import (
+    detect_flag,
+    detect_double_top_bottom,
+    detect_triangle,
+)
+from strategies.candlestick_patterns import (
+    detect_engulfing,
+    detect_hammer_star,
+    detect_morning_evening_star,
+)
 
 # ── Thresholds ────────────────────────────────────────────────────
 CRUDE_ORB_MINUTES       = 15    # build range over first 15 min (3 × 5m candles)
@@ -563,25 +574,184 @@ def evaluate_crude_squeeze(df: pd.DataFrame) -> StrategySignal:
 # Strategy registry + consensus master evaluator
 # ────────────────────────────────────────────────────────────────
 
+# ────────────────────────────────────────────────────────────────
+# Strategy 6: Chart Pattern Breakout
+# ────────────────────────────────────────────────────────────────
+
+_CP_VOL_RATIO_MIN = 1.15   # breakout candle volume > 1.15× session avg
+_CP_MIN_CANDLES   = 20     # need 20+ session candles before scanning (~100 min)
+
+_PATTERN_META: dict[str, tuple] = {
+    "bull_flag":     (Direction.LONG,  "🚩", "Bull Flag"),
+    "bear_flag":     (Direction.SHORT, "🚩", "Bear Flag"),
+    "double_bottom": (Direction.LONG,  "📈", "Double Bottom"),
+    "double_top":    (Direction.SHORT, "📉", "Double Top"),
+    "ascending":     (Direction.LONG,  "📐", "Ascending Triangle"),
+    "descending":    (Direction.SHORT, "📐", "Descending Triangle"),
+}
+
+
+def _candle_confirmation(df: pd.DataFrame, direction: Direction) -> tuple[bool, str]:
+    """Optional candlestick confirmation on last 1-3 candles.
+
+    Not a hard block — boosts confidence detail only.
+    """
+    c0, c1, c2 = df.iloc[-3], df.iloc[-2], df.iloc[-1]
+
+    engulf_kind, engulf_detail = detect_engulfing(c1, c2)
+    if engulf_kind == "bullish" and direction == Direction.LONG:
+        return True, f"Bullish engulfing ✅ {engulf_detail}"
+    if engulf_kind == "bearish" and direction == Direction.SHORT:
+        return True, f"Bearish engulfing ✅ {engulf_detail}"
+
+    wick_kind, wick_detail = detect_hammer_star(c2)
+    if wick_kind == "hammer" and direction == Direction.LONG:
+        return True, f"Hammer ✅ {wick_detail}"
+    if wick_kind == "shooting_star" and direction == Direction.SHORT:
+        return True, f"Shooting star ✅ {wick_detail}"
+
+    star_kind, star_detail = detect_morning_evening_star(c0, c1, c2)
+    if star_kind == "morning_star" and direction == Direction.LONG:
+        return True, f"Morning star ✅ {star_detail}"
+    if star_kind == "evening_star" and direction == Direction.SHORT:
+        return True, f"Evening star ✅ {star_detail}"
+
+    return False, "No candle confirmation"
+
+
+def evaluate_crude_chart_pattern(df: pd.DataFrame) -> StrategySignal:
+    """Strategy 6: Structural Chart Pattern Breakout on MCX Crude Oil 5-min.
+
+    Patterns (priority order):
+      1. Bull / Bear Flag        — continuation after impulse + tight consolidation
+      2. Double Bottom / Top     — reversal at equal support/resistance levels
+      3. Ascending/Descending Triangle — coiling into a directional breakout
+
+    Confirmation:
+      • Pattern breakout close (not just wick)
+      • ADX ≥ threshold (no patterns in chop)
+      • Volume surge ≥ 1.15× session average
+      • Optional candlestick pattern on breakout candle (confidence bonus)
+
+    MCX notes:
+      • Restricts scan to current session candles (09:00 IST onwards)
+      • Requires 20+ candles before scanning to avoid opening noise
+    """
+    conditions: list[StrategyCondition] = []
+
+    # ── Session candle filter ───────────────────────────────────────
+    last_ts       = df.index[-1]
+    session_start = last_ts.normalize().replace(hour=9, minute=0)
+    session_df    = df[df.index >= session_start]
+    n_session     = len(session_df)
+
+    time_ok = n_session >= _CP_MIN_CANDLES
+    conditions.append(StrategyCondition(
+        name="Session warmup",
+        met=time_ok,
+        detail=(
+            f"{n_session} session candles ≥ {_CP_MIN_CANDLES} ✅"
+            if time_ok else
+            f"Only {n_session}/{_CP_MIN_CANDLES} candles ❌ wait ~{(_CP_MIN_CANDLES-n_session)*5} min more"
+        ),
+    ))
+    if not time_ok:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail, conditions=conditions)
+
+    # ── Pattern scan ─────────────────────────────────────────────
+    flag_kind,  flag_detail,  _ = detect_flag(session_df)
+    dbl_kind,   dbl_detail,   _ = detect_double_top_bottom(session_df)
+    tri_kind,   tri_detail      = detect_triangle(session_df)
+
+    detected_kind   = flag_kind or dbl_kind or tri_kind
+    detected_detail = (
+        flag_detail if flag_kind else
+        dbl_detail  if dbl_kind  else
+        tri_detail
+    )
+
+    pattern_found = bool(detected_kind) and detected_kind in _PATTERN_META
+    direction: Direction | None = None
+    emoji = label = ""
+    if pattern_found:
+        direction, emoji, label = _PATTERN_META[detected_kind]
+
+    conditions.append(StrategyCondition(
+        name="Chart pattern",
+        met=pattern_found,
+        detail=(
+            f"{emoji} {label} ✅ {detected_detail}"
+            if pattern_found else
+            f"No pattern ❌ scanned Flag/Double-T\u2215B/Triangle on {n_session} session candles"
+        ),
+    ))
+    if not pattern_found or direction is None:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail, conditions=conditions)
+
+    # ── ADX ───────────────────────────────────────────────────
+    high, low, close = session_df["high"], session_df["low"], session_df["close"]
+    adx_cond = _adx_filter(high, low, close, direction)
+    conditions.append(adx_cond)
+    if not adx_cond.met:
+        return StrategySignal(should_enter=False, reason=adx_cond.detail, conditions=conditions)
+
+    # ── Volume surge ────────────────────────────────────────────
+    volume  = session_df["volume"]
+    avg_vol = float(volume.iloc[:-1].mean())
+    cur_vol = float(volume.iloc[-1])
+    vol_ok  = avg_vol > 0 and cur_vol >= avg_vol * _CP_VOL_RATIO_MIN
+    conditions.append(StrategyCondition(
+        name="Volume surge",
+        met=vol_ok,
+        detail=(
+            f"Vol {cur_vol:,.0f} ≥ {_CP_VOL_RATIO_MIN}×avg = {avg_vol*_CP_VOL_RATIO_MIN:,.0f} ✅"
+            if vol_ok else
+            f"Vol {cur_vol:,.0f} < {_CP_VOL_RATIO_MIN}×avg = {avg_vol*_CP_VOL_RATIO_MIN:,.0f} ❌ low-vol breakout"
+        ),
+    ))
+    if not vol_ok:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail, conditions=conditions)
+
+    # ── Candlestick confirmation (optional — never hard-blocks) ───────
+    candle_ok, candle_detail = _candle_confirmation(df, direction)
+    conditions.append(StrategyCondition(
+        name="Candle confirm", met=candle_ok, detail=candle_detail,
+    ))
+
+    reason = f"{emoji} {label} — {detected_detail}"
+    if candle_ok:
+        reason += f" + {candle_detail}"
+
+    return StrategySignal(
+        should_enter=True,
+        direction=direction,
+        reason=reason,
+        conditions=conditions,
+    )
+
+
 # Weight reflects reliability + non-overlap:
 # Squeeze is unique (vol-timing) — highest weight
 # ORB is session-limited + independent — high weight
+# Chart Pattern: structural breakouts with objective levels — high confidence
 # SuperTrend + VWAP are complementary trend followers
 # EMA is lagging — lowest weight
 _STRATEGY_WEIGHTS: dict[str, float] = {
-    "Squeeze":    2.0,
-    "ORB":        1.8,
-    "SuperTrend": 1.6,
-    "VWAP":       1.5,
-    "EMA Cross":  1.2,
+    "Squeeze":        2.0,
+    "ORB":            1.8,
+    "Chart Pattern":  1.7,
+    "SuperTrend":     1.6,
+    "VWAP":           1.5,
+    "EMA Cross":      1.2,
 }
 
 ALL_STRATEGIES = [
-    ("ORB",        evaluate_crude_orb),
-    ("SuperTrend", evaluate_crude_supertrend),
-    ("VWAP",       evaluate_crude_vwap),
-    ("EMA Cross",  evaluate_crude_ema_cross),
-    ("Squeeze",    evaluate_crude_squeeze),
+    ("ORB",           evaluate_crude_orb),
+    ("SuperTrend",    evaluate_crude_supertrend),
+    ("VWAP",          evaluate_crude_vwap),
+    ("EMA Cross",     evaluate_crude_ema_cross),
+    ("Squeeze",       evaluate_crude_squeeze),
+    ("Chart Pattern", evaluate_crude_chart_pattern),
 ]
 
 

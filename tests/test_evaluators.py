@@ -127,7 +127,7 @@ class TestConsensusEvaluator:
         from crude_strategy import evaluate_crude_all
         df      = _make_df(40)
         results = evaluate_crude_all(df)
-        assert len(results) == 5  # 5 strategies now
+        assert len(results) == 6  # 6 strategies: ORB, ST, VWAP, EMA, Squeeze, Chart Pattern
         for r in results:
             assert "weight" in r, f"Strategy '{r['name']}' missing 'weight' field"
             assert r["weight"] > 0
