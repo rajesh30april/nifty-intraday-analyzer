@@ -147,7 +147,7 @@ register(StrategyInfo(
     entry_rules=[
         "Gap must be > 30 pts or > 0.35% of previous close",
         "9:15 opening candle must close in the SAME direction as the gap",
-        "Opening candle body must be solid (> 40% of its range)",
+        "Opening candle body must be solid (> 30% of its range — filters doji/spinning tops)",
         "Enter at close of 9:15 candle",
         "Best entries before 10:30 AM",
     ],

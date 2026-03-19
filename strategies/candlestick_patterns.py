@@ -224,7 +224,7 @@ def evaluate_candlestick_patterns(df: pd.DataFrame) -> StrategySignal:
     passed_w  = sum(c.weight for c in conditions if c.met)
     confidence = round(passed_w / total_w * 100, 1)
 
-    should_enter = trend_ok and time_ok  # pattern already confirmed
+    should_enter = trend_ok and time_ok and vol_ok  # volume confirms pattern — noise filter
     direction    = Direction.LONG if pattern_dir == "long" else Direction.SHORT
 
     return StrategySignal(

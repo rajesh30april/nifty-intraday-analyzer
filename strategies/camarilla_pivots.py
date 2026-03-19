@@ -84,12 +84,18 @@ def evaluate_camarilla(df: pd.DataFrame) -> StrategySignal:
     rsi_vals = ind.rsi(df["close"], 14)
     rsi_now  = float(rsi_vals.iloc[-1]) if not pd.isna(rsi_vals.iloc[-1]) else 50
 
-    if "short" in mode:
-        rsi_ok = rsi_now > 55    # overbought for short
-        rsi_detail = f"RSI={rsi_now:.0f} ({'✅ overbought for short' if rsi_ok else '❌ not overbought yet'})"
-    elif "long" in mode:
-        rsi_ok = rsi_now < 45    # oversold for long
-        rsi_detail = f"RSI={rsi_now:.0f} ({'✅ oversold for long' if rsi_ok else '❌ not oversold yet'})"
+    if mode == "reversal_short":
+        rsi_ok = rsi_now > 55    # overbought at H3 resistance → short
+        rsi_detail = f"RSI={rsi_now:.0f} ({'✅ overbought — good for reversal short' if rsi_ok else '❌ not overbought yet'})"
+    elif mode == "reversal_long":
+        rsi_ok = rsi_now < 45    # oversold at L3 support → long
+        rsi_detail = f"RSI={rsi_now:.0f} ({'✅ oversold — good for reversal long' if rsi_ok else '❌ not oversold yet'})"
+    elif mode == "breakout_long":
+        rsi_ok = rsi_now > 50    # momentum above 50 confirms breakout thrust
+        rsi_detail = f"RSI={rsi_now:.0f} ({'✅ momentum confirms breakout long' if rsi_ok else '❌ weak momentum for breakout'})"
+    elif mode == "breakout_short":
+        rsi_ok = rsi_now < 50    # momentum below 50 confirms breakdown
+        rsi_detail = f"RSI={rsi_now:.0f} ({'✅ momentum confirms breakout short' if rsi_ok else '❌ weak momentum for breakout'})"
     else:
         rsi_ok = False
         rsi_detail = "RSI check N/A"

@@ -36,14 +36,18 @@ def detect_flag(df: pd.DataFrame):
         return None, "Not enough candles", 0.0
 
     # Try different impulse window sizes
+    # Layout: [ ... | impulse (N candles) | consolidation | current candle ]
     for impulse_n in range(3, 7):
-        consol_start = -(impulse_n + 1 + FLAG_CONSOL_MAX)
-        consol_end   = -(impulse_n + 1)
-        impulse_seg  = df.iloc[consol_end : -1 + 1 or None] if consol_end != 0 else df.iloc[consol_end:]
-        # Grab impulse window ending at consol_start
-        imp_start_idx = consol_end - impulse_n
-        imp_seg = df.iloc[imp_start_idx: consol_end]
-        if len(imp_seg) < impulse_n:
+        # consol_end is negative index where consolidation ends (exclusive of current candle)
+        consol_end   = -1                             # up to but NOT including current candle
+        consol_start = -(impulse_n + FLAG_CONSOL_MAX) # consolidation start index
+        imp_end      = consol_start                   # impulse ends where consolidation starts
+        imp_start    = imp_end - impulse_n
+
+        imp_seg    = df.iloc[imp_start: imp_end] if imp_end != 0 else df.iloc[imp_start:]
+        consol_seg = df.iloc[consol_start: -1]        # exclude current candle from consolidation
+
+        if len(imp_seg) < impulse_n or len(consol_seg) < 3:
             continue
 
         imp_low  = float(imp_seg["low"].min())
@@ -55,9 +59,8 @@ def detect_flag(df: pd.DataFrame):
         # Determine impulse direction from close of first vs last candle
         imp_dir = "up" if float(imp_seg["close"].iloc[-1]) > float(imp_seg["close"].iloc[0]) else "down"
 
-        # Consolidation segment
-        consol = df.iloc[consol_end: -1 + 1 or None] if consol_end != -1 else df.iloc[consol_end:]
-        consol = df.iloc[consol_end:]
+        # Use the clean consolidation segment (no current candle bleeding in)
+        consol = consol_seg
         if len(consol) < 3:
             continue
 
@@ -284,7 +287,7 @@ def evaluate_chart_patterns(df: pd.DataFrame) -> StrategySignal:
     base_conf = passed_w / total_w * 100
     confidence = round(min(base_conf * strength / 1.5, 100.0), 1)
 
-    should_enter = time_ok  # pattern already confirmed above
+    should_enter = time_ok and vol_ok  # volume is required — low-volume breakouts fail 60%+
     direction    = Direction.LONG if pattern_dir == "long" else Direction.SHORT
 
     return StrategySignal(
