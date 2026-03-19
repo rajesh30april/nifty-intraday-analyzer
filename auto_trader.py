@@ -239,6 +239,31 @@ def _save_state_snapshot():
     _atomic_write(STATE_SNAPSHOT_FILE, json.dumps(snapshot, indent=2))
 
 
+def _subscribe_option_tick(token: int | None) -> None:
+    """Add option instrument to KiteTicker so LTP arrives every ~1s."""
+    if not token:
+        return
+    try:
+        if kite_manager.ticker and kite_manager.is_streaming:
+            kite_manager.ticker.subscribe([token])
+            kite_manager.ticker.set_mode(kite_manager.ticker.MODE_LTP, [token])
+            print(f"📡 Subscribed option token {token} to WebSocket")
+    except Exception as e:
+        print(f"⚠️  Option tick subscribe failed: {e}")
+
+
+def _unsubscribe_option_tick(token: int | None) -> None:
+    """Remove option from KiteTicker after trade closes."""
+    if not token:
+        return
+    try:
+        if kite_manager.ticker and kite_manager.is_streaming:
+            kite_manager.ticker.unsubscribe([token])
+            print(f"📡 Unsubscribed option token {token} from WebSocket")
+    except Exception as e:
+        print(f"⚠️  Option tick unsubscribe failed: {e}")
+
+
 def _recover_state(snapshot_file: Path | None = None):
     """On startup, restore state from snapshot and cross-check Zerodha positions.
 
@@ -1070,31 +1095,6 @@ def _resolve_quantity(nifty_price: float, real_premium: float | None = None) -> 
     print(f"📐 Capital mode: ₹{state.capital:,.0f} ÷ "
           f"(₹{cost_per_lot:.0f}/lot via {source}) = {lots} lots → {qty} units")
     return qty
-
-
-def _subscribe_option_tick(token: int | None) -> None:
-    """Add option instrument to KiteTicker so LTP arrives every ~1s."""
-    if not token:
-        return
-    try:
-        if kite_manager.ticker and kite_manager.is_streaming:
-            kite_manager.ticker.subscribe([token])
-            kite_manager.ticker.set_mode(kite_manager.ticker.MODE_LTP, [token])
-            print(f"📡 Subscribed option token {token} to WebSocket")
-    except Exception as e:
-        print(f"⚠️  Option tick subscribe failed: {e}")
-
-
-def _unsubscribe_option_tick(token: int | None) -> None:
-    """Remove option from KiteTicker after trade closes."""
-    if not token:
-        return
-    try:
-        if kite_manager.ticker and kite_manager.is_streaming:
-            kite_manager.ticker.unsubscribe([token])
-            print(f"📡 Unsubscribed option token {token} from WebSocket")
-    except Exception as e:
-        print(f"⚠️  Option tick unsubscribe failed: {e}")
 
 
 def _enter_trade(direction: Direction, price: float):
