@@ -237,27 +237,215 @@ def evaluate_crude_supertrend(df: pd.DataFrame) -> StrategySignal:
     )
 
 
-def evaluate_crude_best(df: pd.DataFrame) -> StrategySignal:
-    """Best strategy for Crude Oil: ORB in morning, Supertrend always.
+# ──────────────────────────────────────────────────────────────────
+# Strategy 3: VWAP Momentum
+# ──────────────────────────────────────────────────────────────────
 
-    Priority:
-    1. ORB signal (morning session only, stronger conviction)
-    2. Supertrend flip (all-day, secondary)
-    Returns first signal that fires.
+def evaluate_crude_vwap(df: pd.DataFrame) -> StrategySignal:
+    """VWAP Momentum: price decisively breaks VWAP with RSI + volume.
+
+    Works all day. Good for catching mid-session trends.
     """
-    orb = evaluate_crude_orb(df)
-    if orb.should_enter:
-        orb.reason = f"[ORB] {orb.reason}"
-        return orb
+    conditions: list[StrategyCondition] = []
 
-    st = evaluate_crude_supertrend(df)
-    if st.should_enter:
-        st.reason = f"[ST] {st.reason}"
-        return st
+    if len(df) < 20:
+        return StrategySignal(should_enter=False, reason="Not enough data for VWAP")
 
-    # Neither fired — return more descriptive block reason
+    now_t = pd.Timestamp.now(tz='Asia/Kolkata').time()
+    if now_t < NO_TRADE:
+        return StrategySignal(should_enter=False, reason="Too early")
+
+    close  = df['close']
+    high   = df['high']
+    low    = df['low']
+    volume = df['volume']
+
+    # VWAP
+    typical  = (high + low + close) / 3
+    cumvol   = volume.cumsum().replace(0, 1)
+    vwap     = (typical * volume).cumsum() / cumvol
+    vwap_now = float(vwap.iloc[-1])
+    price    = float(close.iloc[-1])
+    prev_price = float(close.iloc[-2])
+
+    # Direction: price crossed VWAP in last 2 candles
+    long_cross  = prev_price <= float(vwap.iloc[-2]) and price > vwap_now
+    short_cross = prev_price >= float(vwap.iloc[-2]) and price < vwap_now
+    direction   = Direction.LONG if long_cross else Direction.SHORT
+
+    conditions.append(StrategyCondition(
+        name="VWAP cross",
+        met=long_cross or short_cross,
+        detail=f"{'LONG cross' if long_cross else 'SHORT cross' if short_cross else 'No cross'} VWAP {vwap_now:.0f}",
+    ))
+
+    # RSI momentum
+    rsi = float(ind.rsi(close, 14).iloc[-1])
+    rsi_ok = (
+        (direction == Direction.LONG  and 45 < rsi < 75) or
+        (direction == Direction.SHORT and 25 < rsi < 55)
+    )
+    conditions.append(StrategyCondition(
+        name="RSI momentum",
+        met=rsi_ok,
+        detail=f"RSI {rsi:.1f} ({'ok' if rsi_ok else 'not in momentum zone'})",
+    ))
+
+    # Volume surge
+    avg_vol = float(volume.rolling(20).mean().iloc[-1])
+    vol_ok  = avg_vol > 0 and float(volume.iloc[-1]) >= 1.3 * avg_vol
+    conditions.append(StrategyCondition(
+        name="Volume surge",
+        met=vol_ok,
+        detail=f"Vol {volume.iloc[-1]:.0f} vs avg {avg_vol:.0f} ({'ok' if vol_ok else f'need 1.3×={1.3*avg_vol:.0f}'})",
+    ))
+
+    fail = next((c for c in conditions if not c.met), None)
+    if fail:
+        return StrategySignal(should_enter=False, reason=fail.detail, conditions=conditions)
+
+    return StrategySignal(
+        should_enter=True,
+        direction=direction,
+        reason=f"VWAP {direction.value} cross | RSI {rsi:.0f} | price {price:.0f}",
+        conditions=conditions,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────
+# Strategy 4: EMA Crossover
+# ──────────────────────────────────────────────────────────────────
+
+def evaluate_crude_ema_cross(df: pd.DataFrame) -> StrategySignal:
+    """9/21 EMA crossover with ATR-based distance filter.
+
+    Fires on a fresh cross in the last 3 candles.
+    Skips if EMAs are too close (choppy / ranging market).
+    """
+    conditions: list[StrategyCondition] = []
+
+    if len(df) < 25:
+        return StrategySignal(should_enter=False, reason="Not enough data for EMA cross")
+
+    now_t = pd.Timestamp.now(tz='Asia/Kolkata').time()
+    if now_t < NO_TRADE:
+        return StrategySignal(should_enter=False, reason="Too early")
+
+    close = df['close']
+    high  = df['high']
+    low   = df['low']
+
+    ema_f = ind.ema(close, CRUDE_EMA_FAST)
+    ema_s = ind.ema(close, CRUDE_EMA_SLOW)
+    atr   = ind.atr(high, low, close, 14)
+
+    # Detect a fresh cross in last 3 candles
+    diff     = ema_f - ema_s
+    crossed  = any(
+        (diff.iloc[-i] > 0) != (diff.iloc[-(i + 1)] > 0)
+        for i in range(1, min(4, len(diff) - 1))
+    )
+    direction = Direction.LONG if float(diff.iloc[-1]) > 0 else Direction.SHORT
+
+    conditions.append(StrategyCondition(
+        name="Fresh EMA cross",
+        met=crossed,
+        detail=f"{'Fresh cross (≤3c)' if crossed else 'No recent cross'} EMA9={ema_f.iloc[-1]:.0f} EMA21={ema_s.iloc[-1]:.0f}",
+    ))
+
+    # EMAs must have meaningful separation (> 0.3× ATR) — not choppy
+    sep    = abs(float(diff.iloc[-1]))
+    atr_v  = float(atr.iloc[-1])
+    sep_ok = sep >= 0.3 * atr_v
+    conditions.append(StrategyCondition(
+        name="EMA separation",
+        met=sep_ok,
+        detail=f"Separation {sep:.1f} ({'ok' if sep_ok else f'need ≥{0.3*atr_v:.1f} (0.3×ATR)'})",
+    ))
+
+    # Price on the right side of both EMAs
+    price     = float(close.iloc[-1])
+    right_side = (
+        (direction == Direction.LONG  and price > max(float(ema_f.iloc[-1]), float(ema_s.iloc[-1]))) or
+        (direction == Direction.SHORT and price < min(float(ema_f.iloc[-1]), float(ema_s.iloc[-1])))
+    )
+    conditions.append(StrategyCondition(
+        name="Price side",
+        met=right_side,
+        detail=f"Price {price:.0f} {'above' if direction==Direction.LONG else 'below'} both EMAs ({'ok' if right_side else 'not clear'})",
+    ))
+
+    fail = next((c for c in conditions if not c.met), None)
+    if fail:
+        return StrategySignal(should_enter=False, reason=fail.detail, conditions=conditions)
+
+    return StrategySignal(
+        should_enter=True,
+        direction=direction,
+        reason=f"EMA cross {direction.value} | EMA9={ema_f.iloc[-1]:.0f} EMA21={ema_s.iloc[-1]:.0f}",
+        conditions=conditions,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────
+# Master evaluator — runs ALL strategies, returns best match
+# ──────────────────────────────────────────────────────────────────
+
+ALL_STRATEGIES = [
+    ("ORB",      evaluate_crude_orb),
+    ("SuperTrend", evaluate_crude_supertrend),
+    ("VWAP",     evaluate_crude_vwap),
+    ("EMA Cross", evaluate_crude_ema_cross),
+]
+
+
+def evaluate_crude_all(df: pd.DataFrame) -> list[dict]:
+    """Run EVERY strategy and return a list of result dicts.
+
+    Each dict: {name, should_enter, direction, reason, conditions}
+    Used by the UI to show a per-strategy dashboard.
+    """
+    results = []
+    for name, fn in ALL_STRATEGIES:
+        try:
+            sig = fn(df)
+            results.append({
+                "name":         name,
+                "should_enter": sig.should_enter,
+                "direction":    sig.direction.value if sig.direction else None,
+                "reason":       sig.reason,
+            })
+        except Exception as e:
+            results.append({"name": name, "should_enter": False, "direction": None, "reason": f"Error: {e}"})
+    return results
+
+
+def evaluate_crude_best(df: pd.DataFrame) -> StrategySignal:
+    """Run ALL strategies; return the first one that fires.
+
+    Priority: ORB > SuperTrend > VWAP > EMA Cross.
+    When nothing fires, block reason lists ALL strategies' failures
+    so the user can see exactly what each one needs.
+    """
+    passing   = []
+    all_block = []
+
+    for name, fn in ALL_STRATEGIES:
+        try:
+            sig = fn(df)
+        except Exception as e:
+            sig = StrategySignal(should_enter=False, reason=f"Error: {e}")
+
+        if sig.should_enter:
+            sig.reason = f"[{name}] {sig.reason}"
+            passing.append(sig)
+        else:
+            all_block.append(f"{name}: {sig.reason}")
+
+    if passing:
+        return passing[0]   # highest-priority winner
+
     return StrategySignal(
         should_enter=False,
-        reason=f"No signal | ORB: {orb.reason} | ST: {st.reason}",
-        conditions=orb.conditions + st.conditions,
+        reason=" ║ ".join(all_block),
     )

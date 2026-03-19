@@ -1506,12 +1506,18 @@
                 </div>
 
                 <!-- ── Row 2: Evaluate + result msg ─────────────── -->
-                <div class="flex items-center gap-2 flex-wrap mb-4">
+                <div class="flex items-center gap-2 flex-wrap mb-2">
                   <button onclick="crudeManualEvaluate()" id="crude-btn-evaluate"
                     class="text-[11px] font-bold bg-blue-900 hover:bg-blue-800 border border-blue-600 text-blue-200 px-4 py-2 rounded-lg transition flex items-center gap-1.5">
                     🔍 Evaluate Signal Now
                   </button>
-                  <span id="crude-eval-msg" class="hidden text-[11px] text-gray-300 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 flex-1"></span>
+                  <span id="crude-eval-msg" class="hidden text-[11px] text-gray-400 px-2"></span>
+                </div>
+
+                <!-- ── Strategy Dashboard (shown after Evaluate) ─── -->
+                <div id="crude-strategy-panel"
+                  class="hidden bg-gray-800 border border-gray-700 rounded-xl p-3 mb-4 flex flex-col gap-2">
+                  <!-- filled by _renderStrategyDashboard() -->
                 </div>
 
                 <!-- ── Settings ──────────────────────────────────── -->
@@ -1952,7 +1958,7 @@
     <script src="/static/auto-trader.js?v=16"></script>
     <script src="/static/at-settings.js?v=1"></script>
     <script src="/static/at-health.js?v=1"></script>
-    <script src="/static/crude-trader.js?v=7"></script>
+    <script src="/static/crude-trader.js?v=8"></script>
     <script>/* bt-qty v1 — quantity field wired to backtest + live monitor */</script>
     <script src="/static/live-monitor.js?v=2"></script>
     <script src="/static/paper-trader.js?v=1"></script>

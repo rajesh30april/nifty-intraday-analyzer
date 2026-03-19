@@ -2367,30 +2367,29 @@ async def crude_margin():
 async def crude_evaluate():
     """Manually trigger one strategy evaluation cycle on latest candle data.
 
-    Does NOT require the trader to be running — useful for checking
-    the current signal without waiting for the next 5-min candle close.
+    Returns full status PLUS per-strategy breakdown so the UI
+    can show a dashboard of all strategies and their pass/fail.
     """
     from crude_trader import evaluate_and_act_crude, get_crude_status
+    from crude_strategy import evaluate_crude_all
     from crude_data import fetch_crude_intraday_data, get_crude_spot
-    import asyncio
 
     try:
-        loop = asyncio.get_event_loop()
-
         def _run():
             df    = fetch_crude_intraday_data('5minute', 5)
             price = get_crude_spot()
             if df is None or df.empty or not price:
-                return None, 'No market data available'
+                return None, None, 'No market data available'
+            strategies = evaluate_crude_all(df)
             evaluate_and_act_crude(df, price)
-            return get_crude_status(), None
+            return get_crude_status(), strategies, None
 
-        result, err = await loop.run_in_executor(None, _run)
+        result, strategies, err = await asyncio.to_thread(_run)
         if err:
-            return {'success': False, 'error': err}
-        return {'success': True, **result}
+            return JSONResponse({'success': False, 'error': err})
+        return JSONResponse({'success': True, 'strategies': strategies, **result})
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return JSONResponse({'success': False, 'error': str(e)})
 
 
 @app.post("/api/crude/add-lots")

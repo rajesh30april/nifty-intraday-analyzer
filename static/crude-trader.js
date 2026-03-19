@@ -144,6 +144,24 @@ async function syncCrudeCapital() {
 
 
 // ── Manual Evaluate ──────────────────────────────────────────────
+function _renderStrategyDashboard(strategies) {
+    const panel = document.getElementById('crude-strategy-panel');
+    if (!panel || !strategies?.length) return;
+    panel.innerHTML = strategies.map(s => {
+        const ok  = s.should_enter;
+        const dir = s.direction ? ` <span class="font-bold ${s.direction==='long'?'text-green-400':'text-red-400'}">${s.direction.toUpperCase()}</span>` : '';
+        return `
+        <div class="flex items-start gap-2 border-b border-gray-700 pb-1 last:border-0">
+          <span class="text-[13px] shrink-0 mt-0.5">${ok ? '✅' : '⛔'}</span>
+          <div>
+            <span class="text-xs font-bold ${ok?'text-green-300':'text-gray-400'}">${s.name}</span>${dir}
+            <p class="text-[10px] text-gray-500 leading-tight">${s.reason}</p>
+          </div>
+        </div>`;
+    }).join('');
+    panel.classList.remove('hidden');
+}
+
 async function crudeManualEvaluate() {
     const btn = document.getElementById('crude-btn-evaluate');
     const msg = document.getElementById('crude-eval-msg');
@@ -151,17 +169,27 @@ async function crudeManualEvaluate() {
 
     btn.disabled = true;
     btn.innerHTML = '⏳ Evaluating…';
-    if (msg) { msg.classList.remove('hidden'); msg.textContent = 'Fetching latest candle & running signal check…'; }
+    if (msg) { msg.classList.remove('hidden'); msg.textContent = 'Checking all strategies…'; }
 
     try {
         const r = await fetch('/api/crude/evaluate', { method: 'POST' });
         const d = await r.json();
         if (d.success) {
-            const sig = d.last_signal || d.block_reason || 'Check complete';
-            if (msg) msg.textContent = '🔍 ' + sig;
-            _crudeLog('🔍 Manual eval → ' + sig, 'info');
-            _crudeToast('🔍 Evaluation done', 'info');
-            // re-render so buttons/status reflect any new trade
+            // Render per-strategy dashboard
+            _renderStrategyDashboard(d.strategies);
+
+            const passing  = (d.strategies || []).filter(s => s.should_enter);
+            const nPass    = passing.length;
+            const nTotal   = (d.strategies || []).length;
+            const summary  = nPass > 0
+                ? `${nPass}/${nTotal} strategies firing 🚀`
+                : `0/${nTotal} strategies — no entry`;
+
+            if (msg) { msg.textContent = summary; msg.classList.remove('hidden'); }
+            _crudeLog(`🔍 Eval: ${summary}`, nPass > 0 ? 'ok' : 'info');
+            if (nPass > 0) _crudeToast(`🚀 ${passing[0].name} triggered!`, 'ok');
+            else           _crudeToast(`🔍 No entry — ${summary}`, 'info');
+
             await pollCrudeStatus();
         } else {
             const err = d.error || 'Unknown error';
@@ -175,7 +203,7 @@ async function crudeManualEvaluate() {
     }
 
     btn.disabled = false;
-    btn.innerHTML = '🔍 Evaluate Now';
+    btn.innerHTML = '🔍 Evaluate Signal Now';
 }
 
 
