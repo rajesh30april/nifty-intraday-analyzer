@@ -289,29 +289,39 @@ class KiteManager:
             print("\u2705 Kite WebSocket connected — streaming Nifty 50 live!")
 
         def on_ticks(ws, ticks):
-            if ticks:
-                tick = ticks[0]
-                self.latest_tick = {
-                    "timestamp": datetime.now().isoformat(),
-                    "last_price": tick.get("last_price", 0),
-                    "open": tick.get("ohlc", {}).get("open", 0),
-                    "high": tick.get("ohlc", {}).get("high", 0),
-                    "low": tick.get("ohlc", {}).get("low", 0),
-                    "close": tick.get("ohlc", {}).get("close", 0),
-                    "volume": tick.get("volume_traded", 0),
-                    "change": tick.get("change", 0),
-                    "change_pct": round(
-                        (tick.get("change", 0) / tick.get("ohlc", {}).get("close", 1)) * 100, 2
-                    ) if tick.get("ohlc", {}).get("close") else 0,
-                }
-                self.tick_history.append(self.latest_tick)
-
-                # Keep only last 2000 ticks to avoid memory bloat
-                if len(self.tick_history) > 2000:
-                    self.tick_history = self.tick_history[-1500:]
-
-                if on_tick_callback:
-                    on_tick_callback(self.latest_tick)
+            if not ticks:
+                return
+            # Import here to avoid circular import at module load time
+            from auto_trader import state as at_state
+            for tick in ticks:
+                token     = tick.get("instrument_token")
+                ltp       = tick.get("last_price", 0)
+                # ── Option tick → update LTP directly (tick-level refresh) ──
+                if token and token == at_state.active_option_token and ltp > 0:
+                    at_state.last_option_ltp = ltp
+                    continue   # option tick — skip Nifty spot processing below
+                # ── Nifty spot tick → existing behaviour ─────────────────────
+                if token == NIFTY_INSTRUMENT_TOKEN:
+                    self.latest_tick = {
+                        "timestamp":  datetime.now().isoformat(),
+                        "last_price": ltp,
+                        "open":       tick.get("ohlc", {}).get("open",  0),
+                        "high":       tick.get("ohlc", {}).get("high",  0),
+                        "low":        tick.get("ohlc", {}).get("low",   0),
+                        "close":      tick.get("ohlc", {}).get("close", 0),
+                        "volume":     tick.get("volume_traded", 0),
+                        "change":     tick.get("change", 0),
+                        "change_pct": round(
+                            (tick.get("change", 0) /
+                             tick.get("ohlc", {}).get("close", 1)) * 100, 2
+                        ) if tick.get("ohlc", {}).get("close") else 0,
+                    }
+                    self.tick_history.append(self.latest_tick)
+                    # Keep only last 2000 ticks to avoid memory bloat
+                    if len(self.tick_history) > 2000:
+                        self.tick_history = self.tick_history[-1500:]
+                    if on_tick_callback:
+                        on_tick_callback(self.latest_tick)
 
         def on_close(ws, code, reason):
             self.is_streaming = False

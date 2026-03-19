@@ -169,30 +169,42 @@ async def _crude_ltp_refresh_loop():
 
 
 async def _ltp_refresh_loop():
-    """Refresh active option LTP every 15s — keeps P&L live even when
-    auto-trader is stopped/in recovery. Runs in threadpool to avoid
-    blocking the event loop with synchronous Kite HTTP calls.
-    First iteration fires after 3s so P&L populates quickly on startup.
-    Also logs a heartbeat every 60s so the event log shows the system is alive.
+    """Keep option LTP fresh and log a heartbeat every 60s.
+
+    Strategy:
+    - If KiteTicker WebSocket is streaming AND option is subscribed → LTP
+      arrives every ~1s automatically via on_ticks. No REST call needed.
+    - If WebSocket is down (disconnected / not authenticated) → fall back
+      to REST poll every 15s so P&L doesn't go stale.
+    - Heartbeat log every 60s regardless of source.
     """
     await asyncio.sleep(3)   # short initial delay — let server finish startup
     _hb_tick = 0
     while True:
         if trader_state.active_trade:
-            await asyncio.to_thread(refresh_active_option_ltp)
-            # Heartbeat every ~60s (4 × 15s iterations) when trade is open
+            # Only hit REST if WebSocket isn't delivering option ticks
+            ws_delivering = (
+                kite_manager.is_streaming
+                and trader_state.active_option_token is not None
+            )
+            if not ws_delivering:
+                # Fallback: REST poll every 15s
+                await asyncio.to_thread(refresh_active_option_ltp)
+
+            # Heartbeat every ~60s (4 × 15s iterations)
             _hb_tick += 1
             if _hb_tick % 4 == 0:
-                t   = trader_state.active_trade
-                ltp = trader_state.last_option_ltp
+                t     = trader_state.active_trade
+                ltp   = trader_state.last_option_ltp
                 nifty = trader_state.last_nifty_price or 0
                 from auto_trader import _nifty_to_option_premium
                 sl_prem  = _nifty_to_option_premium(t.stop_loss, t)
                 tgt_prem = _nifty_to_option_premium(t.target, t) if t.target else None
                 tgt_str  = f" | Tgt ₹{tgt_prem:.1f}" if tgt_prem else ""
                 ltp_str  = f"₹{ltp:.1f}" if ltp else "–"
+                src      = "WS" if ws_delivering else "REST"
                 _at_log("💓", "Alive",
-                        f"LTP {ltp_str} | SL Prem ₹{sl_prem:.1f}{tgt_str} | Nifty ₹{nifty:.0f}")
+                        f"LTP {ltp_str} | SL Prem ₹{sl_prem:.1f}{tgt_str} | Nifty ₹{nifty:.0f} [{src}]")
         else:
             _hb_tick = 0
         await asyncio.sleep(15)

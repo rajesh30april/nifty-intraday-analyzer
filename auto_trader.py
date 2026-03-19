@@ -100,7 +100,8 @@ class TraderState:
     last_meta_scores: list[dict] = field(default_factory=list)  # full strategy scoreboard
     last_meta_regime: str = ""                                  # regime detected by meta router
     kill_switch: bool = False
-    last_option_ltp: float = 0.0           # live option LTP — refreshed each candle loop
+    last_option_ltp: float = 0.0           # live option LTP — refreshed each tick via WebSocket
+    active_option_token: int | None = None  # KiteTicker token for current option — for tick sub
     last_nifty_price: float = 0.0          # live Nifty price — refreshed each tick
     selected_strategy: str = "smart_router"
     last_block_reason: str | None = None
@@ -231,6 +232,7 @@ def _save_state_snapshot():
         "entry_nifty_sl":           state.entry_nifty_sl,
         "lowest_price_since_entry": state.lowest_price_since_entry,
         "highest_price_since_entry":state.highest_price_since_entry,
+        "active_option_token":      state.active_option_token,
         # Only completed trades — avoids double-counting on recovery
         "trades_today": [_trade_to_dict(t) for t in completed_trades],
     }
@@ -383,6 +385,11 @@ def _recover_state(snapshot_file: Path | None = None):
         state.entry_nifty_sl            = snap.get("entry_nifty_sl",            at["stop_loss"])
         state.highest_price_since_entry = snap.get("highest_price_since_entry", at["entry_price"])
         state.lowest_price_since_entry  = snap.get("lowest_price_since_entry",  at["entry_price"])
+        # Restore option token so WebSocket subscription resumes on recovery
+        opt_tok = snap.get("active_option_token")
+        if opt_tok:
+            state.active_option_token = opt_tok
+            _subscribe_option_tick(opt_tok)   # re-sub if ticker already running
         state.recovery_mode    = True
         state.recovery_type    = "open"
         state.recovery_message = (
@@ -859,6 +866,9 @@ def _exit_position(reason: str, current_price: float):
     trade.status       = OrderStatus.EXITED
 
     state.total_pnl         += pnl
+    # Unsubscribe option from WebSocket before clearing active trade
+    _unsubscribe_option_tick(state.active_option_token)
+    state.active_option_token = None
     state.active_trade       = None
     state.exit_in_progress   = False          # exit completed — reset debounce
     state.last_exit_time      = datetime.now() # cooldown starts now
@@ -1062,10 +1072,35 @@ def _resolve_quantity(nifty_price: float, real_premium: float | None = None) -> 
     return qty
 
 
+def _subscribe_option_tick(token: int | None) -> None:
+    """Add option instrument to KiteTicker so LTP arrives every ~1s."""
+    if not token:
+        return
+    try:
+        if kite_manager.ticker and kite_manager.is_streaming:
+            kite_manager.ticker.subscribe([token])
+            kite_manager.ticker.set_mode(kite_manager.ticker.MODE_LTP, [token])
+            print(f"📡 Subscribed option token {token} to WebSocket")
+    except Exception as e:
+        print(f"⚠️  Option tick subscribe failed: {e}")
+
+
+def _unsubscribe_option_tick(token: int | None) -> None:
+    """Remove option from KiteTicker after trade closes."""
+    if not token:
+        return
+    try:
+        if kite_manager.ticker and kite_manager.is_streaming:
+            kite_manager.ticker.unsubscribe([token])
+            print(f"📡 Unsubscribed option token {token} from WebSocket")
+    except Exception as e:
+        print(f"⚠️  Option tick unsubscribe failed: {e}")
+
+
 def _enter_trade(direction: Direction, price: float):
     """Open a new trade."""
     try:
-        symbol, _token = _get_option_symbol(price, direction)
+        symbol, opt_token = _get_option_symbol(price, direction)
     except RuntimeError as e:
         print(f"❌ Cannot enter trade: {e}")
         state.last_signal_reason = f"❌ Instrument lookup failed: {e}"
@@ -1129,9 +1164,13 @@ def _enter_trade(direction: Direction, price: float):
     # SL check fires immediately using the wrong price and kills the new trade
     # before the first real tick arrives for the new instrument.
     state.last_option_ltp              = 0.0
+    state.active_option_token          = opt_token   # store for WebSocket subscription
     state.active_trade = trade
     state.trades_today.append(trade)
     state.orders_placed += 1
+    # Subscribe option to KiteTicker so LTP updates every ~1s via WebSocket
+    # (instead of waiting for the 15s REST poll)
+    _subscribe_option_tick(opt_token)
 
     mode = "📝 PAPER" if trade.paper else "🟢 LIVE"
     lots = max(1, qty // LOT_SIZE)
