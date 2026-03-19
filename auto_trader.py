@@ -1797,11 +1797,25 @@ def sync_from_zerodha() -> dict:
 
     Use when the app was restarted with an open trade that isn't in the snapshot.
     Returns a summary dict with success / imported trade details.
+
+    Past-exit-time behaviour:
+      If it's already past EXIT_TIME (3:15 PM), the trade is imported in
+      MONITOR-ONLY mode (app_managed=False) so the app tracks P&L but does
+      NOT auto-exit again. This lets you see the position and exit manually.
     """
     if not kite_manager.is_authenticated:
         return {"success": False, "error": "Not authenticated with Zerodha"}
     if state.active_trade:
         return {"success": False, "error": "App already has an active trade. Exit it first."}
+
+    # ── Past-exit-time flag — monitor only, don't auto-manage ────
+    now = datetime.now()
+    past_exit_time = now.time() >= EXIT_TIME
+    if past_exit_time:
+        _log("⚠️", "Sync past exit time",
+             f"It's {now.strftime('%H:%M')} — past {EXIT_TIME.strftime('%H:%M')}. "
+             f"Importing in MONITOR ONLY mode (no auto-exit, no SL management). "
+             f"Exit the position manually from Zerodha or use Manual Exit.")
 
     # ── Fetch positions ───────────────────────────────────────────
     try:
@@ -1899,20 +1913,19 @@ def sync_from_zerodha() -> dict:
         target        = tgt_level,
         status        = OrderStatus.FILLED,
         paper         = False,
+        # Past exit-time → app tracks P&L only, does NOT auto-manage or auto-exit.
+        # You must exit manually from Zerodha or the Manual Exit button.
+        app_managed   = not past_exit_time,
     )
     state.active_trade              = trade
     state.last_option_ltp           = opt_ltp
     state.highest_price_since_entry = nifty_spot
     state.lowest_price_since_entry  = nifty_spot
     state.entry_nifty_sl            = sl_level
-    # Compute option premium SL trigger from actual avg price paid
-    # entry_option_trigger = what option should be worth AT the SL level
-    # For a buyer: trigger = avg_price - (sl_pts × delta)
-    # delta=0.5 assumed for ATM. This gives e.g. ₹89 - 15 = ₹74
     state.entry_option_trigger      = _estimate_option_sl_trigger(sl_pts, avg_price)
     state.pending_sl_exchange_update = False
     state.orders_placed            += 1
-    _save_state_snapshot()
+    _save_state_snapshot()   # ← persist immediately so a restart restores this trade
     all_syms = [p["tradingsymbol"] for p in chosen_positions]
     _log("🔗", "Synced from Zerodha",
          f"{all_syms} | {qty}u | avg ₹{avg_price:.2f} | Nifty ₹{nifty_spot:.0f} | SL ₹{sl_level:.0f} | Tgt ₹{tgt_level:.0f}")
@@ -1931,6 +1944,11 @@ def sync_from_zerodha() -> dict:
             f"Merged {len(chosen_positions)} position(s) — "
             "SL/Target set from current Nifty spot + your SL settings — trailing SL active"
         ),
+        "past_exit_time":   past_exit_time,
+        "warning":          (
+            f"⚠️ Imported past exit time ({EXIT_TIME.strftime('%H:%M')}). "
+            "App is in MONITOR ONLY mode — exit manually from Zerodha or Manual Exit button."
+        ) if past_exit_time else None,
     }
 
 

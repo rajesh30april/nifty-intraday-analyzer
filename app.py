@@ -265,19 +265,26 @@ from routes_paper import router as _paper_router  # noqa: E402
 app.include_router(_paper_router)
 
 
-class NoCacheHTMLMiddleware(BaseHTTPMiddleware):
-    """Prevent browser from caching HTML pages (so JS changes apply immediately)."""
+class NoCacheStaticMiddleware(BaseHTTPMiddleware):
+    """Prevent browser from caching HTML, JS, and CSS so UI changes apply immediately.
+
+    Without this, browsers happily serve stale JS from cache after a server
+    restart/deploy — causing new element IDs added to the template to be
+    invisible to the old cached JS, which silently fails to populate them.
+    """
+    _NO_CACHE_TYPES = ("text/html", "application/javascript", "text/javascript", "text/css")
 
     async def dispatch(self, request, call_next):
         response = await call_next(request)
-        if "text/html" in response.headers.get("content-type", ""):
+        ct = response.headers.get("content-type", "")
+        if any(t in ct for t in self._NO_CACHE_TYPES):
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
+            response.headers["Pragma"]        = "no-cache"
+            response.headers["Expires"]       = "0"
         return response
 
 
-app.add_middleware(NoCacheHTMLMiddleware)
+app.add_middleware(NoCacheStaticMiddleware)
 
 
 # ── Simple response cache (avoid hammering Yahoo Finance) ────────

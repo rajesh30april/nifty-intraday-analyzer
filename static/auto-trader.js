@@ -811,7 +811,13 @@ async function syncFromZerodha() {
                 msg.textContent  = `✅ ${detail}`;
                 msg.className    = 'text-[10px] mt-1 text-green-400';
             }
-            _atShowToast(`🔗 Linked — ${detail}`, 'info');
+            if (data.past_exit_time && data.warning) {
+                // Past auto-exit time — notify user it's MONITOR ONLY
+                _atShowToast(`⚠️ ${data.warning}`, 'warn');
+                setTimeout(() => _atShowToast(`🔗 Synced: ${detail}`, 'info'), 3500);
+            } else {
+                _atShowToast(`🔗 Linked — ${detail}`, 'info');
+            }
             await pollAutoTraderStatus();
         } else {
             if (msg) {
