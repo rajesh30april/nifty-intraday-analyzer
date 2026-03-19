@@ -312,7 +312,27 @@ def _priority_pick(
     top = candidates[0] if candidates else None
 
     if not entry_candidates:
-        best_score = top["composite"] if top else 0
+        # Explain WHY no entry — three distinct reasons:
+        # 1. Top scorer has good score but conditions not met (should_enter=False)
+        # 2. Top scorer is time-blocked (time_mult=0)
+        # 3. No strategy scored above the minimum
+        if top:
+            if top["time_mult"] == 0:
+                no_entry_why = (
+                    f"{top['emoji']} {top['name']} is time-blocked right now"
+                )
+            elif not top["should_enter"]:
+                no_entry_why = (
+                    f"{top['emoji']} {top['name']} scored {top['composite']:.0f} "
+                    f"but its own entry conditions are NOT met"
+                )
+            else:
+                no_entry_why = (
+                    f"best score {top['composite']:.0f} < min {MIN_ENTRY_SCORE}"
+                )
+        else:
+            no_entry_why = "no strategies registered"
+
         return MetaRouterResult(
             regime=regime.value,
             regime_detail=regime_result.detail,
@@ -323,12 +343,11 @@ def _priority_pick(
                 should_enter=False,
                 reason=(
                     f"[META: {regime.value.upper()}] No entry — "
-                    f"best score {best_score:.0f} < {MIN_ENTRY_SCORE} "
-                    f"| {vix_tag}"
+                    f"{no_entry_why} | {vix_tag}"
                 ),
             ),
             scores=candidates,
-            reason=f"No strategy reached min score {MIN_ENTRY_SCORE}",
+            reason=no_entry_why,
         )
 
     # ✅ Winner: highest composite score
