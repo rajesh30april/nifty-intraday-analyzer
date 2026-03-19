@@ -1582,6 +1582,95 @@
                 <button onclick="saveCrudeConfig()" class="mt-3 text-xs text-blue-400 hover:text-blue-300 underline">💾 Save settings</button>
               </div>
 
+              <!-- ── Crude Position Banner (Nifty-style) ── -->
+              <!-- NO POSITION placeholder -->
+              <div id="ct-no-pos" class="bg-gray-900 border border-dashed border-gray-700 rounded-xl p-4 mb-3 text-center text-gray-500 text-sm">
+                🛢️ No open crude position
+              </div>
+
+              <!-- ACTIVE POSITION BANNER -->
+              <div id="crude-trade-card" class="hidden mb-3">
+                <!-- glowing border wrapper -->
+                <div id="ct-banner-wrap" class="rounded-xl border-2 border-green-500 bg-gray-900 p-4 space-y-3 shadow-lg shadow-green-900/20">
+
+                  <!-- ── Header row ─────────────────────────────── -->
+                  <div class="flex items-center justify-between flex-wrap gap-2">
+                    <div class="flex items-center gap-2">
+                      <span class="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                      <span class="text-xs font-bold text-green-400 uppercase tracking-wider">🛢️ Position Open</span>
+                      <span id="ct-dir-badge" class="text-xs font-bold px-2 py-0.5 rounded bg-green-700 text-white">LONG</span>
+                    </div>
+                    <div class="text-[11px] text-gray-400 truncate max-w-[260px]" id="ct-instr" title="">--</div>
+                    <span id="ct-paper-badge" class="hidden text-[10px] bg-yellow-600 text-white px-2 py-0.5 rounded font-bold">PAPER</span>
+                  </div>
+
+                  <!-- ── Row 1: Option premium metrics ─────────── -->
+                  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
+                    <div class="bg-gray-800 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">Entry Prem</div>
+                      <div id="ct-entry-prem" class="text-sm font-bold text-white">--</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">SL Prem (~)</div>
+                      <div id="ct-sl-prem" class="text-sm font-bold text-red-400">--</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">Tgt Prem (~)</div>
+                      <div id="ct-tgt-prem" class="text-sm font-bold text-green-400">--</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">Unrealized P&L</div>
+                      <div id="ct-upnl" class="text-sm font-bold text-white">--</div>
+                    </div>
+                  </div>
+
+                  <!-- ── Row 2: Crude spot + option LTP + strike + trail SL ── -->
+                  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
+                    <div class="bg-gray-800 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">Live Crude</div>
+                      <div id="ct-crude-live" class="text-sm font-bold text-yellow-300">--</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">Option LTP</div>
+                      <div id="ct-opt-ltp" class="text-sm font-bold text-white">--</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">⚡ Strike</div>
+                      <div id="ct-strike" class="text-sm font-bold text-blue-300">--</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">🔄 Trail SL</div>
+                      <div id="ct-trail-sl" class="text-sm font-bold text-orange-400">--</div>
+                    </div>
+                  </div>
+
+                  <!-- ── Row 3: Entry price + SL + Target + Qty + Auto-exit ── -->
+                  <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-center">
+                    <div class="bg-gray-800 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">Entry (Crude)</div>
+                      <div id="ct-entry" class="text-sm font-bold text-white">--</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">Stop Loss</div>
+                      <div id="ct-sl" class="text-sm font-bold text-red-400">--</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">Target</div>
+                      <div id="ct-tgt" class="text-sm font-bold text-green-400">--</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">Qty (Lots)</div>
+                      <div id="ct-qty" class="text-sm font-bold text-white">--</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-400">⏰ Auto-Exit</div>
+                      <div id="ct-exit-time" class="text-sm font-bold text-gray-300">--</div>
+                    </div>
+                  </div>
+
+                </div><!-- /ct-banner-wrap -->
+              </div><!-- /crude-trade-card -->
+
               <!-- Event Log -->
               <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 mb-3">
                 <div class="flex items-center justify-between mb-2">
@@ -1589,19 +1678,6 @@
                   <button onclick="document.getElementById('crude-event-log').innerHTML=''" class="text-[10px] text-gray-500 hover:text-gray-300 underline">clear</button>
                 </div>
                 <div id="crude-event-log" class="font-mono text-[11px] text-gray-400 space-y-1 max-h-48 overflow-y-auto"></div>
-              </div>
-
-              <!-- Active Trade Card -->
-              <div id="crude-trade-card" class="hidden bg-gray-900 border border-gray-700 rounded-xl p-4 mb-3">
-                <h3 class="text-sm font-bold mb-3">🛢️ Open Position</h3>
-                <div class="grid grid-cols-3 md:grid-cols-6 gap-3 text-center text-xs">
-                  <div><div class="text-gray-400">Direction</div><div id="ct-dir" class="font-bold">--</div></div>
-                  <div><div class="text-gray-400">Instrument</div><div id="ct-instr" class="font-bold truncate max-w-[100px]" title="">--</div></div>
-                  <div><div class="text-gray-400">Entry (Crude)</div><div id="ct-entry" class="font-bold">--</div></div>
-                  <div><div class="text-gray-400">Stop Loss</div><div id="ct-sl" class="font-bold text-red-400">--</div></div>
-                  <div><div class="text-gray-400">Target</div><div id="ct-tgt" class="font-bold text-green-400">--</div></div>
-                  <div><div class="text-gray-400">Qty (units)</div><div id="ct-qty" class="font-bold">--</div></div>
-                </div>
               </div>
 
               <!-- Trade History -->

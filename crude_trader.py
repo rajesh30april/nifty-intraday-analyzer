@@ -111,6 +111,9 @@ class CrudeTraderState:
     last_atr:      float = 0.0   # latest ATR(14) of crude futures
     last_st_line:  float = 0.0   # latest Supertrend line value
 
+    # ── Entry SL reference (original, never changes) ─────────────
+    entry_crude_sl: float = 0.0   # crude spot SL at the moment of entry
+
     # ── Trailing trackers ─────────────────────────────────────────
     highest_since_entry: float = 0.0
     lowest_since_entry:  float = float('inf')
@@ -134,6 +137,10 @@ def _save_snapshot():
         'quantity': t.quantity, 'stop_loss': t.stop_loss,
         'target': t.target, 'paper': t.paper, 'status': t.status,
         'is_running': state.is_running,
+        # ── extra state for banner ────────────────────────────────
+        'entry_crude_sl':      state.entry_crude_sl,
+        'highest_since_entry': state.highest_since_entry,
+        'lowest_since_entry':  state.lowest_since_entry,
     }
     CRUDE_SNAP_FILE.write_text(json.dumps(data, indent=2))
 
@@ -143,10 +150,14 @@ def _recover_snapshot():
     if not CRUDE_SNAP_FILE.exists():
         return
     try:
-        data = json.loads(CRUDE_SNAP_FILE.read_text())
-        trade = CrudeTrade(**{k: v for k, v in data.items() if k != 'is_running'})
-        state.active_trade = trade
-        print(f"🛢️  [Recovery] Crude trade restored: {trade.instrument} {trade.direction}")
+        data  = json.loads(CRUDE_SNAP_FILE.read_text())
+        _SNAP_EXTRA = {'is_running', 'entry_crude_sl', 'highest_since_entry', 'lowest_since_entry'}
+        trade = CrudeTrade(**{k: v for k, v in data.items() if k not in _SNAP_EXTRA})
+        state.active_trade        = trade
+        state.entry_crude_sl      = data.get('entry_crude_sl', trade.stop_loss)  # fallback to current SL
+        state.highest_since_entry = data.get('highest_since_entry', trade.entry_price)
+        state.lowest_since_entry  = data.get('lowest_since_entry',  trade.entry_price)
+        print(f"🛢️  [Recovery] Crude trade restored: {trade.instrument} {trade.direction} | orig SL ₹{state.entry_crude_sl}")
     except Exception as e:
         print(f"⚠️  Crude snapshot recovery failed: {e}")
 
@@ -401,6 +412,7 @@ def _enter_trade(direction: Direction, price: float):
     state.highest_since_entry   = price
     state.lowest_since_entry    = price
     state.last_option_ltp       = ep
+    state.entry_crude_sl        = sl        # original SL — never mutated, used for UI
     state.last_signal_reason    = f"Entered {direction.value.upper()} {symbol}"
 
     _save_snapshot()
@@ -654,6 +666,28 @@ def kill_crude_trader():
     return {'success': True}
 
 
+# ATM crude option delta ≈ 0.45 (close enough for SL/target premium display)
+_CRUDE_DELTA = 0.45
+
+
+def _estimate_sl_premium(trade: CrudeTrade) -> float | None:
+    """Approx option premium if crude hits the current SL level."""
+    if not trade or not trade.entry_premium:
+        return None
+    sl_pts    = abs(trade.entry_price - trade.stop_loss)
+    estimated = trade.entry_premium - sl_pts * _CRUDE_DELTA
+    return round(max(estimated, 0.5), 1)
+
+
+def _estimate_target_premium(trade: CrudeTrade) -> float | None:
+    """Approx option premium if crude hits the target level."""
+    if not trade or not trade.entry_premium or not trade.target:
+        return None
+    tgt_pts   = abs(trade.entry_price - trade.target)
+    estimated = trade.entry_premium + tgt_pts * _CRUDE_DELTA
+    return round(estimated, 1)
+
+
 def get_crude_status() -> dict:
     """Return full status dict — consumed by /api/crude/status endpoint."""
     at = state.active_trade
@@ -670,6 +704,12 @@ def get_crude_status() -> dict:
             'target': at.target, 'paper': at.paper, 'status': at.status,
             'pnl_unrealized': pnl,
             'last_ltp': ltp if ltp > 0 else None,
+            # ── extra fields for the Nifty-style position banner ──
+            'trailing_sl':    round(at.stop_loss, 2),             # current (moving) SL
+            'original_sl':    round(state.entry_crude_sl, 2),     # SL at entry
+            'sl_premium':     _estimate_sl_premium(at),           # approx option prem at SL
+            'target_premium': _estimate_target_premium(at),       # approx option prem at target
+            'lots':           at.quantity,                        # MCX = quantity in lots
         }
     return {
         'is_running':    state.is_running,
@@ -691,6 +731,7 @@ def get_crude_status() -> dict:
         'atr_multiplier': state.atr_multiplier,
         'last_atr':      round(state.last_atr, 2) if state.last_atr else None,
         'last_st_line':  round(state.last_st_line, 2) if state.last_st_line else None,
+        'exit_time':     CRUDE_EXIT_TIME.strftime('%H:%M'),
         # Margin info — helps diagnose order rejections
         'margin_info': _crude_margin_info(),
     }

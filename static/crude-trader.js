@@ -347,25 +347,112 @@ function renderCrudeStatus(d) {
         tpnlEl.className   = _pnlClass(tp);
     }
 
-    // ── Active trade card ─────────────────────────────────────────
-    const card = document.getElementById('crude-trade-card');
-    if (card) {
-        if (at) {
-            card.classList.remove('hidden');
-            const dir = at.direction?.toUpperCase();
-            _setText('ct-dir',   dir, dir === 'LONG' ? 'text-green-400 font-bold' : 'text-red-400 font-bold');
-            const instrEl = document.getElementById('ct-instr');
-            if (instrEl) { instrEl.textContent = at.instrument?.replace('MCX:', ''); instrEl.title = at.instrument; }
-            _setText('ct-entry', _fmt(at.entry_price));
-            _setText('ct-sl',    _fmt(at.stop_loss));
-            _setText('ct-tgt',   _fmt(at.target));
-            _setText('ct-qty',   at.quantity ?? '--');
-        } else {
-            card.classList.add('hidden');
-        }
-    }
+    // ── Active trade card (Nifty-style full banner) ──────────────
+    _renderCrudePositionBanner(at, d);
 
     _crudeRunning = d.is_running;
+}
+
+/** Extract strike from CRUDEOILM26APR8950PE → "8950 PE" */
+function _crudeStrikeLabel(instrument) {
+    if (!instrument) return '--';
+    const clean = instrument.replace('MCX:', '');
+    // e.g. CRUDEOILM26APR8950PE  or  CRUDEOIL26APR8950CE
+    const m = clean.match(/(\d{3,})([CP]E)$/);
+    if (!m) return clean;
+    return `${m[1]} ${m[2]}`;
+}
+
+/** Render the full Nifty-style crude position banner. */
+function _renderCrudePositionBanner(at, d) {
+    const card   = document.getElementById('crude-trade-card');
+    const noPos  = document.getElementById('ct-no-pos');
+    const wrap   = document.getElementById('ct-banner-wrap');
+    if (!card) return;
+
+    if (!at) {
+        card.classList.add('hidden');
+        if (noPos) noPos.classList.remove('hidden');
+        return;
+    }
+
+    // Position exists — show banner, hide placeholder
+    card.classList.remove('hidden');
+    if (noPos) noPos.classList.add('hidden');
+
+    const isLong   = at.direction?.toLowerCase() === 'long';
+    const isShort  = !isLong;
+    const dirLabel = isLong ? 'LONG' : 'SHORT';
+    const ltp      = at.last_ltp  ?? d.last_option_ltp ?? null;
+    const ep       = at.entry_premium;
+    const qty      = at.lots ?? at.quantity ?? 1;
+
+    // ── Direction badge ────────────────────────────────────────────
+    const badge = document.getElementById('ct-dir-badge');
+    if (badge) {
+        badge.textContent = dirLabel;
+        badge.className   = isLong
+            ? 'text-xs font-bold px-2 py-0.5 rounded bg-green-700 text-white'
+            : 'text-xs font-bold px-2 py-0.5 rounded bg-red-700 text-white';
+    }
+
+    // Banner border colour — green for long, red for short
+    if (wrap) {
+        wrap.className = wrap.className
+            .replace(/border-(green|red)-500/g, isLong ? 'border-green-500' : 'border-red-500')
+            .replace(/shadow-(green|red)-900/g, isLong ? 'shadow-green-900/20' : 'shadow-red-900/20');
+    }
+
+    // Paper badge
+    const pb = document.getElementById('ct-paper-badge');
+    if (pb) pb.classList.toggle('hidden', !at.paper);
+
+    // ── Instrument label ───────────────────────────────────────────
+    const instrEl = document.getElementById('ct-instr');
+    if (instrEl) {
+        instrEl.textContent = at.instrument?.replace('MCX:', '') ?? '--';
+        instrEl.title       = at.instrument ?? '';
+    }
+
+    // ── Row 1: Option premiums + P&L ──────────────────────────────
+    _setText('ct-entry-prem', ep != null ? `₹${ep.toFixed(1)}` : '--');
+    _setText('ct-sl-prem',    at.sl_premium   != null ? `₹${at.sl_premium.toFixed(1)}`  : '--');
+    _setText('ct-tgt-prem',   at.target_premium != null ? `₹${at.target_premium.toFixed(1)}` : '--');
+
+    const pnl = at.pnl_unrealized;
+    const pnlEl = document.getElementById('ct-upnl');
+    if (pnlEl) {
+        pnlEl.textContent = pnl != null ? `₹${pnl > 0 ? '+' : ''}${pnl.toFixed(0)}` : '--';
+        pnlEl.className   = _pnlClass(pnl) + ' text-sm font-bold';
+    }
+
+    // ── Row 2: Live crude + option LTP + strike + trailing SL ─────
+    const liveEl = document.getElementById('ct-crude-live');
+    if (liveEl) liveEl.textContent = d.crude_price ? `₹${d.crude_price.toLocaleString('en-IN')}` : '--';
+
+    const ltpEl = document.getElementById('ct-opt-ltp');
+    if (ltpEl) ltpEl.textContent = ltp != null ? `₹${ltp.toFixed(1)}` : '--';
+
+    _setText('ct-strike', _crudeStrikeLabel(at.instrument));
+
+    const trailEl = document.getElementById('ct-trail-sl');
+    if (trailEl) {
+        const tsl = at.trailing_sl ?? at.stop_loss;
+        const orig = at.original_sl;
+        const moved = orig && Math.abs(tsl - orig) > 0.5;
+        trailEl.textContent = tsl != null ? `₹${tsl}` : '--';
+        trailEl.className   = moved
+            ? 'text-sm font-bold text-orange-300'
+            : 'text-sm font-bold text-orange-400';
+        trailEl.title = moved ? `Moved from original ₹${orig}` : 'At original SL';
+    }
+
+    // ── Row 3: Entry crude + SL + Target + Qty + Auto-exit ────────
+    _setText('ct-entry',     at.entry_price != null ? `₹${at.entry_price.toLocaleString('en-IN')}` : '--');
+    _setText('ct-sl',        at.stop_loss   != null ? `₹${at.stop_loss}`  : '--');
+    _setText('ct-tgt',       at.target      != null ? `₹${at.target}`     : '--');
+    _setText('ct-qty',       qty != null ? `${qty} lot${qty !== 1 ? 's' : ''}` : '--');
+    _setText('ct-exit-time', d.exit_time ?? '--');
 }
 
 function _setText(id, val, cls = '') {
