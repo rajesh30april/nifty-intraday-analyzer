@@ -33,7 +33,7 @@ load_dotenv()
 # ── Configuration ────────────────────────────────────────────────
 LIVE_TRADING = os.getenv("LIVE_TRADING", "false").lower() == "true"
 MAX_LOSS_PER_DAY = float(os.getenv("MAX_LOSS_PER_DAY", "5000"))  # ₹5000
-MAX_ORDERS_PER_DAY = int(os.getenv("MAX_ORDERS_PER_DAY", "6"))
+MAX_ORDERS_PER_DAY = int(os.getenv("MAX_ORDERS_PER_DAY", "30"))
 DEFAULT_QUANTITY   = int(os.getenv("DEFAULT_QUANTITY",   "780"))   # 12 lots × 65 units
 SL_POINTS          = float(os.getenv("SL_POINTS",          "30"))   # Fixed SL in points
 TRAILING_SL_POINTS = float(os.getenv("TRAILING_SL_POINTS", "15"))   # Trail by 15pts
@@ -116,7 +116,7 @@ class TraderState:
     qty_mode:           str   = "manual"            # 'manual' | 'capital'
     manual_qty:         int   = DEFAULT_QUANTITY    # used when qty_mode=manual
     strike_offset:      int   = 0                   # -3=ITM3,-2=ITM2,-1=ITM1,0=ATM,1=OTM1,2=OTM2,3=OTM3
-    max_trades_per_day: int   = MAX_ORDERS_PER_DAY  # runtime-overridable (1-15)
+    max_trades_per_day: int   = MAX_ORDERS_PER_DAY  # runtime-overridable (1-50)
     cooldown_minutes:   int   = int(os.getenv("COOLDOWN_MINUTES", "5"))  # post-exit wait
     recovery_mode: bool = False    # True if state was restored after a crash
     recovery_message: str = ""     # Human-readable description of what was recovered
@@ -1653,7 +1653,7 @@ def configure_auto_trader(
     if manual_qty         is not None: state.manual_qty         = manual_qty
     if capital            is not None: state.capital            = capital
     if strike_offset      is not None: state.strike_offset      = max(-3, min(3, strike_offset))
-    if max_trades_per_day is not None: state.max_trades_per_day = max(1, min(15, max_trades_per_day))
+    if max_trades_per_day is not None: state.max_trades_per_day = max(1, min(50, max_trades_per_day))
     if cooldown_minutes   is not None: state.cooldown_minutes   = max(0, min(60, cooldown_minutes))
     _save_state_snapshot()
     return {

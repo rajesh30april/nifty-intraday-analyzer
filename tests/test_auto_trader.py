@@ -544,7 +544,7 @@ class TestInstrumentLookup:
 
 
 class TestMaxTradesPerDay:
-    """Runtime-configurable max trades per day (1-15)."""
+    """Runtime-configurable max trades per day (1-50)."""
 
     def test_default_is_module_constant(self):
         at, _ = _fresh_auto_trader()
@@ -573,7 +573,7 @@ class TestMaxTradesPerDay:
         at.configure_auto_trader(max_trades_per_day=0)
         assert at.state.max_trades_per_day == 1, "Min should clamp to 1"
         at.configure_auto_trader(max_trades_per_day=99)
-        assert at.state.max_trades_per_day == 15, "Max should clamp to 15"
+        assert at.state.max_trades_per_day == 50, "Max should clamp to 50"
 
     def test_configure_sets_valid_value(self):
         at, _ = _fresh_auto_trader()
