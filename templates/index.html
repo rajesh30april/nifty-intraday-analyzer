@@ -1474,7 +1474,12 @@
 
               <!-- Live Price Strip -->
               <div class="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 mb-3 flex items-center gap-6 text-sm flex-wrap">
-                <div><div class="text-[10px] text-gray-400">MCX CRUDE</div>
+                <div>
+                  <div class="text-[10px] text-gray-400">INSTRUMENT</div>
+                  <div id="crude-instrument" class="text-xs font-mono font-bold text-cyan-400 tracking-wide">--</div>
+                  <div id="crude-instrument-token" class="text-[9px] text-gray-600">token: --</div>
+                </div>
+                <div><div class="text-[10px] text-gray-400">MCX CRUDE SPOT</div>
                   <div id="crude-spot" class="text-xl font-black text-[#ffc220]">--</div></div>
                 <div><div class="text-[10px] text-gray-400">OPTION LTP</div>
                   <div id="crude-option-ltp" class="font-bold">--</div></div>
@@ -1485,7 +1490,7 @@
                 <div class="ml-auto text-right">
                   <div class="text-[10px] text-gray-400">LAST SIGNAL</div>
                   <div id="crude-signal" class="text-[11px] text-gray-300 max-w-[240px] truncate">--</div>
-          </div>
+                </div>
               </div>
 
               <!-- Controls -->

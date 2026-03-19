@@ -1091,6 +1091,17 @@ def get_crude_status() -> dict:
             'lot_size':       lot_sz,
             'lots':           at.quantity,
         }
+    # ── Instrument info (what are we actually evaluating against?) ────
+    try:
+        from crude_data import _last_futures_symbol, _last_futures_token, _last_days_to_expiry
+        instr_sym    = _last_futures_symbol or "(not fetched yet)"
+        instr_token  = _last_futures_token  or None
+        days_expiry  = _last_days_to_expiry if _last_days_to_expiry >= 0 else None
+    except Exception:
+        instr_sym   = "(unknown)"
+        instr_token = None
+        days_expiry = None
+
     return {
         'is_running':    state.is_running,
         'is_paper_mode': state.is_paper_mode,
@@ -1099,6 +1110,9 @@ def get_crude_status() -> dict:
         'trade_date':    state.trade_date,
         'total_pnl':     round(state.total_pnl, 2),
         'crude_price':   round(state.last_crude_price, 2) if state.last_crude_price else None,
+        'futures_symbol':  instr_sym,
+        'futures_token':   instr_token,
+        'days_to_expiry':  days_expiry,
         'last_option_ltp': state.last_option_ltp or None,
         'last_signal':     state.last_signal_reason,
         'block_reason':    state.last_block_reason,

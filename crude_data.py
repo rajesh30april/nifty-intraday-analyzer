@@ -55,12 +55,20 @@ def _get_mcx_instruments() -> list[dict]:
         return _instruments_cache or []
 
 
+# ── Module-level cache for the last resolved instrument ───────────
+# Exposed so get_crude_status() can include it in every status response.
+_last_futures_symbol:  str  = ""
+_last_futures_token:   int  = 0
+_last_days_to_expiry:  int  = -1
+
+
 def get_crude_futures_token() -> tuple[int, str]:
     """Return (instrument_token, tradingsymbol) for front-month Crude futures.
 
     Picks the nearest expiry that hasn't expired yet — same logic as
     Nifty weekly expiry selection but for MCX monthlies.
     """
+    global _last_futures_symbol, _last_futures_token, _last_days_to_expiry
     instruments = _get_mcx_instruments()
     today = date.today()
     futs  = [
@@ -75,14 +83,17 @@ def get_crude_futures_token() -> tuple[int, str]:
 
     # Auto-roll: skip contracts expiring within the next 2 days —
     # they have dying volume and extreme bid-ask spreads.
-    # Use next month contract instead for cleaner fills.
     front = futs[0]
     days_to_expiry = (front['expiry'] - today).days
     if days_to_expiry <= 2 and len(futs) > 1:
         front = futs[1]
+        days_to_expiry = (front['expiry'] - today).days
         print(f"🔄 Auto-rolled to {front['tradingsymbol']} "
               f"(near-month expires in {days_to_expiry}d)")
 
+    _last_futures_symbol  = front['tradingsymbol']
+    _last_futures_token   = front['instrument_token']
+    _last_days_to_expiry  = days_to_expiry
     return front['instrument_token'], front['tradingsymbol']
 
 

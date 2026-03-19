@@ -395,7 +395,22 @@ function renderCrudeStatus(d) {
         sb.className   = `badge ${d.is_running ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-500'}`;
     }
 
-    // ── Live price strip ──────────────────────────────────────────
+    // ── Instrument badge ───────────────────────────────────────────────
+    const symEl  = document.getElementById('crude-instrument');
+    const tokEl  = document.getElementById('crude-instrument-token');
+    if (symEl) {
+        const sym = d.futures_symbol || '(not fetched yet)';
+        const dte = d.days_to_expiry;
+        let warn = '';
+        if (dte != null && dte <= 5)  warn = dte <= 1 ? ' ⚠️ EXPIRY TODAY' : ` ⚠️ ${dte}d to expiry`;
+        symEl.textContent = sym + warn;
+        symEl.className   = dte != null && dte <= 2
+            ? 'text-xs font-mono font-bold text-yellow-400 tracking-wide animate-pulse'
+            : 'text-xs font-mono font-bold text-cyan-400 tracking-wide';
+    }
+    if (tokEl) tokEl.textContent = d.futures_token ? `token: ${d.futures_token}` : 'token: --';
+
+    // ── Live price strip ───────────────────────────────────────────────
     _setText('crude-spot',       d.crude_price ? `₹${d.crude_price}` : '--');
     _setText('crude-option-ltp', _fmt(d.last_option_ltp));
     _setText('crude-signal',     d.block_reason || d.last_signal || '--');
