@@ -12,6 +12,48 @@
 // Set to true on input focus, cleared on Apply click.
 let _atPanelDirty = false;
 
+// ── Trail SL mode state ──────────────────────────────────────────
+let _atTrailMode    = 'fixed';  // 'fixed' | 'atr' | 'supertrend' | 'manual'
+let _atTrailAtrMult = 1.5;
+
+const _TRAIL_DESCRIPTIONS = {
+    fixed:      '📌 Fixed: SL moves up/down by a fixed number of Nifty points as price moves in your favour.',
+    atr1.5:     '📐 ATR×1.5: SL = highest price − (ATR × 1.5). Wider room in volatile markets, tighter when calm.',
+    atr2:       '📐 ATR×2: SL = highest price − (ATR × 2). Even more breathing room. Good for big trend days.',
+    supertrend: '📈 Supertrend: SL follows the Supertrend indicator line. Tight in sideways, wide in strong trends.',
+    manual:     '✋ Manual: App does NOT auto-trail. You move SL yourself — full control.',
+};
+
+function _setTrailMode(mode) {
+    _atPanelDirty = true;
+    if (mode === 'atr1.5') { _atTrailMode = 'atr'; _atTrailAtrMult = 1.5; }
+    else if (mode === 'atr2') { _atTrailMode = 'atr'; _atTrailAtrMult = 2.0; }
+    else { _atTrailMode = mode; _atTrailAtrMult = 1.5; }
+    _applyTrailModeUI(mode);
+}
+
+function _applyTrailModeUI(mode, mult) {
+    // Highlight active pill
+    document.querySelectorAll('.at-trail-pill').forEach(btn => {
+        const active = btn.dataset.trail === mode
+            || (mode === 'atr' && mult === 2.0 && btn.dataset.trail === 'atr2')
+            || (mode === 'atr' && mult !== 2.0 && btn.dataset.trail === 'atr1.5');
+        btn.className = btn.className
+            .replace('bg-blue-600 text-white border-blue-500', '')
+            .replace('text-gray-400 border-gray-600', 'text-gray-400 border-gray-600');
+        if (active) {
+            btn.classList.remove('text-gray-400', 'border-gray-600');
+            btn.classList.add('bg-blue-600', 'text-white', 'border-blue-500');
+        }
+    });
+    // Show/hide fixed pts row
+    const fixedRow = document.getElementById('at-trail-fixed-row');
+    if (fixedRow) fixedRow.classList.toggle('hidden', mode !== 'fixed');
+    // Description
+    const desc = document.getElementById('at-trail-desc');
+    if (desc) desc.textContent = _TRAIL_DESCRIPTIONS[mode] || '';
+}
+
 function toggleAtSettings() {
     const panel = document.getElementById('at-settings-panel');
     const btn   = document.getElementById('at-settings-btn');
@@ -36,6 +78,7 @@ function syncAtSettingsFromStatus(data) {
     const set = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined) el.value = val; };
     set('at-sl-pts',   data.sl_points);
     set('at-trail-sl', data.trailing_sl_points);
+    if (data.trail_mode) _applyTrailModeUI(data.trail_mode, data.trail_atr_mult);
     set('at-rr',       data.rr_ratio);
     // Server stores units; input is now in lots → convert
     if (data.manual_qty !== undefined)
@@ -344,13 +387,16 @@ async function applyAtSettings() {
     const capital = parseFloat(document.getElementById('at-capital')?.value   || '96000');
     const mode    = _atQtyMode;
 
-    // Validation with plain-English messages
+    // Validation
     if (sl < 5 || sl > 150) { _atShowToast('⚠️ SL must be between 5 and 150 Nifty points', 'warn'); return; }
-    if (trail >= sl)         { _atShowToast('⚠️ Trailing SL must be smaller than the initial SL', 'warn'); return; }
+    if (_atTrailMode === 'fixed' && trail >= sl) {
+        _atShowToast('⚠️ Trailing SL must be smaller than the initial SL', 'warn'); return;
+    }
 
     const maxTrades = parseInt(document.getElementById('at-max-trades')?.value || '3', 10);
     const params = new URLSearchParams({
         sl_points: sl, trailing_sl_points: trail, rr_ratio: rr,
+        trail_mode: _atTrailMode, trail_atr_mult: _atTrailAtrMult,
         qty_mode: mode, manual_qty: manQty, capital,
         strike_offset: _atStrikeOffset,
         max_trades_per_day: maxTrades,

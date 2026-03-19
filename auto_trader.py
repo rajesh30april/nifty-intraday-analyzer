@@ -106,7 +106,10 @@ class TraderState:
     last_block_reason: str | None = None
     # ── Runtime-configurable trade settings (overrideable from UI) ──
     sl_points:          float = SL_POINTS           # Nifty SL in points
-    trailing_sl_points: float = TRAILING_SL_POINTS  # trailing SL step
+    trailing_sl_points: float = TRAILING_SL_POINTS  # trailing SL step (fixed mode)
+    trail_mode:         str   = "fixed"             # "fixed" | "atr" | "supertrend" | "manual"
+    trail_atr_mult:     float = 1.5                 # ATR multiplier for atr mode
+    cached_trail_sl:    float | None = None         # pre-computed SL for atr/supertrend (candle loop)
     rr_ratio:           float = 2.0                 # risk:reward
     capital:            float = DEFAULT_CAPITAL      # ₹ available for qty calc
     qty_mode:           str   = "manual"            # 'manual' | 'capital'
@@ -885,6 +888,7 @@ def evaluate_and_act(df, current_price: float):
     if state.active_trade:
         trade = state.active_trade
         sl_before = trade.stop_loss
+        _update_trail_sl_cache(df)   # pre-compute ATR/Supertrend SL before tick thread uses it
         with _tick_guard_lock:
             if state.active_trade:   # re-check: tick may have just closed it
                 _manage_active_trade(current_price, source="🕯 candle")
@@ -1127,6 +1131,41 @@ def _enter_trade(direction: Direction, price: float):
     _save_state_snapshot()   # ← crash recovery: snapshot immediately on entry
 
 
+def _update_trail_sl_cache(df) -> None:
+    """Pre-compute trail SL for ATR/Supertrend modes — called once per candle.
+
+    This keeps the tick thread fast — heavy indicator math runs here in the
+    candle loop, result cached in state.cached_trail_sl for the tick thread.
+    """
+    if not state.active_trade:
+        return
+    import indicators as ind  # noqa: PLC0415
+    trade   = state.active_trade
+    is_long = trade.direction == "long"
+    mode    = state.trail_mode
+
+    if mode == "atr":
+        atr_val = float(ind.atr(df["high"], df["low"], df["close"]).iloc[-1])
+        offset  = atr_val * state.trail_atr_mult
+        new_sl  = (
+            state.highest_price_since_entry - offset if is_long
+            else state.lowest_price_since_entry + offset
+        )
+        state.cached_trail_sl = round(new_sl, 2)
+        _log("📐", "ATR Trail",
+             f"ATR={atr_val:.1f} × {state.trail_atr_mult} = {offset:.1f}pts  →  SL={state.cached_trail_sl:.0f}")
+
+    elif mode == "supertrend":
+        st      = ind.supertrend(df["high"], df["low"], df["close"])
+        st_val  = float(st["supertrend"].iloc[-1])
+        state.cached_trail_sl = round(st_val, 2)
+        _log("📈", "ST Trail",
+             f"Supertrend line = {state.cached_trail_sl:.0f}  →  SL moved there")
+
+    else:
+        state.cached_trail_sl = None  # fixed/manual compute in _manage_active_trade
+
+
 def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
     """Manage stop-loss, trailing SL, and target for active trade."""
     trade = state.active_trade
@@ -1154,34 +1193,43 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
             state.lowest_price_since_entry, current_price
         )
 
-    # Trailing stop-loss — in-app only (ZERO API calls here — tick thread safe)
-    # Flag pending_sl_exchange_update so the next 5-min candle loop syncs Zerodha.
-    if is_long:
-        new_sl = state.highest_price_since_entry - state.trailing_sl_points
-        if new_sl > trade.stop_loss:
-            trade.stop_loss = round(new_sl, 2)
-            state.pending_sl_exchange_update = True
-            _save_state_snapshot()
-            prem_sl  = _nifty_to_option_premium(trade.stop_loss, trade)
-            prem_tgt = _nifty_to_option_premium(trade.target, trade) if trade.target else None
-            ltp_val  = state.last_option_ltp
-            tgt_part = (' | Target ₹' + f'{prem_tgt:.1f}') if prem_tgt else ''
-            ltp_part = (' | LTP ₹'    + f'{ltp_val:.1f}') if ltp_val else ''
-            _log('\U0001f53c', 'Trail SL moved UP',
-                 'SL Prem ₹' + f'{prem_sl:.1f}' + tgt_part + ltp_part + ' (Nifty ₹' + f'{current_price:.0f})')
-    else:
-        new_sl = state.lowest_price_since_entry + state.trailing_sl_points
-        if new_sl < trade.stop_loss:
-            trade.stop_loss = round(new_sl, 2)
-            state.pending_sl_exchange_update = True
-            _save_state_snapshot()
-            prem_sl  = _nifty_to_option_premium(trade.stop_loss, trade)
-            prem_tgt = _nifty_to_option_premium(trade.target, trade) if trade.target else None
-            ltp_val  = state.last_option_ltp
-            tgt_part = (' | Target ₹' + f'{prem_tgt:.1f}') if prem_tgt else ''
-            ltp_part = (' | LTP ₹'    + f'{ltp_val:.1f}') if ltp_val else ''
-            _log('\U0001f53d', 'Trail SL moved DOWN',
-                 'SL Prem ₹' + f'{prem_sl:.1f}' + tgt_part + ltp_part + ' (Nifty ₹' + f'{current_price:.0f})')
+    # ── Trailing stop-loss (multi-mode) ─────────────────────────────
+    # Tick-thread safe: ZERO heavy computation here.
+    # ATR/Supertrend SL is pre-computed in _update_trail_sl_cache (candle loop)
+    # and stored in state.cached_trail_sl.
+    mode   = state.trail_mode
+    new_sl = None
+
+    if mode == "fixed":
+        new_sl = (
+            state.highest_price_since_entry - state.trailing_sl_points if is_long
+            else state.lowest_price_since_entry + state.trailing_sl_points
+        )
+    elif mode in ("atr", "supertrend"):
+        new_sl = state.cached_trail_sl   # pre-computed in candle loop
+    elif mode == "manual":
+        new_sl = None                    # user controls SL — never auto-trail
+
+    def _apply_sl_move(new_sl_val: float) -> None:
+        """Update SL in state + log. Inlined helper to avoid duplicate code."""
+        trade.stop_loss = round(new_sl_val, 2)
+        state.pending_sl_exchange_update = True
+        _save_state_snapshot()
+        prem_sl  = _nifty_to_option_premium(trade.stop_loss, trade)
+        prem_tgt = _nifty_to_option_premium(trade.target, trade) if trade.target else None
+        ltp_val  = state.last_option_ltp
+        tgt_part = (' | Target ₹' + f'{prem_tgt:.1f}') if prem_tgt else ''
+        ltp_part = (' | LTP ₹'    + f'{ltp_val:.1f}') if ltp_val else ''
+        icon     = '🔼' if is_long else '🔽'
+        label    = {'fixed': 'Fixed', 'atr': 'ATR', 'supertrend': 'ST'}.get(mode, mode)
+        _log(icon, f'Trail [{label}] SL moved',
+             'SL Prem ₹' + f'{prem_sl:.1f}' + tgt_part + ltp_part + ' (Nifty ₹' + f'{current_price:.0f})')
+
+    if new_sl is not None:
+        if is_long and new_sl > trade.stop_loss:
+            _apply_sl_move(new_sl)
+        elif not is_long and new_sl < trade.stop_loss:
+            _apply_sl_move(new_sl)
 
     # Check stop-loss hit
     if is_long and current_price <= trade.stop_loss:
@@ -1457,6 +1505,8 @@ def get_trader_status() -> dict:
         # ── Runtime trade settings ──
         "sl_points":          state.sl_points,
         "trailing_sl_points": state.trailing_sl_points,
+        "trail_mode":         state.trail_mode,
+        "trail_atr_mult":     state.trail_atr_mult,
         "rr_ratio":           state.rr_ratio,
         "qty_mode":           state.qty_mode,
         "manual_qty":         state.manual_qty,
@@ -1471,17 +1521,21 @@ def get_trader_status() -> dict:
 def configure_auto_trader(
     sl_points:          float | None = None,
     trailing_sl_points: float | None = None,
+    trail_mode:         str   | None = None,   # "fixed"|"atr"|"supertrend"|"manual"
+    trail_atr_mult:     float | None = None,   # 1.0 – 3.0
     rr_ratio:           float | None = None,
     qty_mode:           str   | None = None,
     manual_qty:         int   | None = None,
     capital:            float | None = None,
     strike_offset:      int   | None = None,
     max_trades_per_day: int   | None = None,
-    cooldown_minutes:   int   | None = None,   # 0=off, 5/10/15/20/30
+    cooldown_minutes:   int   | None = None,
 ) -> dict:
     """Update runtime trade settings without restarting."""
     if sl_points          is not None: state.sl_points          = sl_points
     if trailing_sl_points is not None: state.trailing_sl_points = trailing_sl_points
+    if trail_mode         is not None: state.trail_mode         = trail_mode
+    if trail_atr_mult     is not None: state.trail_atr_mult     = max(0.5, min(4.0, trail_atr_mult))
     if rr_ratio           is not None: state.rr_ratio           = rr_ratio
     if qty_mode           is not None: state.qty_mode           = qty_mode
     if manual_qty         is not None: state.manual_qty         = manual_qty
@@ -1493,6 +1547,8 @@ def configure_auto_trader(
     return {
         "sl_points":          state.sl_points,
         "trailing_sl_points": state.trailing_sl_points,
+        "trail_mode":         state.trail_mode,
+        "trail_atr_mult":     state.trail_atr_mult,
         "rr_ratio":           state.rr_ratio,
         "qty_mode":           state.qty_mode,
         "manual_qty":         state.manual_qty,

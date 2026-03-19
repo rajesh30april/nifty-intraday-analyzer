@@ -2421,6 +2421,8 @@ async def auto_trader_start(strategy: str = "smart_router"):
 async def auto_trader_configure(
     sl_points:          float | None = Query(None),
     trailing_sl_points: float | None = Query(None),
+    trail_mode:         str   | None = Query(None),
+    trail_atr_mult:     float | None = Query(None),
     rr_ratio:           float | None = Query(None),
     qty_mode:           str   | None = Query(None),
     manual_qty:         int   | None = Query(None),
@@ -2438,6 +2440,7 @@ async def auto_trader_configure(
             pass
     result = configure_auto_trader(
         sl_points=sl_points, trailing_sl_points=trailing_sl_points,
+        trail_mode=trail_mode, trail_atr_mult=trail_atr_mult,
         rr_ratio=rr_ratio, qty_mode=qty_mode,
         manual_qty=manual_qty, capital=capital,
         strike_offset=parsed_offset,
