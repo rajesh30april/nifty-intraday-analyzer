@@ -1105,13 +1105,20 @@ def _enter_trade(direction: Direction, price: float):
         paper=state.is_paper_mode,
     )
 
-    # Reset price extremes BEFORE exposing the trade to the tick thread.
-    # If we set active_trade first the tick handler can read stale
-    # highest/lowest from the previous trade and fire an instant SL.
+    # Reset ALL per-trade state BEFORE exposing the trade to the tick thread.
+    # If we set active_trade first the tick handler can read stale values
+    # from the previous trade and fire an instant exit.
     state.highest_price_since_entry    = price
     state.lowest_price_since_entry     = price
     state.entry_nifty_sl               = sl        # original SL for delta math
     state.pending_sl_exchange_update   = False
+    state.cached_trail_sl              = None       # stale ATR/ST cache from prev trade
+    # ── Critical: zero out the option LTP from the previous trade. ──────────
+    # If we traded CE and now we're entering a PE (or vice versa), the old LTP
+    # is for a completely different instrument. Leaving it set means the premium
+    # SL check fires immediately using the wrong price and kills the new trade
+    # before the first real tick arrives for the new instrument.
+    state.last_option_ltp              = 0.0
     state.active_trade = trade
     state.trades_today.append(trade)
     state.orders_placed += 1
