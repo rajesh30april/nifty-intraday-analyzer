@@ -148,8 +148,13 @@ async def _crude_trader_loop():
 
 
 async def _crude_ltp_refresh_loop():
-    """Refresh Crude Oil option LTP every 15s for live P&L display."""
-    from crude_trader import state as crude_state
+    """Refresh option LTP every 15 s — AND run premium-based SL/target/trail.
+
+    This is the PRIMARY exit monitor for crude option trades.
+    Exits are checked against the option LTP (premium space) — not crude spot.
+    Running every 15 s means worst-case 15 s reaction time on SL breach.
+    """
+    from crude_trader import state as crude_state, _manage_trade_by_premium
     from crude_data import get_crude_option_ltp, get_crude_spot
     await asyncio.sleep(4)
     while True:
@@ -160,6 +165,10 @@ async def _crude_ltp_refresh_loop():
                 )
                 if isinstance(ltp, (int, float)) and ltp > 0:
                     crude_state.last_option_ltp = ltp
+                    # ── Primary exit+trail check on every LTP refresh ──
+                    await asyncio.to_thread(
+                        _manage_trade_by_premium, ltp, "15s_poll"
+                    )
             spot = await asyncio.to_thread(get_crude_spot)
             if spot:
                 crude_state.last_crude_price = spot

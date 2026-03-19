@@ -225,26 +225,28 @@ class TestCrudeTraderState:
         ct._manage_trade(6610.0, source='test')  # above target
         assert ct.state.active_trade is None, 'Target hit must close trade'
 
-    def test_trailing_sl_tightens_for_short(self):
-        """Trailing SL moves closer when crude falls (SHORT position wins)."""
+    def test_trailing_sl_tightens_on_premium_rise(self):
+        """When option LTP rises above entry, trailing SL (sl_premium) must follow."""
         ct = _fresh_crude_state()
-        ct.state.is_paper_mode    = True
-        ct.state.is_running       = True
-        ct.state.kill_switch      = False
-        ct.state.trail_points     = 25.0
-        ct.state.lowest_since_entry = 6500.0
-        ct.state.active_trade = ct.CrudeTrade(
+        ct.state.is_paper_mode = True
+        ct.state.is_running    = True
+        ct.state.kill_switch   = False
+        ct.state.trail_points  = 10.0   # 10 prem pts trail
+        trade = ct.CrudeTrade(
             id='trail-test', timestamp='2026-03-12T10:00:00',
-            direction='short', instrument='MCX:CRUDEOIL25APR6500PE',
+            direction='short', instrument='MCX:CRUDEOILM25APR6500PE',
             entry_price=6500.0, entry_premium=32.0,
-            quantity=100, stop_loss=6550.0, target=6400.0,
+            quantity=2, stop_loss=6550.0, target=6400.0,
+            sl_premium=22.0, peak_ltp=32.0,
             status=ct.CrudeOrderStatus.FILLED, paper=True,
         )
-        # Crude drops to 6440 → new lowest → SL should move to 6440+25=6465
-        ct._manage_trade(6440.0, source='test')
+        ct.state.active_trade = trade
+        ct.state.last_crude_price = 6450.0
+        # LTP rises to 55 → peak becomes 55 → new sl_premium = 55 - 10 = 45
+        ct._manage_trade_by_premium(55.0, source='test')
         assert ct.state.active_trade is not None, 'Not at SL yet — trade stays open'
-        assert ct.state.active_trade.stop_loss < 6550.0, 'Trailing SL must tighten'
-        assert ct.state.active_trade.stop_loss == pytest.approx(6465.0, abs=1)
+        assert ct.state.active_trade.sl_premium > 22.0, 'SL premium must have moved up'
+        assert ct.state.active_trade.sl_premium == pytest.approx(45.0, abs=0.5)
 
     def test_get_crude_status_includes_all_keys(self):
         ct = _fresh_crude_state()

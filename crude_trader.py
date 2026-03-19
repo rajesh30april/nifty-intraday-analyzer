@@ -67,8 +67,12 @@ class CrudeTrade:
     instrument:    str           # MCX:CRUDEOILAPR...CE/PE
     entry_price:   float         # MCX Crude spot at entry
     entry_premium: float         # Option LTP at entry
-    quantity:      int           # units (lots × 100)
-    stop_loss:     float         # Crude spot SL level
+    quantity:      int           # in LOTS (e.g. 2)
+    stop_loss:     float         # Crude spot SL level (reference)
+    lot_size:      int           = 10    # barrels per lot (10 mini, 100 full) — default mini
+    sl_premium:    float         = 0.0   # Option premium SL — PRIMARY exit trigger
+    tgt_premium:   float | None  = None  # Option premium target
+    peak_ltp:      float         = 0.0   # Highest option LTP seen — used for trailing
     target:        float | None  = None
     exit_price:    float | None  = None
     exit_premium:  float | None  = None
@@ -129,19 +133,16 @@ def _save_snapshot():
     if not state.active_trade:
         CRUDE_SNAP_FILE.unlink(missing_ok=True)
         return
-    t = state.active_trade
-    data = {
-        'id': t.id, 'timestamp': t.timestamp,
-        'direction': t.direction, 'instrument': t.instrument,
-        'entry_price': t.entry_price, 'entry_premium': t.entry_premium,
-        'quantity': t.quantity, 'stop_loss': t.stop_loss,
-        'target': t.target, 'paper': t.paper, 'status': t.status,
-        'is_running': state.is_running,
-        # ── extra state for banner ────────────────────────────────
-        'entry_crude_sl':      state.entry_crude_sl,
-        'highest_since_entry': state.highest_since_entry,
-        'lowest_since_entry':  state.lowest_since_entry,
-    }
+    import dataclasses
+    # Serialize ALL trade fields so new fields survive restarts
+    data = dataclasses.asdict(state.active_trade)
+    # Enum → string
+    data['status'] = state.active_trade.status.value if hasattr(state.active_trade.status, 'value') else str(state.active_trade.status)
+    # Extra state needed for recovery
+    data['is_running']           = state.is_running
+    data['entry_crude_sl']       = state.entry_crude_sl
+    data['highest_since_entry']  = state.highest_since_entry
+    data['lowest_since_entry']   = state.lowest_since_entry
     CRUDE_SNAP_FILE.write_text(json.dumps(data, indent=2))
 
 
@@ -152,7 +153,17 @@ def _recover_snapshot():
     try:
         data  = json.loads(CRUDE_SNAP_FILE.read_text())
         _SNAP_EXTRA = {'is_running', 'entry_crude_sl', 'highest_since_entry', 'lowest_since_entry'}
-        trade = CrudeTrade(**{k: v for k, v in data.items() if k not in _SNAP_EXTRA})
+        trade_data  = {k: v for k, v in data.items() if k not in _SNAP_EXTRA}
+        # Backfill / sanitize fields added in newer versions — replace None too
+        ep = trade_data.get('entry_premium') or 0
+        def _fill(key, default):
+            if not trade_data.get(key):
+                trade_data[key] = default
+        _fill('lot_size',   MCX_CRUDE_MINI_LOT_SIZE)
+        _fill('sl_premium', round(ep * 0.98, 1))
+        _fill('peak_ltp',   ep)
+        # tgt_premium: None is valid (no target set)
+        trade = CrudeTrade(**trade_data)
         state.active_trade        = trade
         state.entry_crude_sl      = data.get('entry_crude_sl', trade.stop_loss)  # fallback to current SL
         state.highest_since_entry = data.get('highest_since_entry', trade.entry_price)
@@ -394,6 +405,21 @@ def _enter_trade(direction: Direction, price: float):
 
     ep = real_ltp if isinstance(real_ltp, (int, float)) and real_ltp > 0 else estimate_crude_premium(price)
 
+    # ── Premium-based SL and target ──────────────────────────────
+    # For option buyers: SL premium = entry - sl_pts (trail below peak)
+    #                    Tgt premium = entry + (sl_pts × rr)
+    # Both derived directly from the option LTP — no delta estimation needed.
+    sl_pts_in_prem  = state.trail_points              # trail distance in ₹ prem
+    crude_sl_pts    = abs(price - sl)                 # crude pts at risk
+    # Use simple ratio: sl_prem_distance ≈ crude_sl_pts × (ep / price) × sensitivity
+    # But keep it simple — just use trail_points directly in premium space
+    prem_sl_gap     = round(crude_sl_pts * _CRUDE_DELTA, 1)  # δ-adjusted
+    sl_prem         = round(ep - prem_sl_gap, 1)             # option LTP floor
+    tgt_prem        = round(ep + prem_sl_gap * state.rr_ratio, 1) if target else None
+
+    print(f"📐 Entry prem ₹{ep:.1f} | SL prem ₹{sl_prem:.1f} "
+          f"| Tgt prem {'₹'+str(tgt_prem) if tgt_prem else '—'}")
+
     trade = CrudeTrade(
         id=f"CRUDE-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
         timestamp=datetime.now().isoformat(),
@@ -402,7 +428,11 @@ def _enter_trade(direction: Direction, price: float):
         entry_price=price,
         entry_premium=ep,
         quantity=qty,
+        lot_size=lot_size,
         stop_loss=sl,
+        sl_premium=sl_prem,
+        tgt_premium=tgt_prem,
+        peak_ltp=ep,
         target=target,
         status=CrudeOrderStatus.FILLED,
         order_id=order_id,
@@ -451,7 +481,8 @@ def _exit_position(reason: str, price: float):
         except Exception as e:
             print(f"❌ Crude exit order failed: {e}")
 
-    pnl = (exit_prem - trade.entry_premium) * trade.quantity
+    # P&L = premium Δ × lots × barrels_per_lot
+    pnl = (exit_prem - trade.entry_premium) * trade.quantity * trade.lot_size
     trade.exit_price   = price
     trade.exit_premium = exit_prem
     trade.exit_time    = datetime.now().isoformat()
@@ -471,84 +502,107 @@ def _exit_position(reason: str, price: float):
     CRUDE_SNAP_FILE.unlink(missing_ok=True)
 
 
-# ── Trade management (per tick + per candle) ──────────────────────
+# ── Trade management ──────────────────────────────────────────────
+#
+# Options are tracked on PREMIUM, not spot price.
+# _manage_trade_by_premium() is the PRIMARY exit+trail function.
+# _manage_trade() keeps spot-price time/safety exits as backup.
 
-def _manage_trade(price: float, source: str = "candle"):
-    """Check SL / target / trailing — same logic as Nifty auto_trader."""
+def _manage_trade_by_premium(ltp: float, source: str = "ltp_poll") -> None:
+    """PRIMARY: Check SL / target / trail against the option LTP.
+
+    Called every 15 s by the LTP refresh loop AND on every candle close.
+    Options traders think in premium space — this is the correct place to
+    check exits and trail the stop loss.
+    """
+    trade = state.active_trade
+    if not trade or ltp <= 0:
+        return
+
+    # ── Time exit ────────────────────────────────────────────────
+    if datetime.now().time() >= CRUDE_EXIT_TIME:
+        _exit_position(f"⏰ Time exit ({CRUDE_EXIT_TIME})", state.last_crude_price)
+        return
+
+    # ── Update peak LTP (option premium only goes up on profitable side)
+    if ltp > trade.peak_ltp:
+        trade.peak_ltp = ltp
+
+    sl_prem  = trade.sl_premium
+    tgt_prem = trade.tgt_premium
+
+    # ── SL breach — option premium dropped below sl_premium ──────
+    if ltp <= sl_prem:
+        crude = state.last_crude_price
+        _exit_position(f"🛑 SL hit [{source}] option ₹{ltp:.1f} ≤ ₹{sl_prem:.1f}", crude)
+        return
+
+    # ── Target hit — option premium reached tgt_premium ──────────
+    if tgt_prem and ltp >= tgt_prem:
+        crude = state.last_crude_price
+        _exit_position(f"🎯 Target hit [{source}] option ₹{ltp:.1f} ≥ ₹{tgt_prem:.1f}", crude)
+        return
+
+    # ── Trailing SL (only when trader is running) ─────────────────
+    if not state.is_running:
+        return
+
+    mode = state.trail_mode
+
+    # Supertrend: use ST line as proxy for trail amount in premium space
+    if mode == 'supertrend' and state.last_st_line > 0 and state.last_crude_price > 0:
+        # Convert ST-to-crude distance to premium distance via δ
+        st_crude_dist = abs(state.last_crude_price - state.last_st_line)
+        trail_prem    = round(st_crude_dist * _CRUDE_DELTA, 1)
+    elif mode == 'atr' and state.last_atr > 0:
+        trail_prem = round(state.last_atr * state.atr_multiplier * _CRUDE_DELTA, 1)
+    else:
+        trail_prem = state.trail_points   # fixed: treat as direct premium points
+
+    # New SL = peak LTP − trail distance  (works for both long/short option buyers
+    # because we always BUY options — premium rises when trade is winning)
+    new_sl_prem = round(trade.peak_ltp - trail_prem, 1)
+    if new_sl_prem > sl_prem:           # only ever move SL UP (lock in profits)
+        old = trade.sl_premium
+        trade.sl_premium = new_sl_prem
+        _save_snapshot()
+        tag = f"{mode} trail={trail_prem:.1f}"
+        print(f"📈 [{tag}] SL prem ₹{old:.1f} → ₹{new_sl_prem:.1f} (peak=₹{trade.peak_ltp:.1f})")
+
+
+def _manage_trade(price: float, source: str = "candle") -> None:
+    """SECONDARY: Time and safety exits on crude spot price.
+
+    Crude-price spot checks are a belt-and-suspenders backup to
+    _manage_trade_by_premium(). They handle edge cases like IV collapse
+    where the option may be nearly worthless but spot didn't hit SL.
+    """
     trade = state.active_trade
     if not trade:
         return
-
-    sl   = trade.stop_loss
-    tgt  = trade.target
-    d    = trade.direction
 
     # ── Time exit ────────────────────────────────────────────────
     if datetime.now().time() >= CRUDE_EXIT_TIME:
         _exit_position(f"⏰ Time exit ({CRUDE_EXIT_TIME})", price)
         return
 
-    # ── SL breach ────────────────────────────────────────────────
+    # ── Spot-price SL + target as safety nets ────────────────────
+    d   = trade.direction
+    sl  = trade.stop_loss
+    tgt = trade.target
     if d == 'long'  and price <= sl:
-        _exit_position(f"🛑 SL hit [{source}] @ ₹{price:.0f}", price)
+        _exit_position(f"🛑 Spot SL [{source}] ₹{price:.0f} ≤ ₹{sl:.0f}", price)
         return
     if d == 'short' and price >= sl:
-        _exit_position(f"🛑 SL hit [{source}] @ ₹{price:.0f}", price)
+        _exit_position(f"🛑 Spot SL [{source}] ₹{price:.0f} ≥ ₹{sl:.0f}", price)
         return
-
-    # ── Target hit ────────────────────────────────────────────────
     if tgt:
         if d == 'long'  and price >= tgt:
-            _exit_position(f"🎯 Target hit [{source}] @ ₹{price:.0f}", price)
+            _exit_position(f"🎯 Spot target [{source}] ₹{price:.0f} ≥ ₹{tgt:.0f}", price)
             return
         if d == 'short' and price <= tgt:
-            _exit_position(f"🎯 Target hit [{source}] @ ₹{price:.0f}", price)
+            _exit_position(f"🎯 Spot target [{source}] ₹{price:.0f} ≤ ₹{tgt:.0f}", price)
             return
-
-    # ── Trailing SL (only when is_running) ───────────────────────
-    if not state.is_running:
-        return
-
-    mode = state.trail_mode
-
-    # ── Mode: Supertrend line IS the dynamic SL ───────────────────
-    if mode == 'supertrend' and state.last_st_line > 0:
-        if d == 'long' and state.last_st_line > trade.stop_loss:
-            old = trade.stop_loss
-            trade.stop_loss = round(state.last_st_line, 2)
-            _save_snapshot()
-            print(f"📈 [ST trail] SL ₹{old:.0f} → ₹{trade.stop_loss:.0f} (ST={state.last_st_line:.0f})")
-        elif d == 'short' and state.last_st_line < trade.stop_loss:
-            old = trade.stop_loss
-            trade.stop_loss = round(state.last_st_line, 2)
-            _save_snapshot()
-            print(f"📉 [ST trail] SL ₹{old:.0f} → ₹{trade.stop_loss:.0f} (ST={state.last_st_line:.0f})")
-        return
-
-    # ── Mode: ATR-based trail distance ───────────────────────────
-    if mode == 'atr' and state.last_atr > 0:
-        trail = state.last_atr * state.atr_multiplier
-    else:
-        trail = state.trail_points   # fixed fallback
-
-    if d == 'long':
-        state.highest_since_entry = max(state.highest_since_entry, price)
-        new_sl = state.highest_since_entry - trail
-        if new_sl > trade.stop_loss:
-            old = trade.stop_loss
-            trade.stop_loss = round(new_sl, 2)
-            _save_snapshot()
-            tag = f"ATR×{state.atr_multiplier}={trail:.0f}" if mode == 'atr' else f"fixed={trail:.0f}"
-            print(f"📈 [{tag}] SL ₹{old:.0f} → ₹{trade.stop_loss:.0f}")
-    else:
-        state.lowest_since_entry = min(state.lowest_since_entry, price)
-        new_sl = state.lowest_since_entry + trail
-        if new_sl < trade.stop_loss:
-            old = trade.stop_loss
-            trade.stop_loss = round(new_sl, 2)
-            _save_snapshot()
-            tag = f"ATR×{state.atr_multiplier}={trail:.0f}" if mode == 'atr' else f"fixed={trail:.0f}"
-            print(f"📉 [{tag}] SL ₹{old:.0f} → ₹{trade.stop_loss:.0f}")
 
 
 # ── Candle-close evaluation ───────────────────────────────────────
@@ -588,10 +642,14 @@ def evaluate_and_act_crude(df: pd.DataFrame, price: float):
 
     # ── Manage existing trade ─────────────────────────────────────
     if state.active_trade:
-        _manage_trade(price, source="candle")
+        # Refresh option LTP first so premium checks are current
         ltp = get_crude_option_ltp(state.active_trade.instrument)
         if isinstance(ltp, (int, float)) and ltp > 0:
             state.last_option_ltp = ltp
+            _manage_trade_by_premium(ltp, source="candle")
+        # Belt-and-suspenders: spot price safety exit
+        if state.active_trade:  # may have been exited above
+            _manage_trade(price, source="candle")
         return
 
     # ── Safety limits ─────────────────────────────────────────────
@@ -774,9 +832,11 @@ def get_crude_status() -> dict:
     at = state.active_trade
     trade_dict = None
     if at:
-        ltp = state.last_option_ltp
-        ep  = at.entry_premium or 0
-        pnl = round((ltp - ep) * at.quantity, 2) if ltp > 0 else None
+        ltp      = state.last_option_ltp
+        ep       = at.entry_premium or 0
+        lot_sz   = getattr(at, 'lot_size', get_crude_lot_size(at.instrument))
+        # P&L = premium Δ × lots × barrels_per_lot
+        pnl = round((ltp - ep) * at.quantity * lot_sz, 2) if ltp > 0 else None
         trade_dict = {
             'id': at.id, 'timestamp': at.timestamp,
             'direction': at.direction, 'instrument': at.instrument,
@@ -786,11 +846,14 @@ def get_crude_status() -> dict:
             'pnl_unrealized': pnl,
             'last_ltp': ltp if ltp > 0 else None,
             # ── extra fields for the Nifty-style position banner ──
-            'trailing_sl':    round(at.stop_loss, 2),             # current (moving) SL
-            'original_sl':    round(state.entry_crude_sl, 2),     # SL at entry
-            'sl_premium':     _estimate_sl_premium(at),           # approx option prem at SL
-            'target_premium': _estimate_target_premium(at),       # approx option prem at target
-            'lots':           at.quantity,                        # MCX = quantity in lots
+            'trailing_sl':    round(at.stop_loss, 2),
+            'original_sl':    round(state.entry_crude_sl, 2),
+            # Use stored premium SL/target — no delta estimation needed
+            'sl_premium':     round(at.sl_premium, 1) if at.sl_premium else None,
+            'target_premium': round(at.tgt_premium, 1) if at.tgt_premium else None,
+            'peak_ltp':       round(at.peak_ltp, 1) if at.peak_ltp else None,
+            'lot_size':       lot_sz,
+            'lots':           at.quantity,
         }
     return {
         'is_running':    state.is_running,
