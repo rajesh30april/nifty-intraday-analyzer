@@ -7,7 +7,7 @@ Features:
 - Evaluates strategy conditions on each tick/candle
 - Places orders via Kite Connect API
 - Manages stop-loss (fixed + trailing)
-- Auto-exits by defined time (default 3:15 PM)
+- Auto-exits by defined time (default 3:25 PM)
 - Max loss / max orders safety limits
 - Full trade log for review
 """
@@ -38,7 +38,7 @@ DEFAULT_QUANTITY   = int(os.getenv("DEFAULT_QUANTITY",   "780"))   # 12 lots × 
 SL_POINTS          = float(os.getenv("SL_POINTS",          "30"))   # Fixed SL in points
 TRAILING_SL_POINTS = float(os.getenv("TRAILING_SL_POINTS", "15"))   # Trail by 15pts
 DEFAULT_CAPITAL    = float(os.getenv("TRADING_CAPITAL",  "96000"))  # ₹ available
-EXIT_TIME = dt_time(15, 15)  # 3:15 PM IST — auto-exit all positions
+EXIT_TIME = dt_time(15, 25)  # 3:25 PM IST — auto-exit all positions
 TRADE_LOG_FILE     = Path(__file__).parent / "trade_log.json"
 STATE_SNAPSHOT_FILE = Path(__file__).parent / ".state_snapshot.json"
 
