@@ -67,19 +67,22 @@ def _adx_filter(
     adx_v    = float(adx_df['adx'].iloc[-1])
     plus_di  = float(adx_df['plus_di'].iloc[-1])
     minus_di = float(adx_df['minus_di'].iloc[-1])
-    trending  = adx_v >= ADX_MIN_TREND
-    di_ok = (
+    trending = adx_v >= ADX_MIN_TREND
+    di_ok    = (
         (direction == Direction.LONG  and plus_di  > minus_di) or
         (direction == Direction.SHORT and minus_di > plus_di)
     )
-    return StrategyCondition(
-        name="ADX",
-        met=trending and di_ok,
-        detail=(
-            f"ADX {adx_v:.1f} +DI {plus_di:.1f} -DI {minus_di:.1f}"
-            f" — {'trend ✅' if trending and di_ok else '⚠️ chop/weak'}"
-        ),
-    )
+    ok       = trending and di_ok
+    _dir     = direction.value.upper()
+    if ok:
+        detail = f"ADX {adx_v:.1f} ≥ {ADX_MIN_TREND} ✅  +DI {plus_di:.1f} {'>' if plus_di>minus_di else '<'} -DI {minus_di:.1f} — trending {_dir}"
+    elif not trending:
+        detail = f"ADX {adx_v:.1f} < {ADX_MIN_TREND} ❌ ranging/choppy (need ≥ {ADX_MIN_TREND})"
+    else:
+        dom = '+DI' if plus_di > minus_di else '-DI'
+        want = '+DI' if direction == Direction.LONG else '-DI'
+        detail = f"ADX {adx_v:.1f} ✅ but {dom} dominant, {_dir} needs {want} ❌"
+    return StrategyCondition(name="ADX", met=ok, detail=detail)
 
 
 def _conditions_to_signal(conditions: list[StrategyCondition]) -> StrategySignal:
@@ -268,19 +271,28 @@ def evaluate_crude_supertrend(df: pd.DataFrame) -> StrategySignal:
         (direction == Direction.LONG  and ema_fast > ema_slow) or
         (direction == Direction.SHORT and ema_fast < ema_slow)
     )
+    _dir     = direction.value.upper()
+    _gap     = abs(ema_fast - ema_slow)
+    _slope   = '>' if ema_fast > ema_slow else '<'
+    _need    = '>' if direction == Direction.LONG else '<'
+    ema_detail = (
+        f"EMA9({ema_fast:.0f}) {_slope} EMA21({ema_slow:.0f}) — "
+        + (f"aligned for {_dir} ✅" if ema_ok
+           else f"ST={_dir} needs EMA9 {_need} EMA21 (gap {_gap:.0f}) ❌ cross pending")
+    )
     conditions.append(StrategyCondition(
         name="EMA confluence",
         met=ema_ok,
-        detail=f"EMA9={ema_fast:.0f} {'>' if ema_fast>ema_slow else '<'} EMA21={ema_slow:.0f}",
+        detail=ema_detail,
     ))
 
-    # ── RSI sanity (don't chase extremes) ────────────────────────
+    # ── RSI sanity (don't chase extremes) ───────────────────────
     rsi_val = float(ind.rsi(close, 14).iloc[-1])
     not_extreme = 20 < rsi_val < 80
     conditions.append(StrategyCondition(
         name="RSI not extreme",
         met=not_extreme,
-        detail=f"RSI {rsi_val:.1f} ({'ok' if not_extreme else 'extreme — skip'})",
+        detail=f"RSI {rsi_val:.1f} ({'in range ✅' if not_extreme else 'EXTREME ❌ skip'})",
     ))
 
     fail = next((c for c in conditions if not c.met), None)
@@ -332,7 +344,11 @@ def evaluate_crude_vwap(df: pd.DataFrame) -> StrategySignal:
     conditions.append(StrategyCondition(
         name="VWAP cross",
         met=long_cross or short_cross,
-        detail=f"{'LONG cross' if long_cross else 'SHORT cross' if short_cross else 'No cross'} VWAP {vwap_now:.0f}",
+        detail=(
+            f"LONG cross ✅ price({price:.0f}) ↑ above VWAP({vwap_now:.0f})" if long_cross
+            else f"SHORT cross ✅ price({price:.0f}) ↓ below VWAP({vwap_now:.0f})" if short_cross
+            else f"No cross ❌ price({price:.0f}) {'above' if price>vwap_now else 'below'} VWAP({vwap_now:.0f}) — wait for crossover"
+        ),
     ))
 
     # RSI momentum
@@ -341,10 +357,14 @@ def evaluate_crude_vwap(df: pd.DataFrame) -> StrategySignal:
         (direction == Direction.LONG  and 45 < rsi < 75) or
         (direction == Direction.SHORT and 25 < rsi < 55)
     )
+    _rsi_zone = '45-75' if direction == Direction.LONG else '25-55'
     conditions.append(StrategyCondition(
         name="RSI momentum",
         met=rsi_ok,
-        detail=f"RSI {rsi:.1f} ({'ok' if rsi_ok else 'not in momentum zone'})",
+        detail=(
+            f"RSI {rsi:.1f} in {_rsi_zone} zone ✅" if rsi_ok
+            else f"RSI {rsi:.1f} outside {_rsi_zone} zone ❌ ({'overbought' if rsi>=75 else 'oversold' if rsi<=25 else 'no momentum'})"
+        ),
     ))
 
     # Volume surge
@@ -410,7 +430,11 @@ def evaluate_crude_ema_cross(df: pd.DataFrame) -> StrategySignal:
     conditions.append(StrategyCondition(
         name="Fresh EMA cross",
         met=crossed,
-        detail=f"{'Fresh cross (≤3c)' if crossed else 'No recent cross'} EMA9={ema_f.iloc[-1]:.0f} EMA21={ema_s.iloc[-1]:.0f}",
+        detail=(
+            f"Fresh cross (≤3c) ✅ EMA9({ema_f.iloc[-1]:.0f}) {'>' if float(diff.iloc[-1])>0 else '<'} EMA21({ema_s.iloc[-1]:.0f})"
+            if crossed else
+            f"No cross in last 3c ❌ EMA9({ema_f.iloc[-1]:.0f}) EMA21({ema_s.iloc[-1]:.0f}) gap={abs(float(diff.iloc[-1])):.0f}"
+        ),
     ))
 
     # EMAs must have meaningful separation (> 0.3× ATR) — not choppy
@@ -420,7 +444,11 @@ def evaluate_crude_ema_cross(df: pd.DataFrame) -> StrategySignal:
     conditions.append(StrategyCondition(
         name="EMA separation",
         met=sep_ok,
-        detail=f"Separation {sep:.1f} ({'ok' if sep_ok else f'need ≥{0.3*atr_v:.1f} (0.3×ATR)'})",
+        detail=(
+            f"Gap {sep:.1f} ≥ 0.3×ATR({atr_v:.0f}) = {0.3*atr_v:.1f} ✅"
+            if sep_ok else
+            f"Gap {sep:.1f} < 0.3×ATR({atr_v:.0f}) = {0.3*atr_v:.1f} ❌ too flat to trade"
+        ),
     ))
 
     # Price on the right side of both EMAs
@@ -429,10 +457,16 @@ def evaluate_crude_ema_cross(df: pd.DataFrame) -> StrategySignal:
         (direction == Direction.LONG  and price > max(float(ema_f.iloc[-1]), float(ema_s.iloc[-1]))) or
         (direction == Direction.SHORT and price < min(float(ema_f.iloc[-1]), float(ema_s.iloc[-1])))
     )
+    _ema_max = max(float(ema_f.iloc[-1]), float(ema_s.iloc[-1]))
+    _ema_min = min(float(ema_f.iloc[-1]), float(ema_s.iloc[-1]))
     conditions.append(StrategyCondition(
         name="Price side",
         met=right_side,
-        detail=f"Price {price:.0f} {'above' if direction==Direction.LONG else 'below'} both EMAs ({'ok' if right_side else 'not clear'})",
+        detail=(
+            f"Price({price:.0f}) {'above' if direction==Direction.LONG else 'below'} both EMAs ✅"
+            if right_side else
+            f"Price({price:.0f}) between EMAs({_ema_min:.0f}-{_ema_max:.0f}) ❌ not clear of both"
+        ),
     ))
 
     # ADX filter — EMA cross in chop is a whipsaw machine
