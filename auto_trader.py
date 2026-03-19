@@ -1165,18 +1165,36 @@ def _update_trail_sl_cache(df) -> None:
         atr_val   = float(ind.atr(df["high"], df["low"], df["close"]).iloc[-1])
         offset    = atr_val * state.trail_atr_mult
         entry_p   = trade.entry_price
-        # Activation guard: only trail once price has moved ≥ offset in profit.
-        # First activation places SL exactly at breakeven (entry ± offset ∓ offset).
-        # Without this, ATR trail fires on candle 1 and silently tightens the
-        # user's initial stop (e.g. 30pt → 27pt) before trade has any room.
+        orig_sl   = state.entry_nifty_sl  # SL as placed at entry
+
+        # Activation guard: activate the ATR trail as soon as the candidate
+        # trailing SL is strictly BETTER than the original SL.
+        #
+        # Old guard: activated only after price moved ≥ offset in profit
+        #   → For ATR where offset(38.6) > SL_dist(30), this means the trail
+        #     never fires even when price moved 29pts and trail would be at
+        #     23267 — already 22pts better than original SL 23289!  Bug!
+        #
+        # New guard: activate whenever trail SL improves on the original SL.
+        #   LONG : trail_sl = highest - offset  → activate if > orig_sl
+        #   SHORT: trail_sl = lowest  + offset  → activate if < orig_sl
+        #
+        # This correctly handles both cases:
+        #   - offset < SL_dist (fixed-like): trail only helps once profitable
+        #   - offset > SL_dist (wide ATR)  : trail helps earlier, never worse
         if is_long:
-            activated = state.highest_price_since_entry >= entry_p + offset
-            new_sl    = (state.highest_price_since_entry - offset) if activated else None
+            candidate = state.highest_price_since_entry - offset
+            activated = candidate > orig_sl   # trail beat original SL
+            new_sl    = candidate if activated else None
         else:
-            activated = state.lowest_price_since_entry <= entry_p - offset
-            new_sl    = (state.lowest_price_since_entry + offset) if activated else None
+            candidate = state.lowest_price_since_entry + offset
+            activated = candidate < orig_sl   # trail beat original SL
+            new_sl    = candidate if activated else None
+
         state.cached_trail_sl = round(new_sl, 2) if new_sl is not None else None
-        status = f"SL={state.cached_trail_sl:.0f}" if activated else f"waiting — need {'↑' if is_long else '↓'}{offset:.0f}pts profit first"
+        status = f"SL={state.cached_trail_sl:.0f}" if activated else (
+            f"waiting — trail={candidate:.0f} not better than orig SL={orig_sl:.0f} yet"
+        )
         _log("📐", "ATR Trail",
              f"ATR={atr_val:.1f} × {state.trail_atr_mult} = {offset:.1f}pts  →  {status}")
 
