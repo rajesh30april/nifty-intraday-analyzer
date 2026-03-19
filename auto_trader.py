@@ -929,6 +929,7 @@ def evaluate_and_act(df, current_price: float):
 
     # 4. No active trade — evaluate selected strategy
     #    For smart_router: capture full meta scores so UI can show scoreboard
+    meta_result = None
     if state.selected_strategy == "smart_router":
         from strategy_meta_router import evaluate_all   # noqa: PLC0415
         meta_result = evaluate_all(df)
@@ -959,9 +960,18 @@ def evaluate_and_act(df, current_price: float):
         state.last_meta_regime = ""
 
     state.last_signal_reason = f"[{state.selected_strategy}] {signal.reason}"
+
+    # For smart_router: show top strategy's conditions in UI even when no entry
+    # so user sees exactly what passed/failed, not a blank panel
+    cond_source = signal.conditions
+    if meta_result is not None:
+        top_conds = getattr(meta_result, "top_conditions", [])
+        if top_conds:
+            cond_source = top_conds
+
     state.last_conditions = [
         {"name": c.name, "met": c.met, "detail": c.detail}
-        for c in signal.conditions
+        for c in cond_source
     ]
     met   = sum(1 for c in signal.conditions if c.met)
     total = len(signal.conditions)

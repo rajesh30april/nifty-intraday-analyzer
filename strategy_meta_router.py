@@ -151,7 +151,8 @@ class MetaRouterResult:
     selected_strategy: str
     selected_emoji: str
     signal: StrategySignal
-    scores: list[dict] = field(default_factory=list)  # all candidates ranked
+    scores: list[dict] = field(default_factory=list)       # all candidates ranked
+    top_conditions: list = field(default_factory=list)     # top strategy's conditions (for UI)
     reason: str = ""
 
 
@@ -322,9 +323,23 @@ def _priority_pick(
                     f"{top['emoji']} {top['name']} is time-blocked right now"
                 )
             elif not top["should_enter"]:
+                # Pull out exactly which conditions failed
+                top_sig = top.get("signal")
+                if top_sig and top_sig.conditions:
+                    failed = [
+                        f"❌ {c.name}"
+                        for c in top_sig.conditions if not c.met
+                    ]
+                    passed = [
+                        f"✅ {c.name}"
+                        for c in top_sig.conditions if c.met
+                    ]
+                    cond_summary = "  |  ".join(passed + failed)
+                else:
+                    cond_summary = "conditions not met"
                 no_entry_why = (
-                    f"{top['emoji']} {top['name']} scored {top['composite']:.0f} "
-                    f"but its own entry conditions are NOT met"
+                    f"{top['emoji']} {top['name']} scored {top['composite']:.0f}  →  "
+                    f"{cond_summary}"
                 )
             else:
                 no_entry_why = (
@@ -333,6 +348,7 @@ def _priority_pick(
         else:
             no_entry_why = "no strategies registered"
 
+        top_sig = top.get("signal") if top else None
         return MetaRouterResult(
             regime=regime.value,
             regime_detail=regime_result.detail,
@@ -347,6 +363,7 @@ def _priority_pick(
                 ),
             ),
             scores=candidates,
+            top_conditions=top_sig.conditions if top_sig else [],
             reason=no_entry_why,
         )
 
@@ -371,6 +388,7 @@ def _priority_pick(
         selected_emoji=winner["emoji"],
         signal=sig,
         scores=candidates,
+        top_conditions=sig.conditions,
         reason=sig.reason,
     )
 
