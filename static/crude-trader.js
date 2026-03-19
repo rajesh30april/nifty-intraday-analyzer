@@ -195,8 +195,19 @@ async function crudeTrade(action) {
             await pollCrudeStatus();
         } else {
             const err = data.error ?? 'Failed';
+            const isAuthErr = err.toLowerCase().includes('not authenticated')
+                           || err.toLowerCase().includes('not auth');
             _crudeToast(`❌ ${err}`, 'error');
             _crudeLog(`❌ ${action.toUpperCase()} failed: ${err}`, 'error');
+            if (isAuthErr) {
+                // Kite session expired — prompt re-login
+                _crudeLog(
+                    '🔑 <a href="/kite/login" target="_blank" '
+                    + 'style="color:#60a5fa;text-decoration:underline">'
+                    + 'Click here to re-login to Zerodha</a>', 'warn'
+                );
+                _crudeToast('🔑 Zerodha session expired — re-login required', 'warn');
+            }
             _setCrudeStatus('error');
             await pollCrudeStatus();
         }
@@ -398,9 +409,12 @@ function _renderCrudePositionBanner(at, d) {
 
     // Banner border colour — green for long, red for short
     if (wrap) {
-        wrap.className = wrap.className
-            .replace(/border-(green|red)-500/g, isLong ? 'border-green-500' : 'border-red-500')
-            .replace(/shadow-(green|red)-900/g, isLong ? 'shadow-green-900/20' : 'shadow-red-900/20');
+        wrap.classList.remove('border-green-500', 'border-red-500',
+                             'shadow-green-900\/20', 'shadow-red-900\/20');
+        wrap.classList.add(
+            isLong ? 'border-green-500' : 'border-red-500',
+            isLong ? 'shadow-green-900/20' : 'shadow-red-900/20'
+        );
     }
 
     // Paper badge
@@ -428,10 +442,25 @@ function _renderCrudePositionBanner(at, d) {
 
     // ── Row 2: Live crude + option LTP + strike + trailing SL ─────
     const liveEl = document.getElementById('ct-crude-live');
-    if (liveEl) liveEl.textContent = d.crude_price ? `₹${d.crude_price.toLocaleString('en-IN')}` : '--';
+    if (liveEl) {
+        // crude_price is null when trader is not running — fall back to entry
+        const cPrice = d.crude_price ?? at.entry_price;
+        liveEl.textContent = cPrice ? `₹${cPrice.toLocaleString('en-IN')}` : '--';
+        liveEl.title       = d.crude_price ? 'Live' : 'Entry price (trader not running)';
+        liveEl.className   = d.crude_price
+            ? 'text-sm font-bold text-yellow-300'
+            : 'text-sm font-bold text-gray-400';
+    }
 
     const ltpEl = document.getElementById('ct-opt-ltp');
-    if (ltpEl) ltpEl.textContent = ltp != null ? `₹${ltp.toFixed(1)}` : '--';
+    if (ltpEl) {
+        const ltpVal = ltp ?? ep;  // fall back to entry premium if no live LTP
+        ltpEl.textContent = ltpVal != null ? `₹${ltpVal.toFixed(1)}` : '--';
+        ltpEl.title       = ltp != null ? 'Live LTP' : 'Entry premium (no live data)';
+        ltpEl.className   = ltp != null
+            ? 'text-sm font-bold text-white'
+            : 'text-sm font-bold text-gray-400';
+    }
 
     _setText('ct-strike', _crudeStrikeLabel(at.instrument));
 
