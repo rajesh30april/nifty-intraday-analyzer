@@ -14,3 +14,8 @@ __pycache__/
 .state_snapshot.json
 trade_log.json
 paper_trades.db
+
+# Crude trader runtime state & user-tuned settings
+.crude_snapshot.json
+crude_trade_log.json
+crude_settings.json

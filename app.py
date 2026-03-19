@@ -2359,7 +2359,7 @@ async def crude_config(
     atr_multiplier: float | None = None,
     max_trades:     int   | None = None,   # max entries per day (1-20)
 ):
-    from crude_trader import state as cs, CRUDE_MAX_TRADES
+    from crude_trader import state as cs, CRUDE_MAX_TRADES, save_crude_settings
     if sl_points      is not None: cs.sl_points      = sl_points
     if trail_points   is not None: cs.trail_points   = trail_points
     if rr_ratio       is not None: cs.rr_ratio       = rr_ratio
@@ -2369,6 +2369,7 @@ async def crude_config(
         cs.trail_mode = trail_mode
     if atr_multiplier is not None: cs.atr_multiplier = atr_multiplier
     if max_trades     is not None: cs.max_trades     = max(1, min(20, max_trades))
+    save_crude_settings()   # ← persist to disk immediately
     return {
         'success': True,
         'sl_points': cs.sl_points, 'trail_points': cs.trail_points,

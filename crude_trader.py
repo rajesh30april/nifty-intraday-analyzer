@@ -57,6 +57,44 @@ CRUDE_EXIT_TIME     = dt_time(23, 25)  # 11:25 PM
 MARGIN_SAFETY_BUFFER = float(os.getenv("MARGIN_SAFETY_BUFFER", "2500"))
 CRUDE_SNAP_FILE     = Path(__file__).parent / ".crude_snapshot.json"
 CRUDE_LOG_FILE      = Path(__file__).parent / "crude_trade_log.json"
+CRUDE_SETTINGS_FILE = Path(__file__).parent / "crude_settings.json"
+
+# ── Tunable param keys that are persisted across restarts ──────────
+# Only these fields are written/read — trade state is never persisted.
+_PERSIST_KEYS: tuple[str, ...] = (
+    "sl_points", "trail_points", "rr_ratio", "capital",
+    "strike_offset", "trail_mode", "atr_multiplier", "max_trades",
+)
+
+
+def _load_crude_settings() -> dict:
+    """Read saved settings from crude_settings.json.
+
+    Returns an empty dict if the file doesn't exist or is corrupt —
+    the state dataclass defaults (from .env / hardcoded) will be used.
+    """
+    try:
+        if CRUDE_SETTINGS_FILE.exists():
+            raw = json.loads(CRUDE_SETTINGS_FILE.read_text())
+            # Only accept known keys — drop anything stale
+            return {k: v for k, v in raw.items() if k in _PERSIST_KEYS}
+    except Exception as e:
+        print(f"⚠️  crude_settings.json load failed (using defaults): {e}")
+    return {}
+
+
+def save_crude_settings() -> None:
+    """Write the tunable portion of state to crude_settings.json.
+
+    Called from /api/crude/config after every successful update so
+    settings survive restarts.
+    """
+    try:
+        data = {k: getattr(state, k) for k in _PERSIST_KEYS}
+        CRUDE_SETTINGS_FILE.write_text(json.dumps(data, indent=2))
+        print(f"💾  Crude settings saved → {CRUDE_SETTINGS_FILE.name}")
+    except Exception as e:
+        print(f"⚠️  crude_settings.json save failed: {e}")
 
 
 class CrudeOrderStatus(str, Enum):
@@ -136,6 +174,20 @@ class CrudeTraderState:
 
 
 state = CrudeTraderState()
+
+# ── Apply persisted settings immediately after state creation ────────
+# Type-cast each value to match the dataclass field type so a saved
+# string "50.0" doesn't corrupt a float field on reload.
+_saved = _load_crude_settings()
+for _k, _v in _saved.items():
+    try:
+        _cur = getattr(state, _k)
+        setattr(state, _k, type(_cur)(_v))
+    except Exception as _e:
+        print(f"⚠️  Skipping bad saved setting {_k}={_v!r}: {_e}")
+if _saved:
+    print(f"💾  Crude settings loaded: {_saved}")
+
 _tick_lock = threading.Lock()
 
 
