@@ -45,11 +45,11 @@ def _vix_category_boost(strategy_category: str, vix: float) -> float:
     if vix < _VIX_LOW:
         # Sleepy market → scalping and reversion work, breakouts fake out
         boosts = {"scalping": 1.2, "reversal": 1.15, "breakout": 0.8,
-                  "momentum": 0.85, "trend": 0.9, "adaptive": 1.0}
+                  "momentum": 0.85, "trend": 0.9, "adaptive": 1.0, "pattern": 1.0}
     elif vix > _VIX_HIGH:
         # Fearful market → big gaps, real breakouts, fade the panic
         boosts = {"breakout": 1.25, "reversal": 1.15, "momentum": 1.1,
-                  "scalping": 0.75, "trend": 1.0, "adaptive": 1.0}
+                  "scalping": 0.75, "trend": 1.0, "adaptive": 1.0, "pattern": 1.2}
     else:
         # Normal VIX → no VIX-based distortion
         boosts = {}
@@ -60,13 +60,17 @@ def _vix_category_boost(strategy_category: str, vix: float) -> float:
 # Strategy categories → how well they fit each regime
 _REGIME_FIT: dict[str, dict[str, float]] = {
     MarketRegime.TRENDING_UP:   {"trend": 1.4, "breakout": 1.3, "momentum": 1.2,
-                                  "reversal": 0.6, "adaptive": 1.0, "scalping": 1.0},
+                                  "reversal": 0.6, "adaptive": 1.0, "scalping": 1.0,
+                                  "pattern": 1.2},   # flags/continuations fire well in trends
     MarketRegime.TRENDING_DOWN: {"trend": 1.4, "breakout": 1.3, "momentum": 1.2,
-                                  "reversal": 0.6, "adaptive": 1.0, "scalping": 1.0},
+                                  "reversal": 0.6, "adaptive": 1.0, "scalping": 1.0,
+                                  "pattern": 1.2},   # bear flags, engulfing work great
     MarketRegime.SIDEWAYS:      {"reversal": 1.4, "scalping": 1.3, "trend": 0.6,
-                                  "breakout": 0.7, "momentum": 0.8, "adaptive": 1.0},
+                                  "breakout": 0.7, "momentum": 0.8, "adaptive": 1.0,
+                                  "pattern": 1.1},   # double tops/bottoms shine here
     MarketRegime.VOLATILE:      {"reversal": 1.3, "breakout": 1.4, "trend": 0.9,
-                                  "momentum": 1.1, "adaptive": 1.0, "scalping": 0.8},
+                                  "momentum": 1.1, "adaptive": 1.0, "scalping": 0.8,
+                                  "pattern": 1.15},  # engulfing great at volatile reversals
 }
 
 # Time-of-day bonuses for specific strategies
@@ -130,6 +134,20 @@ _TIME_BONUS: dict[str, list[tuple[dt_time, dt_time, float]]] = {
         (dt_time(9, 45), dt_time(14, 0), 1.2),   # sweet spot — HVNs well tested
         (dt_time(14, 0), dt_time(14, 45), 1.0),  # still valid
         (dt_time(14, 45), dt_time(15, 30), 0.0), # too late
+    ],
+    # Chart patterns — need ≥30 candles (≥2.5h) to form a reliable flag/triangle
+    "chart_patterns": [
+        (dt_time(9, 15), dt_time(9, 45), 0.0),   # too few candles
+        (dt_time(9, 45), dt_time(14, 0), 1.2),   # patterns well-formed
+        (dt_time(14, 0), dt_time(14, 30), 1.0),  # still valid
+        (dt_time(14, 30), dt_time(15, 30), 0.0), # too late to enter
+    ],
+    # Candlestick patterns — need at least 5 candles (25min) of today's data
+    "candlestick_patterns": [
+        (dt_time(9, 15), dt_time(9, 30), 0.0),   # first candle noise — skip
+        (dt_time(9, 30), dt_time(14, 0), 1.2),   # great all morning
+        (dt_time(14, 0), dt_time(14, 30), 1.0),  # post-lunch reversal setups
+        (dt_time(14, 30), dt_time(15, 30), 0.0), # too late
     ],
     # PDH/PDL valid all day but sweet spot is morning + post-lunch breakout
     "pdhl_breakout": [

@@ -50,3 +50,7 @@ import strategies.volume_profile       # noqa: F401 — HVN S/R levels
 
 # ── Pivot / Mean-reversion ────────────────────────────────────────────────
 import strategies.camarilla_pivots     # noqa: F401 — pivot level plays
+
+# ── Chart & Candlestick patterns ─────────────────────────────────────────
+import strategies.chart_patterns       # noqa: F401 — flag, triangle, double top/bottom
+import strategies.candlestick_patterns # noqa: F401 — engulfing, hammer, star, harami
