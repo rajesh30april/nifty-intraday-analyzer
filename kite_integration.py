@@ -283,10 +283,21 @@ class KiteManager:
         os.environ["no_proxy"] = os.environ.get("no_proxy", "") + ",kite.zerodha.com,api.kite.trade,ws.kite.trade"
 
         def on_connect(ws, response):
+            # Always subscribe Nifty spot
             ws.subscribe([NIFTY_INSTRUMENT_TOKEN])
             ws.set_mode(ws.MODE_FULL, [NIFTY_INSTRUMENT_TOKEN])
             self.is_streaming = True
             print("\u2705 Kite WebSocket connected — streaming Nifty 50 live!")
+            # If a trade was already open before WebSocket connected
+            # (e.g. recovery on restart), subscribe option token now
+            from auto_trader import state as at_state
+            if at_state.active_option_token:
+                try:
+                    ws.subscribe([at_state.active_option_token])
+                    ws.set_mode(ws.MODE_LTP, [at_state.active_option_token])
+                    print(f"📡 [on_connect] Subscribed option token {at_state.active_option_token}")
+                except Exception as e:
+                    print(f"⚠️  [on_connect] Option subscribe failed: {e}")
 
         def on_ticks(ws, ticks):
             if not ticks:
