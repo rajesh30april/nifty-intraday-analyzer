@@ -883,6 +883,227 @@ def evaluate_crude_tight_range(df: pd.DataFrame) -> StrategySignal:
     )
 
 
+# ────────────────────────────────────────────────────────────────
+# Strategy 8: Range Fade (Mean-Reversion)
+# ────────────────────────────────────────────────────────────────
+# The ONLY mean-reversion strategy in the system. All 7 others are
+# trend-following. Range Fade targets the market condition where every
+# trend strategy is blocked: ADX < 20, price bouncing inside a band.
+#
+# Philosophy:
+#   • Trend traders BUY breakouts. Range traders SELL breakouts (fade them).
+#   • In a ranging market, breakouts fail 60-70% of the time.
+#   • Buy near range BOTTOM when RSI says oversold.
+#   • Sell near range TOP when RSI says overbought.
+#   • Exit at the midpoint or the opposite wall — NOT trail-based.
+#
+# Guard rails (preventing abuse in trending markets):
+#   • ADX must be < ADX_MAX_RANGE — no fading strong trends
+#   • Volume must be BELOW average (high vol = real breakout, not fade)
+#   • SuperTrend direction must agree with the fade direction
+#     (if ST flipped SHORT, don’t buy the bottom — it’s a breakdown)
+
+_RF_WINDOW_MIN   = 12   # min candles to define a range
+_RF_WINDOW_MAX   = 25   # max candles to look back
+_RF_RANGE_MIN    = 1.0  # range must be ≥ 1.0×ATR (not just noise)
+_RF_RANGE_MAX    = 3.5  # range must be ≤ 3.5×ATR (not a trend move)
+_RF_EDGE_MULT    = 0.3  # price within 0.3×ATR of range boundary = at the wall
+_RF_RSI_OVERSOLD = 40   # RSI below this at range bottom → LONG
+_RF_RSI_OVERBOUGHT = 60 # RSI above this at range top   → SHORT
+_RF_ADX_MAX      = 22   # ADX must be BELOW this — ranging condition
+_RF_VOL_MAX      = 0.9  # volume must be ≤ 0.9× avg (quiet = range, loud = breakout)
+
+
+def evaluate_crude_range_fade(df: pd.DataFrame) -> StrategySignal:
+    """Strategy 8: Range Fade — mean-reversion at range boundaries.
+
+    Fires when:
+      1. ADX < 22      — market is NOT trending (confirmed ranging)
+      2. Price spent 12-25 candles inside a band of 1.0–3.5×ATR
+      3. Current close is within 0.3×ATR of the range HIGH or LOW
+      4. RSI confirms the extreme (< 40 at bottom, > 60 at top)
+      5. Volume is BELOW average (high vol = real breakout, skip)
+      6. SuperTrend direction agrees (no fading against the trend)
+
+    This is the COMPLEMENT to Tight Range Breakout:
+      Tight Range  → trades the BREAK OUT of a coil    (trend continuation)
+      Range Fade   → trades the BOUNCE off a range wall (mean reversion)
+
+    Evening session scoring:
+      Range Fade (1.6) alone ≥ evening threshold (1.6) → fires solo!
+      This is extremely valuable since ALL other evening strategies
+      except SuperTrend are volume/session blocked.
+    """
+    conditions: list[StrategyCondition] = []
+    close  = df['close']
+    high   = df['high']
+    low    = df['low']
+    volume = df['volume']
+
+    atr_val = float(ind.atr(high, low, close, 14).iloc[-1])
+
+    # ── 1. ADX gate: must be ranging, not trending ────────────────────
+    adx_df  = ind.adx(high, low, close, 14)
+    adx_now = float(adx_df['adx'].iloc[-1])
+    is_ranging = adx_now < _RF_ADX_MAX
+    conditions.append(StrategyCondition(
+        name='ADX ranging',
+        met=is_ranging,
+        detail=(
+            f'ADX {adx_now:.1f} < {_RF_ADX_MAX} ✅ market is ranging'
+            if is_ranging else
+            f'ADX {adx_now:.1f} ≥ {_RF_ADX_MAX} ❌ trending — no fading'
+        ),
+    ))
+    if not is_ranging:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail,
+                              conditions=conditions)
+
+    # ── 2. Identify the range over look-back window ───────────────────
+    # Find the window (12-25 candles) that has a range in [1.0, 3.5]×ATR.
+    # Prefer the widest valid window for more reliable walls.
+    range_high = range_low = window_n = None
+    for n in range(_RF_WINDOW_MAX, _RF_WINDOW_MIN - 1, -1):  # largest first
+        if n >= len(df):
+            continue
+        seg = df.iloc[-(n + 1):-1]   # exclude current candle
+        rh  = float(seg['high'].max())
+        rl  = float(seg['low'].min())
+        rng = rh - rl
+        if _RF_RANGE_MIN * atr_val <= rng <= _RF_RANGE_MAX * atr_val:
+            range_high, range_low, window_n = rh, rl, n
+            break
+
+    has_range = range_high is not None
+    if has_range:
+        rng_pts = range_high - range_low
+        midpoint = (range_high + range_low) / 2
+    conditions.append(StrategyCondition(
+        name='Range band',
+        met=has_range,
+        detail=(
+            f'Range [{range_low:.0f}–{range_high:.0f}] '
+            f'{rng_pts:.0f}pts = {rng_pts/atr_val:.1f}×ATR '
+            f'({window_n}c) ✅'
+            if has_range else
+            f'No valid range found in last {_RF_WINDOW_MIN}–{_RF_WINDOW_MAX}c '
+            f'(need {_RF_RANGE_MIN:.1f}–{_RF_RANGE_MAX:.1f}×ATR={_RF_RANGE_MIN*atr_val:.0f}–{_RF_RANGE_MAX*atr_val:.0f}pts)'
+        ),
+    ))
+    if not has_range:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail,
+                              conditions=conditions)
+
+    # ── 3. Price must be INSIDE the range (not already broken out) ───
+    cur_close = float(close.iloc[-1])
+    inside    = range_low <= cur_close <= range_high
+    conditions.append(StrategyCondition(
+        name='Inside range',
+        met=inside,
+        detail=(
+            f'Close {cur_close:.0f} inside [{range_low:.0f}–{range_high:.0f}] ✅'
+            if inside else
+            f'Close {cur_close:.0f} OUTSIDE range [{range_low:.0f}–{range_high:.0f}] ❌ breakout'
+        ),
+    ))
+    if not inside:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail,
+                              conditions=conditions)
+
+    # ── 4. Price at a wall (within 0.3×ATR of high or low) ───────────
+    edge      = _RF_EDGE_MULT * atr_val
+    near_low  = cur_close <= range_low  + edge
+    near_high = cur_close >= range_high - edge
+    at_wall   = near_low or near_high
+    direction = Direction.LONG if near_low else Direction.SHORT if near_high else None
+
+    conditions.append(StrategyCondition(
+        name='At wall',
+        met=at_wall,
+        detail=(
+            f'Price {cur_close:.0f} at {"BOTTOM" if near_low else "TOP"} wall '
+            f'(edge ±{edge:.0f}) → {direction.value.upper() if direction else "?"} fade ✅'
+            if at_wall else
+            f'Price {cur_close:.0f} in middle — '
+            f'bottom wall ≤{range_low+edge:.0f}, top wall ≥{range_high-edge:.0f} ❌ wait'
+        ),
+    ))
+    if not at_wall or direction is None:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail,
+                              conditions=conditions)
+
+    # ── 5. RSI extreme confirmation ────────────────────────────────
+    rsi_now = float(ind.rsi(close, 14).iloc[-1])
+    rsi_ok  = (rsi_now < _RF_RSI_OVERSOLD  if direction == Direction.LONG
+               else rsi_now > _RF_RSI_OVERBOUGHT)
+    threshold_str = (f'< {_RF_RSI_OVERSOLD}' if direction == Direction.LONG
+                     else f'> {_RF_RSI_OVERBOUGHT}')
+    conditions.append(StrategyCondition(
+        name='RSI extreme',
+        met=rsi_ok,
+        detail=(
+            f'RSI {rsi_now:.1f} {threshold_str} ✅ '
+            f'{"oversold at bottom" if direction == Direction.LONG else "overbought at top"}'
+            if rsi_ok else
+            f'RSI {rsi_now:.1f} not extreme enough (need {threshold_str}) ❌'
+        ),
+    ))
+    if not rsi_ok:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail,
+                              conditions=conditions)
+
+    # ── 6. Volume must be QUIET (high vol = real breakout) ────────────
+    avg_vol = float(volume.iloc[-20:-1].mean())
+    cur_vol = float(volume.iloc[-1])
+    vol_ok  = avg_vol > 0 and cur_vol <= avg_vol * _RF_VOL_MAX
+    conditions.append(StrategyCondition(
+        name='Low volume',
+        met=vol_ok,
+        detail=(
+            f'Vol {cur_vol:,.0f} ≤ {_RF_VOL_MAX}×avg({avg_vol:,.0f}) ✅ quiet fade'
+            if vol_ok else
+            f'Vol {cur_vol:,.0f} > {_RF_VOL_MAX}×avg({avg_vol:,.0f}) ❌ '
+            f'high vol — possible breakout, skip fade'
+        ),
+    ))
+    if not vol_ok:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail,
+                              conditions=conditions)
+
+    # ── 7. SuperTrend must not be AGAINST our fade direction ───────────
+    st_df      = ind.supertrend(high, low, close, CRUDE_ST_PERIOD, CRUDE_ST_MULTIPLIER)
+    st_dir_now = float(st_df['direction'].iloc[-1])
+    st_dir_sig = Direction.LONG if st_dir_now == 1 else Direction.SHORT
+    st_ok      = st_dir_sig == direction  # fade must align with ST bias
+    conditions.append(StrategyCondition(
+        name='ST aligned',
+        met=st_ok,
+        detail=(
+            f'ST {st_dir_sig.value.upper()} agrees with {direction.value.upper()} fade ✅'
+            if st_ok else
+            f'ST {st_dir_sig.value.upper()} ≠ {direction.value.upper()} fade ❌ '
+            f'counter-trend fade — too risky'
+        ),
+    ))
+    if not st_ok:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail,
+                              conditions=conditions)
+
+    target = midpoint if direction == Direction.LONG else midpoint
+    return StrategySignal(
+        should_enter=True,
+        direction=direction,
+        reason=(
+            f'🟦 Range fade {direction.value.upper()} — '
+            f'ADX {adx_now:.1f} | '
+            f'range [{range_low:.0f}–{range_high:.0f}] {rng_pts:.0f}pts | '
+            f'RSI {rsi_now:.1f} | '
+            f'target mid {target:.0f}'
+        ),
+        conditions=conditions,
+    )
+
+
 # Weight reflects reliability + non-overlap:
 # Squeeze is unique (vol-timing) — highest weight
 # ORB is session-limited + independent — high weight
@@ -895,6 +1116,7 @@ _STRATEGY_WEIGHTS: dict[str, float] = {
     "ORB":            1.8,
     "Chart Pattern":  1.7,
     "SuperTrend":     1.6,
+    "Range Fade":     1.6,   # mean-reversion — same weight as ST, different market regime
     "VWAP":           1.5,
     "Tight Range":    1.5,
     "EMA Cross":      1.2,
@@ -908,6 +1130,7 @@ ALL_STRATEGIES = [
     ("Squeeze",       evaluate_crude_squeeze),
     ("Chart Pattern", evaluate_crude_chart_pattern),
     ("Tight Range",   evaluate_crude_tight_range),
+    ("Range Fade",    evaluate_crude_range_fade),
 ]
 
 
@@ -968,7 +1191,7 @@ def evaluate_crude_best(df: pd.DataFrame) -> StrategySignal:
     #   Squeeze takes hours to fire in evening chop
     #   SuperTrend on its own is the designed evening mode
     if _is_evening:
-        CONSENSUS_THRESHOLD = _STRATEGY_WEIGHTS["SuperTrend"]   # 1.6 — ST alone is enough
+        CONSENSUS_THRESHOLD = _STRATEGY_WEIGHTS["SuperTrend"]   # 1.6 — ST or Range Fade alone is enough
         MIN_AGREEING        = 1
     else:
         CONSENSUS_THRESHOLD = 3.0
