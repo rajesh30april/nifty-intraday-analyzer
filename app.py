@@ -148,11 +148,13 @@ async def _crude_trader_loop():
 
 
 async def _crude_ltp_refresh_loop():
-    """Refresh option LTP every 15 s — AND run premium-based SL/target/trail.
+    """REST fallback: refresh option LTP every 5 s and run exit/trail check.
 
-    This is the PRIMARY exit monitor for crude option trades.
-    Exits are checked against the option LTP (premium space) — not crude spot.
-    Running every 15 s means worst-case 15 s reaction time on SL breach.
+    PRIMARY path: Kite WebSocket on_ticks → _manage_trade_by_premium on
+    every ~1s tick (crude option subscribed after entry).
+
+    FALLBACK path (WebSocket down / not streaming): this loop polls REST
+    every 5 s so worst-case exit delay is 5 s, not 15 s.
     """
     from crude_trader import state as crude_state, _manage_trade_by_premium
     from crude_data import get_crude_option_ltp, get_crude_spot
@@ -174,7 +176,8 @@ async def _crude_ltp_refresh_loop():
                 crude_state.last_crude_price = spot
         except Exception as e:
             print(f"⚠️ Crude LTP refresh error: {e}")
-        await asyncio.sleep(15)
+        # 5s REST fallback — WebSocket is primary (~1s tick)
+        await asyncio.sleep(5)
 
 
 async def _ltp_refresh_loop():

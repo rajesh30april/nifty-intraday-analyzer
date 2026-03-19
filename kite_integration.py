@@ -68,6 +68,8 @@ class KiteManager:
         self.access_token: str | None = None
         self.ticker: KiteTicker | None = None
         self.is_streaming = False
+        self._crude_option_token: int | None = None          # subscribed crude option
+        self._subscribe_crude_option_fn = None               # set by start_ticker()
 
         # Auth cache — profile() is slow; only re-verify every 60 s
         self._auth_cache: bool | None = None
@@ -282,36 +284,91 @@ class KiteManager:
         # Zerodha domains so the WebSocket connects directly.
         os.environ["no_proxy"] = os.environ.get("no_proxy", "") + ",kite.zerodha.com,api.kite.trade,ws.kite.trade"
 
+        def _subscribe_crude_option(ws):
+            """Subscribe the active crude option token to the WebSocket.
+
+            Called on connect and whenever a new crude trade is opened.
+            MCX option ticks arrive ~1 s — this is what makes real-time
+            exit/trail possible without waiting for the 15-s REST poll.
+            """
+            from crude_trader import state as ct_state
+            trade = ct_state.active_trade
+            if not trade:
+                return
+            token = getattr(trade, '_ws_token', None)
+            if not token:
+                # Resolve token from instrument name
+                try:
+                    from crude_data import get_crude_atm_option, get_crude_spot
+                    sym = trade.instrument
+                    # Token was stored at entry — look it up from instrument list
+                    from crude_data import _get_mcx_instruments
+                    instruments = _get_mcx_instruments()
+                    clean = sym.replace('MCX:', '')
+                    match = next((i for i in instruments
+                                  if i.get('tradingsymbol') == clean), None)
+                    token = match['instrument_token'] if match else None
+                except Exception as e:
+                    print(f"⚠️  Crude WS: token lookup failed: {e}")
+            if token:
+                try:
+                    ws.subscribe([token])
+                    ws.set_mode(ws.MODE_LTP, [token])
+                    self._crude_option_token = token
+                    print(f"📡 [Crude WS] Subscribed {trade.instrument} token={token} — real-time exit active")
+                except Exception as e:
+                    print(f"⚠️  Crude WS subscribe failed: {e}")
+
+        # Expose so _enter_trade can call it after opening a position
+        self._subscribe_crude_option_fn = _subscribe_crude_option
+        self._crude_option_token = None
+
         def on_connect(ws, response):
             # Always subscribe Nifty spot
             ws.subscribe([NIFTY_INSTRUMENT_TOKEN])
             ws.set_mode(ws.MODE_FULL, [NIFTY_INSTRUMENT_TOKEN])
             self.is_streaming = True
-            print("\u2705 Kite WebSocket connected — streaming Nifty 50 live!")
-            # If a trade was already open before WebSocket connected
-            # (e.g. recovery on restart), subscribe option token now
+            print("✅ Kite WebSocket connected — streaming Nifty 50 live!")
+
+            # Subscribe Nifty option if trade already open (restart recovery)
             from auto_trader import state as at_state
             if at_state.active_option_token:
                 try:
                     ws.subscribe([at_state.active_option_token])
                     ws.set_mode(ws.MODE_LTP, [at_state.active_option_token])
-                    print(f"📡 [on_connect] Subscribed option token {at_state.active_option_token}")
+                    print(f"📡 [on_connect] Subscribed Nifty option token {at_state.active_option_token}")
                 except Exception as e:
-                    print(f"⚠️  [on_connect] Option subscribe failed: {e}")
+                    print(f"⚠️  [on_connect] Nifty option subscribe failed: {e}")
+
+            # Subscribe Crude option if trade already open (restart recovery)
+            _subscribe_crude_option(ws)
 
         def on_ticks(ws, ticks):
             if not ticks:
                 return
-            # Import here to avoid circular import at module load time
             from auto_trader import state as at_state
+            from crude_trader import state as ct_state, _manage_trade_by_premium
+
             for tick in ticks:
-                token     = tick.get("instrument_token")
-                ltp       = tick.get("last_price", 0)
-                # ── Option tick → update LTP directly (tick-level refresh) ──
+                token = tick.get("instrument_token")
+                ltp   = tick.get("last_price", 0)
+
+                # ── Crude option tick → real-time exit / trail ────────────
+                if token and token == self._crude_option_token and ltp > 0:
+                    ct_state.last_option_ltp = ltp
+                    if ct_state.active_trade and ct_state.is_running:
+                        try:
+                            _manage_trade_by_premium(ltp, source="ws_tick")
+                        except Exception as e:
+                            print(f"⚠️  Crude tick exit check failed: {e}")
+                    continue   # handled — skip below
+
+                # ── Nifty option tick → update LTP directly ───────────────
                 if token and token == at_state.active_option_token and ltp > 0:
                     at_state.last_option_ltp = ltp
-                    continue   # option tick — skip Nifty spot processing below
-                # ── Nifty spot tick → existing behaviour ─────────────────────
+                    continue
+
+                # ── Nifty spot tick → existing behaviour ──────────────────
                 if token == NIFTY_INSTRUMENT_TOKEN:
                     self.latest_tick = {
                         "timestamp":  datetime.now().isoformat(),
@@ -328,7 +385,6 @@ class KiteManager:
                         ) if tick.get("ohlc", {}).get("close") else 0,
                     }
                     self.tick_history.append(self.latest_tick)
-                    # Keep only last 2000 ticks to avoid memory bloat
                     if len(self.tick_history) > 2000:
                         self.tick_history = self.tick_history[-1500:]
                     if on_tick_callback:
@@ -349,6 +405,33 @@ class KiteManager:
         # Run ticker in a background thread
         thread = threading.Thread(target=self.ticker.connect, daemon=True)
         thread.start()
+
+    def subscribe_crude_option(self, token: int) -> bool:
+        """Subscribe a crude option instrument token to the live WebSocket.
+
+        Called from crude_trader._enter_trade() when a new position opens.
+        Returns True if subscription succeeded.
+        """
+        if not self.is_streaming or not self.ticker:
+            return False
+        try:
+            self.ticker.subscribe([token])
+            self.ticker.set_mode(self.ticker.MODE_LTP, [token])
+            self._crude_option_token = token
+            print(f"📡 [WS] Crude option token {token} subscribed — real-time exit ACTIVE")
+            return True
+        except Exception as e:
+            print(f"⚠️  [WS] Crude subscribe failed: {e}")
+            return False
+
+    def unsubscribe_crude_option(self) -> None:
+        """Unsubscribe crude option token when position is closed."""
+        if self._crude_option_token and self.is_streaming and self.ticker:
+            try:
+                self.ticker.unsubscribe([self._crude_option_token])
+            except Exception:
+                pass
+        self._crude_option_token = None
 
     def stop_ticker(self):
         """Stop the WebSocket ticker."""

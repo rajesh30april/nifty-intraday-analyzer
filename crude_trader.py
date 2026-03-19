@@ -548,6 +548,13 @@ def _enter_trade(direction: Direction, price: float):
     state.entry_crude_sl        = sl        # original SL — never mutated, used for UI
     state.last_signal_reason    = f"Entered {direction.value.upper()} {symbol}"
 
+    # ── Subscribe option to WebSocket for ~1s real-time exit checks ──
+    # Without this, exits rely on 5s REST poll fallback.
+    if kite_manager.subscribe_crude_option(_token):
+        print(f"📡 Real-time exit active (~1s tick) for {symbol}")
+    else:
+        print(f"⚠️  WebSocket not streaming — exits via 5s REST poll")
+
     _save_snapshot()
     print(f"🛢️  Trade opened: {direction.value.upper()} {symbol} @ ₹{price:.0f} | SL ₹{sl:.0f} | Tgt ₹{target:.0f}")
 
@@ -601,6 +608,9 @@ def _exit_position(reason: str, price: float):
 
     state.total_pnl   += pnl
     state.active_trade = None
+
+    # ── Unsubscribe crude option from WebSocket ───────────────────
+    kite_manager.unsubscribe_crude_option()
 
     emoji = "🟢" if pnl >= 0 else "🔴"
     mode  = "📝 PAPER" if trade.paper else "🟢 LIVE"
