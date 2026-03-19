@@ -280,6 +280,17 @@ function renderCrudeStatus(d) {
     }
     if (d.kill_switch && wasRunning) _crudeLog('🚨 Kill switch activated — position exited', 'error');
 
+    // ── Block reason card ──────────────────────────────────────────
+    const blockCard = document.getElementById('crude-block-card');
+    const blockMsg  = document.getElementById('crude-block-msg');
+    if (blockCard && blockMsg) {
+        const blkText = d.block_reason || '';
+        // Show the card only when there's a block reason AND trader is running
+        const showBlock = !!blkText && d.is_running;
+        blockCard.classList.toggle('hidden', !showBlock);
+        if (showBlock) blockMsg.textContent = blkText;
+    }
+
     // ── Signal / block reason changes ────────────────────────────
     const sig = d.last_signal || '';
     const blk = d.block_reason || '';
