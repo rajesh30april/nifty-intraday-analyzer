@@ -263,7 +263,20 @@ def evaluate_all(df: pd.DataFrame) -> MetaRouterResult:
         base      = win_rate_for(strat.id)          # e.g., 63.0 for ORB
         raw_conf  = signal.confidence or 0.0
         strength  = 0.5 + (raw_conf / 100.0)        # maps [0,100] → [0.5, 1.5]
-        composite = base * strength * r_fit * t_mult * v_boost
+
+        # ── Direction alignment penalty ───────────────────────────
+        # A signal that fights the detected regime gets penalised 30%.
+        # e.g. LONG signal in TRENDING_DOWN regime → × 0.70
+        # This prevents a strategy from always winning in the wrong direction.
+        d_align = 1.0
+        if signal.direction is not None:
+            sig_long = signal.direction.value == "long"
+            if regime == MarketRegime.TRENDING_DOWN and sig_long:
+                d_align = 0.70   # contra-trend LONG in downtrend
+            elif regime == MarketRegime.TRENDING_UP and not sig_long:
+                d_align = 0.70   # contra-trend SHORT in uptrend
+
+        composite = base * strength * r_fit * t_mult * v_boost * d_align
 
         candidates.append({
             "id":          strat.id,
@@ -276,6 +289,7 @@ def evaluate_all(df: pd.DataFrame) -> MetaRouterResult:
             "regime_fit":  r_fit,
             "time_mult":   t_mult,
             "vix_boost":   v_boost,
+            "dir_align":   d_align,
             "composite":   round(composite, 1),
             "should_enter": signal.should_enter,
             "direction":   signal.direction,

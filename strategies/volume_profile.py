@@ -136,16 +136,31 @@ def evaluate_volume_profile(df: pd.DataFrame) -> StrategySignal:
         ),
     ))
 
+    # ── EMA trend filter: bounce needs trend alignment ───────────────────────
+    ema20 = float(ind.ema(df["close"], period=20).iloc[-1])
+    ema50 = float(ind.ema(df["close"], period=50).iloc[-1])
+    trend_up   = close > ema20 > ema50   # price above both EMAs = uptrend
+    trend_down = close < ema20 < ema50   # price below both EMAs = downtrend
+    conditions.append(StrategyCondition(
+        name="EMA trend",
+        met=True,  # informational — used to filter direction below
+        detail=(
+            f"EMA20={ema20:.0f} EMA50={ema50:.0f} "
+            f"({'↑ uptrend' if trend_up else '↓ downtrend' if trend_down else '↔ sideways'})"
+        ),
+    ))
+
     # ── RSI for momentum direction ────────────────────────────────────────────
     rsi_val = float(ind.rsi(df["close"], period=9).iloc[-1])
-    # Near HVN from above (price fell into it) — expect bounce if RSI oversold
-    bounce_setup  = dist_to_hvn < 0 and rsi_val < 45  # price below HVN = support
-    reject_setup  = dist_to_hvn > 0 and rsi_val > 55  # price above HVN = resistance
+    # Bounce LONG: price below HVN (support) + RSI oversold + NOT in confirmed downtrend
+    # Reject SHORT: price above HVN (resistance) + RSI overbought + NOT in confirmed uptrend
+    bounce_setup  = dist_to_hvn < 0 and rsi_val < 45 and not trend_down
+    reject_setup  = dist_to_hvn > 0 and rsi_val > 55 and not trend_up
     rsi_confirms  = bounce_setup or reject_setup
     conditions.append(StrategyCondition(
         name="RSI confirms",
         met=rsi_confirms,
-        detail=f"RSI={rsi_val:.1f} ({'bounce' if bounce_setup else 'reject' if reject_setup else 'unclear'})",
+        detail=f"RSI={rsi_val:.1f} ({'bounce ✅' if bounce_setup else 'reject ✅' if reject_setup else '⚠️ contra-trend blocked'})",
     ))
 
     # ── POC gravity: is price far from POC? ──────────────────────────────────
