@@ -97,11 +97,19 @@ class CrudeTraderState:
     capital:        float = CRUDE_CAPITAL
     strike_offset:  int   = 0
 
+    # ── Trail mode: 'fixed' | 'atr' | 'supertrend' ───────────────
+    trail_mode:      str   = 'fixed'  # default: fixed points
+    atr_multiplier:  float = 1.5      # used when trail_mode='atr'
+
     # ── Live price tracking ───────────────────────────────────────
-    last_crude_price:  float = 0.0
-    last_option_ltp:   float = 0.0
-    last_signal_reason: str  = ""
+    last_crude_price:   float = 0.0
+    last_option_ltp:    float = 0.0
+    last_signal_reason: str   = ""
     last_block_reason:  str | None = None
+
+    # ── Cached indicator values (updated on each candle close) ────
+    last_atr:      float = 0.0   # latest ATR(14) of crude futures
+    last_st_line:  float = 0.0   # latest Supertrend line value
 
     # ── Trailing trackers ─────────────────────────────────────────
     highest_since_entry: float = 0.0
@@ -422,27 +430,76 @@ def _manage_trade(price: float, source: str = "candle"):
     # ── Trailing SL (only when is_running) ───────────────────────
     if not state.is_running:
         return
-    trail = state.trail_points
+
+    mode = state.trail_mode
+
+    # ── Mode: Supertrend line IS the dynamic SL ───────────────────
+    if mode == 'supertrend' and state.last_st_line > 0:
+        if d == 'long' and state.last_st_line > trade.stop_loss:
+            old = trade.stop_loss
+            trade.stop_loss = round(state.last_st_line, 2)
+            _save_snapshot()
+            print(f"📈 [ST trail] SL ₹{old:.0f} → ₹{trade.stop_loss:.0f} (ST={state.last_st_line:.0f})")
+        elif d == 'short' and state.last_st_line < trade.stop_loss:
+            old = trade.stop_loss
+            trade.stop_loss = round(state.last_st_line, 2)
+            _save_snapshot()
+            print(f"📉 [ST trail] SL ₹{old:.0f} → ₹{trade.stop_loss:.0f} (ST={state.last_st_line:.0f})")
+        return
+
+    # ── Mode: ATR-based trail distance ───────────────────────────
+    if mode == 'atr' and state.last_atr > 0:
+        trail = state.last_atr * state.atr_multiplier
+    else:
+        trail = state.trail_points   # fixed fallback
+
     if d == 'long':
         state.highest_since_entry = max(state.highest_since_entry, price)
         new_sl = state.highest_since_entry - trail
         if new_sl > trade.stop_loss:
+            old = trade.stop_loss
             trade.stop_loss = round(new_sl, 2)
             _save_snapshot()
+            tag = f"ATR×{state.atr_multiplier}={trail:.0f}" if mode == 'atr' else f"fixed={trail:.0f}"
+            print(f"📈 [{tag}] SL ₹{old:.0f} → ₹{trade.stop_loss:.0f}")
     else:
         state.lowest_since_entry = min(state.lowest_since_entry, price)
         new_sl = state.lowest_since_entry + trail
         if new_sl < trade.stop_loss:
+            old = trade.stop_loss
             trade.stop_loss = round(new_sl, 2)
             _save_snapshot()
+            tag = f"ATR×{state.atr_multiplier}={trail:.0f}" if mode == 'atr' else f"fixed={trail:.0f}"
+            print(f"📉 [{tag}] SL ₹{old:.0f} → ₹{trade.stop_loss:.0f}")
 
 
 # ── Candle-close evaluation ───────────────────────────────────────
+
+def _cache_indicators(df: pd.DataFrame) -> None:
+    """Cache ATR(14) and Supertrend line from latest candle into state.
+    Called every candle so _manage_trade always has fresh values.
+    """
+    import indicators as ind
+    try:
+        atr_s = ind.atr(df['high'], df['low'], df['close'], 14)
+        state.last_atr = float(atr_s.iloc[-1]) if not pd.isna(atr_s.iloc[-1]) else 0.0
+    except Exception:
+        pass
+    try:
+        st = ind.supertrend(df['high'], df['low'], df['close'],
+                            CRUDE_ST_PERIOD, CRUDE_ST_MULTIPLIER)
+        state.last_st_line = float(st['supertrend'].iloc[-1])
+    except Exception:
+        pass
+
 
 def evaluate_and_act_crude(df: pd.DataFrame, price: float):
     """Called on every 5-min candle close. Evaluates entry or manages trade."""
     if not state.is_running or state.kill_switch:
         return
+
+    # ── Cache ATR + ST so _manage_trade can use them ─────────────
+    _cache_indicators(df)
 
     # ── Time guard ───────────────────────────────────────────────
     now_t = datetime.now().time()
@@ -566,4 +623,8 @@ def get_crude_status() -> dict:
         'trail_points':  state.trail_points,
         'rr_ratio':      state.rr_ratio,
         'capital':       state.capital,
+        'trail_mode':    state.trail_mode,
+        'atr_multiplier': state.atr_multiplier,
+        'last_atr':      round(state.last_atr, 2) if state.last_atr else None,
+        'last_st_line':  round(state.last_st_line, 2) if state.last_st_line else None,
     }

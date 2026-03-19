@@ -2221,20 +2221,26 @@ async def crude_kill():
 
 @app.post("/api/crude/config")
 async def crude_config(
-    sl_points:    float | None = None,
-    trail_points: float | None = None,
-    rr_ratio:     float | None = None,
-    capital:      float | None = None,
-    strike_offset: int | None  = None,
+    sl_points:      float | None = None,
+    trail_points:   float | None = None,
+    rr_ratio:       float | None = None,
+    capital:        float | None = None,
+    strike_offset:  int   | None = None,
+    trail_mode:     str   | None = None,   # 'fixed' | 'atr' | 'supertrend'
+    atr_multiplier: float | None = None,
 ):
     from crude_trader import state as cs
-    if sl_points    is not None: cs.sl_points    = sl_points
-    if trail_points is not None: cs.trail_points = trail_points
-    if rr_ratio     is not None: cs.rr_ratio     = rr_ratio
-    if capital      is not None: cs.capital      = capital
-    if strike_offset is not None: cs.strike_offset = strike_offset
+    if sl_points      is not None: cs.sl_points      = sl_points
+    if trail_points   is not None: cs.trail_points   = trail_points
+    if rr_ratio       is not None: cs.rr_ratio       = rr_ratio
+    if capital        is not None: cs.capital        = capital
+    if strike_offset  is not None: cs.strike_offset  = strike_offset
+    if trail_mode     is not None and trail_mode in ('fixed', 'atr', 'supertrend'):
+        cs.trail_mode = trail_mode
+    if atr_multiplier is not None: cs.atr_multiplier = atr_multiplier
     return {'success': True, 'sl_points': cs.sl_points, 'trail_points': cs.trail_points,
-            'rr_ratio': cs.rr_ratio, 'capital': cs.capital}
+            'rr_ratio': cs.rr_ratio, 'capital': cs.capital,
+            'trail_mode': cs.trail_mode, 'atr_multiplier': cs.atr_multiplier}
 
 
 @app.get("/api/crude/margin")

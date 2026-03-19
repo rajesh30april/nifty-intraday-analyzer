@@ -97,6 +97,22 @@ function _setCrudeStatus(s) {
 }
 
 // ── Controls ──────────────────────────────────────────────────────
+// ── Trail Mode UI ───────────────────────────────────────────────
+function onCrudeTrailModeChange(mode) {
+    document.getElementById('crude-trail-fixed-row').classList.toggle('hidden', mode !== 'fixed');
+    document.getElementById('crude-trail-atr-row').classList.toggle('hidden',   mode !== 'atr');
+    document.getElementById('crude-trail-st-row').classList.toggle('hidden',    mode !== 'supertrend');
+}
+
+function _applyCrudeTrailMode(mode) {
+    // Sync radio buttons to match server state
+    document.querySelectorAll('input[name="crude-trail-mode"]').forEach(r => {
+        r.checked = (r.value === mode);
+    });
+    onCrudeTrailModeChange(mode);
+}
+
+
 // ── Capital Sync from Zerodha ────────────────────────────────────
 async function syncCrudeCapital() {
     const btn   = document.getElementById('crude-capital-sync-btn');
@@ -193,25 +209,32 @@ async function crudeTrade(action) {
 }
 
 async function saveCrudeConfig() {
-    const sl      = parseFloat(document.getElementById('crude-sl')?.value);
-    const trail   = parseFloat(document.getElementById('crude-trail')?.value);
-    const rr      = parseFloat(document.getElementById('crude-rr')?.value);
-    const capital = parseFloat(document.getElementById('crude-capital')?.value);
+    const sl        = parseFloat(document.getElementById('crude-sl')?.value);
+    const trail     = parseFloat(document.getElementById('crude-trail')?.value);
+    const rr        = parseFloat(document.getElementById('crude-rr')?.value);
+    const capital   = parseFloat(document.getElementById('crude-capital')?.value);
+    const trailMode = document.querySelector('input[name="crude-trail-mode"]:checked')?.value || 'fixed';
+    const atrMult   = parseFloat(document.getElementById('crude-atr-mult')?.value || '1.5');
 
-    if ([sl, trail, rr, capital].some(isNaN)) {
+    if ([sl, rr, capital].some(isNaN)) {
         _crudeToast('⚠️ Invalid settings — check all fields', 'warn');
         return;
     }
-    if (trail >= sl) {
-        _crudeToast('⚠️ Trail must be smaller than SL', 'warn');
+    if (trailMode === 'fixed' && (isNaN(trail) || trail >= sl)) {
+        _crudeToast('⚠️ Fixed trail must be a number smaller than SL', 'warn');
         return;
     }
-    const params = new URLSearchParams({ sl_points: sl, trail_points: trail, rr_ratio: rr, capital });
+
+    const params = new URLSearchParams({
+        sl_points: sl, trail_points: trail || 25, rr_ratio: rr, capital,
+        trail_mode: trailMode, atr_multiplier: atrMult,
+    });
     try {
         const resp = await fetch(`/api/crude/config?${params}`, { method: 'POST' });
         const data = await resp.json();
         if (data.success) {
-            _crudeToast(`✅ Saved — SL:₹${sl} Trail:₹${trail} R:R 1:${rr}`, 'ok');
+            const modeLabel = { fixed: `Fixed ₹${trail}`, atr: `ATR×${atrMult}`, supertrend: 'Supertrend' };
+            _crudeToast(`✅ Saved — SL:₹${sl}  Trail:${modeLabel[trailMode]}  R:R 1:${rr}`, 'ok');
         } else {
             _crudeToast('❌ Save failed', 'error');
         }
@@ -297,6 +320,17 @@ function renderCrudeStatus(d) {
     _setText('crude-spot',       d.crude_price ? `₹${d.crude_price}` : '--');
     _setText('crude-option-ltp', _fmt(d.last_option_ltp));
     _setText('crude-signal',     d.block_reason || d.last_signal || '--');
+
+    // ── Sync trail mode UI + live indicator values ────────────────
+    if (d.trail_mode) _applyCrudeTrailMode(d.trail_mode);
+    if (d.last_atr) {
+        const atrEl = document.getElementById('crude-atr-live');
+        if (atrEl) atrEl.textContent = `ATR: ₹${d.last_atr.toFixed(0)}`;
+    }
+    if (d.last_st_line) {
+        const stEl = document.getElementById('crude-st-live');
+        if (stEl) stEl.textContent = `ST: ₹${d.last_st_line.toFixed(0)}`;
+    }
 
     // ── P&L ───────────────────────────────────────────────────────
     const pnlEl = document.getElementById('crude-pnl');
