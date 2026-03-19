@@ -463,6 +463,9 @@ function renderAutoTrader(data) {
         sigEl.innerHTML = sigHTML;
     }
 
+    // ── Strategy Scoreboard (smart_router only) ─────────────────
+    _renderMetaScoreboard(data);
+
     // ── Event log — write meaningful entries on state changes ────
     _atMaybeLog(data);
 
@@ -641,6 +644,76 @@ const _LOG_ICON_STYLE = {
     '🟢': { row: 'bg-green-950/30 border-green-900',  label: 'text-green-300', detail: 'text-green-400' },
     '🔴': { row: 'bg-red-950/30 border-red-900',      label: 'text-red-300',   detail: 'text-red-400'   },
 };
+
+// ── Strategy Scoreboard ─────────────────────────────────────────
+function _renderMetaScoreboard(data) {
+    const board = document.getElementById('at-meta-scoreboard');
+    const list  = document.getElementById('at-meta-scores-list');
+    const regEl = document.getElementById('at-meta-regime');
+    if (!board || !list) return;
+
+    const scores = data.meta_scores || [];
+    const isMeta = data.selected_strategy === 'smart_router';
+
+    if (!isMeta || !scores.length) {
+        board.classList.add('hidden');
+        return;
+    }
+    board.classList.remove('hidden');
+
+    if (regEl) {
+        regEl.textContent = data.meta_regime
+            ? `📊 Regime: ${data.meta_regime.replace('_', ' ').toUpperCase()}`
+            : '';
+    }
+
+    // Only re-render if scores actually changed
+    const key = JSON.stringify(scores.map(s => s.composite));
+    if (list.dataset.key === key) return;
+    list.dataset.key = key;
+
+    list.innerHTML = scores.map(s => {
+        const wantsEntry = s.should_enter;
+        const blocked    = s.time_mult === 0;
+        const hasError   = !!s.error;
+
+        // Colour coding
+        const rowCls = wantsEntry
+            ? 'bg-green-900/40 border border-green-700/50'
+            : blocked
+                ? 'bg-gray-800/40 opacity-50'
+                : 'bg-gray-800/40';
+
+        const scoreCls = wantsEntry ? 'text-green-400 font-bold' : 'text-gray-400';
+        const dirBadge = s.direction
+            ? `<span class="px-1 rounded text-[9px] font-bold ${
+                s.direction === 'long' ? 'bg-green-800 text-green-200' : 'bg-red-800 text-red-200'
+              }">${s.direction.toUpperCase()}</span>`
+            : '';
+
+        // Time blocked indicator
+        const timeTag = blocked
+            ? '<span class="text-[9px] text-gray-500">⏱ time-blocked</span>'
+            : `<span class="text-[9px] text-gray-500">×${s.time_mult.toFixed(1)} time</span>`;
+
+        return `
+        <div class="${rowCls} rounded px-2 py-1.5 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <span>${s.emoji}</span>
+            <span class="text-[10px] text-white truncate">${s.name}</span>
+            ${dirBadge}
+            ${hasError ? '<span class="text-[9px] text-red-400">⚠ error</span>' : ''}
+          </div>
+          <div class="flex items-center gap-2 shrink-0 text-[10px]">
+            ${timeTag}
+            <span class="text-gray-500">×${s.regime_fit.toFixed(1)} regime</span>
+            <span class="text-gray-400">${s.confidence.toFixed(0)}% conf</span>
+            <span class="${scoreCls} w-10 text-right">${s.composite.toFixed(0)}</span>
+          </div>
+        </div>`;
+    }).join('');
+}
+
 
 function _renderServerEventLog(events) {
     const el = document.getElementById('at-event-log');

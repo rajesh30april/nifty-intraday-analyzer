@@ -684,6 +684,7 @@ def _evaluate_current(strategy_id: str = "smart_router") -> dict:
 
         if strategy_id == "smart_router":
             from strategy_meta_router import evaluate_all
+            from auto_trader import state as at_state
             meta = evaluate_all(df)
             sig_fires   = meta.signal.should_enter
             sig_dir     = meta.signal.direction.value if meta.signal.direction else ""
@@ -691,6 +692,25 @@ def _evaluate_current(strategy_id: str = "smart_router") -> dict:
             strat_name  = meta.selected_strategy or "smart_router"
             strat_emoji = meta.selected_emoji or "🧠"
             regime_str  = meta.regime
+            # Push scores to state so UI scoreboard updates immediately
+            at_state.last_meta_regime = meta.regime
+            at_state.last_meta_scores = [
+                {
+                    "id":          s["id"],
+                    "name":        s["name"],
+                    "emoji":       s["emoji"],
+                    "category":    s["category"],
+                    "confidence":  s["confidence"],
+                    "win_rate":    s.get("win_rate", 50.0),
+                    "regime_fit":  s["regime_fit"],
+                    "time_mult":   s["time_mult"],
+                    "composite":   s["composite"],
+                    "should_enter": s["should_enter"],
+                    "direction":   s["direction"].value if s["direction"] else None,
+                    "error":       s.get("error"),
+                }
+                for s in meta.scores
+            ]
         elif strat:
             sig = strat.evaluate(df)
             sig_fires   = sig.should_enter
@@ -714,6 +734,14 @@ def _evaluate_current(strategy_id: str = "smart_router") -> dict:
             "confidence":   round(confidence, 1),
             "regime":       regime_str,
             "market_open":  _is_market_hours(),
+            "meta_scores":  [
+                {"id": s["id"], "name": s["name"], "emoji": s["emoji"],
+                 "composite": s["composite"], "should_enter": s["should_enter"],
+                 "direction": s["direction"].value if s["direction"] else None,
+                 "confidence": s["confidence"], "regime_fit": s["regime_fit"],
+                 "time_mult": s["time_mult"], "error": s.get("error")}
+                for s in (meta.scores if strategy_id == "smart_router" else [])
+            ],
             "error":        None,
         }
     except Exception as e:

@@ -97,6 +97,8 @@ class TraderState:
     last_evaluation: str = ""
     last_signal_reason: str = ""
     last_conditions: list[dict] = field(default_factory=list)
+    last_meta_scores: list[dict] = field(default_factory=list)  # full strategy scoreboard
+    last_meta_regime: str = ""                                  # regime detected by meta router
     kill_switch: bool = False
     last_option_ltp: float = 0.0           # live option LTP — refreshed each candle loop
     last_nifty_price: float = 0.0          # live Nifty price — refreshed each tick
@@ -926,11 +928,35 @@ def evaluate_and_act(df, current_price: float):
         return
 
     # 4. No active trade — evaluate selected strategy
-    strat_info = get_strategy(state.selected_strategy)
-    if strat_info:
-        signal = strat_info.evaluate(df)
+    #    For smart_router: capture full meta scores so UI can show scoreboard
+    if state.selected_strategy == "smart_router":
+        from strategy_meta_router import evaluate_all   # noqa: PLC0415
+        meta_result = evaluate_all(df)
+        signal = meta_result.signal
+        state.last_meta_regime = meta_result.regime
+        # Trim scores to what the UI needs (drop heavy signal objects)
+        state.last_meta_scores = [
+            {
+                "id":          s["id"],
+                "name":        s["name"],
+                "emoji":       s["emoji"],
+                "category":    s["category"],
+                "confidence":  s["confidence"],
+                "win_rate":    s.get("win_rate", 50.0),
+                "regime_fit":  s["regime_fit"],
+                "time_mult":   s["time_mult"],
+                "composite":   s["composite"],
+                "should_enter": s["should_enter"],
+                "direction":   s["direction"].value if s["direction"] else None,
+                "error":       s.get("error"),
+            }
+            for s in meta_result.scores
+        ]
     else:
-        signal = evaluate_vwap_breakout(df)  # fallback
+        strat_info = get_strategy(state.selected_strategy)
+        signal = strat_info.evaluate(df) if strat_info else evaluate_vwap_breakout(df)
+        state.last_meta_scores = []   # not applicable for single-strategy mode
+        state.last_meta_regime = ""
 
     state.last_signal_reason = f"[{state.selected_strategy}] {signal.reason}"
     state.last_conditions = [
@@ -1403,6 +1429,8 @@ def get_trader_status() -> dict:
         "last_evaluation": state.last_evaluation,
         "last_signal": state.last_signal_reason,
         "conditions": state.last_conditions,
+        "meta_scores": state.last_meta_scores,
+        "meta_regime": state.last_meta_regime,
         "exit_time": EXIT_TIME.strftime("%H:%M"),
         "sl_points": SL_POINTS,
         "trailing_sl_points": TRAILING_SL_POINTS,
