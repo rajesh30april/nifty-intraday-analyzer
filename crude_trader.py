@@ -252,24 +252,86 @@ def _fetch_available_margin() -> float | None:
         return None
 
 
+# MCX commodity options (unlike NSE equity options) require SPAN + Exposure
+# margin even for buyers — approximately 15% of the contract value.
+# This is due to physical delivery risk on commodity contracts.
+# Using only option premium to size lots massively UNDERESTIMATES margin
+# needed → Zerodha rejects the order with "insufficient funds".
+#
+# Formula: required_margin_per_lot ≈ spot × lot_size_barrels × MCX_MARGIN_RATE
+# e.g. Crude ₹8,941 × 100 barrels × 15% = ₹1,34,115 per full lot
+#      Crude ₹8,941 × 10  barrels × 15% = ₹13,411  per mini lot
+MCX_OPTION_MARGIN_RATE = 0.15   # 15% of contract value — Zerodha SPAN+Exposure for MCX options
+
+
+def _fetch_margin_per_lot(symbol: str, qty: int = 1) -> float | None:
+    """Ask Zerodha exactly what margin 1 lot of this option costs.
+
+    Uses kite.order_margins() — the most accurate source.
+    Falls back to None so callers can use the rule-of-thumb estimate.
+    """
+    if not kite_manager.is_authenticated:
+        return None
+    clean = symbol.replace("MCX:", "")
+    try:
+        result = kite_manager.kite.order_margins([
+            {
+                "exchange":        "MCX",
+                "tradingsymbol":   clean,
+                "transaction_type": "BUY",
+                "variety":         "regular",
+                "product":         "MIS",
+                "order_type":      "LIMIT",
+                "quantity":        qty,
+                "price":           0,
+            }
+        ])
+        if result and isinstance(result, list) and result[0]:
+            total = float(result[0].get("total", 0) or 0)
+            print(f"📋 Zerodha margin check: ₹{total:,.0f} for {qty} lot(s) of {clean}")
+            return total if total > 0 else None
+    except Exception as e:
+        print(f"⚠️  order_margins() failed ({e}) — using rule-of-thumb")
+    return None
+
+
 def _resolve_qty(spot: float, real_premium: float | None = None,
-                 lot_size: int = MCX_CRUDE_LOT_SIZE) -> int:
+                 lot_size: int = MCX_CRUDE_LOT_SIZE,
+                 symbol: str = "") -> int:
     """Return order quantity in LOTS (what the exchange expects).
 
     MCX quantity unit = LOTS, NOT barrels.
       1 lot CRUDEOIL  = 100 barrels  → qty=1 buys 100 barrels
       1 lot CRUDEOILM = 10  barrels  → qty=1 buys 10  barrels
-    Cost per lot = LTP (per barrel) × barrel_count (lot_size).
+
+    IMPORTANT: MCX commodity options require SPAN+Exposure margin
+    (~15% of contract value) even for buyers — NOT just the premium.
+    We first try to get the exact margin from Zerodha's order_margins()
+    API; if that fails we use the 15% rule-of-thumb.
     Returns 0 if capital is insufficient — caller must block the trade.
     """
-    premium = real_premium if real_premium and real_premium > 0 else estimate_crude_premium(spot)
-    cost_per_lot = premium * lot_size          # ₹ per lot
-    if cost_per_lot <= 0:
+    available = state.capital * 0.9   # keep 10% buffer
+
+    # ── Step 1: try Zerodha's exact margin for 1 lot ──────────────
+    margin_per_lot = _fetch_margin_per_lot(symbol) if symbol else None
+
+    # ── Step 2: fallback — rule-of-thumb 15% of contract value ────
+    if not margin_per_lot or margin_per_lot <= 0:
+        margin_per_lot = round(spot * lot_size * MCX_OPTION_MARGIN_RATE, 2)
+        print(f"📐 Margin estimate (rule-of-thumb 15%): "
+              f"₹{spot:.0f} × {lot_size}bbl × 15% = ₹{margin_per_lot:,.0f}/lot")
+    else:
+        print(f"📐 Margin from Zerodha API: ₹{margin_per_lot:,.0f}/lot")
+
+    if margin_per_lot <= 0:
         return 0
-    lots = int(state.capital * 0.9 / cost_per_lot)   # 90% of capital
-    print(f"📐 Qty: ₹{state.capital:,.0f} × 90% ÷ ₹{cost_per_lot:,.0f}/lot "
-          f"= {lots} lots  (lot_sz={lot_size} bbl, total cost ₹{lots*cost_per_lot:,.0f})")
-    return lots   # ← LOTS, not lots × barrels
+
+    lots = int(available / margin_per_lot)
+    total_cost = lots * margin_per_lot
+    print(f"📐 Qty: ₹{state.capital:,.0f} × 90% = ₹{available:,.0f} "
+          f"÷ ₹{margin_per_lot:,.0f}/lot = {lots} lots "
+          f"(total margin ₹{total_cost:,.0f}, lot_sz={lot_size}bbl)")
+    return lots
 
 
 # ── Enter / Exit ──────────────────────────────────────────────────
@@ -292,15 +354,17 @@ def _enter_trade(direction: Direction, price: float):
         state.capital = live_margin
 
     real_ltp = get_crude_option_ltp(symbol)
-    qty      = _resolve_qty(price, real_ltp, lot_size=lot_size)
+    qty      = _resolve_qty(price, real_ltp, lot_size=lot_size, symbol=symbol)
 
     # ── Capital guard — block before hitting exchange ──────────────
     if qty == 0:
-        premium = real_ltp or estimate_crude_premium(price)
-        needed  = premium * lot_size
+        margin_needed = round(price * lot_size * MCX_OPTION_MARGIN_RATE, 0)
+        is_mini       = lot_size == MCX_CRUDE_MINI_LOT_SIZE
         state.last_block_reason = (
-            f"⛔ Need ₹{needed:,.0f} for 1 lot ({lot_size}bbl × ₹{premium:.0f}) "
-            f"but only ₹{state.capital:,.0f} available in Zerodha."
+            f"⛔ Insufficient margin for 1 {'mini' if is_mini else 'full'} lot. "
+            f"Need ~₹{margin_needed:,.0f} (15% of ₹{price:.0f}×{lot_size}bbl) "
+            f"but only ₹{state.capital:,.0f} available. "
+            f"{'Try adding funds or reduce position size.' if not is_mini else 'Capital too low even for mini lot.'}"
         )
         print(f"🚫 {state.last_block_reason}")
         return
@@ -627,4 +691,29 @@ def get_crude_status() -> dict:
         'atr_multiplier': state.atr_multiplier,
         'last_atr':      round(state.last_atr, 2) if state.last_atr else None,
         'last_st_line':  round(state.last_st_line, 2) if state.last_st_line else None,
+        # Margin info — helps diagnose order rejections
+        'margin_info': _crude_margin_info(),
+    }
+
+
+def _crude_margin_info() -> dict:
+    """Return estimated margin requirements for 1 lot each of full and mini contracts.
+
+    Crude MCX options: SPAN + Exposure ≈ 15% of contract value.
+    Full lot = 100 barrels, Mini = 10 barrels.
+    """
+    price = state.last_crude_price or 0
+    if not price:
+        return {}
+    full_margin = round(price * MCX_CRUDE_LOT_SIZE      * MCX_OPTION_MARGIN_RATE)
+    mini_margin = round(price * MCX_CRUDE_MINI_LOT_SIZE * MCX_OPTION_MARGIN_RATE)
+    capital     = state.capital
+    full_lots   = int(capital * 0.9 / full_margin) if full_margin else 0
+    mini_lots   = int(capital * 0.9 / mini_margin) if mini_margin else 0
+    return {
+        'full_margin_per_lot': full_margin,
+        'mini_margin_per_lot': mini_margin,
+        'affordable_full_lots': full_lots,
+        'affordable_mini_lots': mini_lots,
+        'will_use_mini':        capital < 120_000,
     }

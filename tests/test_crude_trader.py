@@ -81,7 +81,7 @@ class TestCrudeData:
              'tradingsymbol': f'CRUDEOIL{near}6500PE', 'instrument_token': 1},
         ]
         with patch('crude_data._get_mcx_instruments', return_value=fake_instruments):
-            sym, token = get_crude_atm_option(spot, 'short')
+            sym, token, lot_sz = get_crude_atm_option(spot, 'short')
         assert token == 1, 'Should pick nearer expiry first'
         assert 'PE' in sym
 
@@ -96,7 +96,7 @@ class TestCrudeData:
             'tradingsymbol': 'CRUDEOIL6500CE', 'instrument_token': 99,
         }]
         with patch('crude_data._get_mcx_instruments', return_value=fake):
-            sym, token = get_crude_atm_option(6500.0, 'long')
+            sym, token, lot_sz = get_crude_atm_option(6500.0, 'long')
         assert 'CE' in sym
         assert token == 99
 
