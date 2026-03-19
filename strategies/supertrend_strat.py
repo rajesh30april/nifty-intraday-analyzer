@@ -38,18 +38,39 @@ def evaluate_supertrend(
     st_dir = st["direction"]
     st_line = st["supertrend"]
 
-    # ── 1. Supertrend flip detection ─────────────────
-    curr_dir = int(st_dir.iloc[-1])
-    prev_dir = int(st_dir.iloc[-2])
-    prev2_dir = int(st_dir.iloc[-3]) if len(df) > 3 else prev_dir
-
-    just_flipped = (curr_dir != prev_dir) or (prev_dir != prev2_dir and curr_dir == prev_dir)
+    # ── 1. Supertrend direction — flip OR sustained trend ────────
+    # Original code required a flip within 2-3 candles, which blocked
+    # valid continuation entries in an already-confirmed trend.
+    # Fix: accept EITHER a recent flip (strong new-trend signal) OR
+    # a consistent direction held for at most 20 candles (continuation).
+    # If trend has been running > 20 candles it's stale — skip.
+    curr_dir  = int(st_dir.iloc[-1])
     direction = Direction.LONG if curr_dir == 1 else Direction.SHORT
 
+    # Count how many consecutive candles the trend has been in curr_dir
+    lookback   = min(20, len(st_dir) - 1)
+    trend_run  = 0
+    for i in range(1, lookback + 1):
+        if int(st_dir.iloc[-i]) == curr_dir:
+            trend_run += 1
+        else:
+            break
+
+    just_flipped      = trend_run <= 2           # flipped within last 2 candles
+    trend_fresh       = trend_run <= 20          # trend is still fresh (< 20 candles old)
+    direction_ok      = just_flipped or trend_fresh
+
+    flip_label = (
+        f"Flipped {trend_run} candle(s) ago"
+        if just_flipped else
+        f"Trending {'BEARISH' if curr_dir == -1 else 'BULLISH'} for {trend_run} candles"
+        if trend_fresh else
+        f"Stale — trend running {trend_run} candles (> 20)"
+    )
     conditions.append(StrategyCondition(
-        name="Supertrend Flip",
-        met=just_flipped,
-        detail=f"Direction flipped to {'BULLISH' if curr_dir == 1 else 'BEARISH'} (ST={float(st_line.iloc[-1]):.0f})",
+        name="Supertrend Direction",
+        met=direction_ok,
+        detail=f"{flip_label} | ST line={float(st_line.iloc[-1]):.0f}",
     ))
 
     # ── 2. Price vs Supertrend line ──────────────────
