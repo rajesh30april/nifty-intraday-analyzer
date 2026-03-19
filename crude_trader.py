@@ -46,6 +46,15 @@ CRUDE_CAPITAL       = float(os.getenv("CRUDE_CAPITAL",     "50000"))  # ₹
 CRUDE_MAX_LOSS      = float(os.getenv("CRUDE_MAX_LOSS",      "3000"))  # ₹/day
 CRUDE_MAX_TRADES    = int(os.getenv("CRUDE_MAX_TRADES",          "4"))
 CRUDE_EXIT_TIME     = dt_time(23, 25)  # 11:25 PM
+
+# Pre-flight margin safety buffer (₹).
+# WHY: Zerodha re-prices margin at the live LTP when the order hits the
+# exchange, which is 2-5 seconds AFTER our order_margins() pre-flight
+# check. A single tick in the option LTP can move margin by ₹100-1000.
+# Observed gap: ₹868.50 (required=31459, available=30591).
+# ₹2 500 covers ~₹25/tick movement on a 100-barrel mini lot, which is
+# comfortable for normal crude intraday volatility.
+MARGIN_SAFETY_BUFFER = float(os.getenv("MARGIN_SAFETY_BUFFER", "2500"))
 CRUDE_SNAP_FILE     = Path(__file__).parent / ".crude_snapshot.json"
 CRUDE_LOG_FILE      = Path(__file__).parent / "crude_trade_log.json"
 
@@ -245,8 +254,32 @@ def _place_order(symbol: str, direction: Direction, qty: int, price: float) -> s
         print(f"✅ Crude entry order placed: {oid}")
         return str(oid)
     except Exception as e:
-        print(f"❌ Crude order failed: {e}")
-        state.last_block_reason = f"Order failed: {e}"
+        err_str = str(e)
+        print(f"❌ Crude order failed: {err_str}")
+
+        # Parse Zerodha's "Insufficient funds" rejection
+        # e.g. "Insufficient funds. Required margin is 31459.50 but available margin is 30591.00."
+        reason = err_str
+        try:
+            import re
+            m = re.search(
+                r"Required margin is ([\d,.]+) but available margin is ([\d,.]+)",
+                err_str, re.IGNORECASE,
+            )
+            if m:
+                required_m  = float(m.group(1).rstrip(".").replace(",", ""))
+                available_m = float(m.group(2).rstrip(".").replace(",", ""))
+                topup       = max(0.0, required_m - available_m + MARGIN_SAFETY_BUFFER)
+                reason = (
+                    f"⛔ Zerodha margin rejection: "
+                    f"need ₹{required_m:,.0f} but only ₹{available_m:,.0f} free. "
+                    f"Top up ₹{topup:,.0f} (includes ₹{MARGIN_SAFETY_BUFFER:,.0f} safety buffer) "
+                    f"or switch to MINI lot (CRUDEOILM, ~10× smaller margin)."
+                )
+        except Exception:
+            pass
+
+        state.last_block_reason = reason
         return None
 
 
@@ -397,10 +430,21 @@ def _validate_and_size(symbol: str, desired_lots: int, available: float,
     Why walk down instead of just math?  Zerodha margin for N lots is
     NOT always exactly N × (margin for 1 lot).  Edge fees, rounding, and
     MIS intraday levies can push it above the simple multiple.
+
+    Buffer: we compare against (available - MARGIN_SAFETY_BUFFER) rather
+    than raw `available`.  Zerodha re-prices at the LIVE LTP when the
+    order actually hits the exchange — which is 2-5 sec after our
+    order_margins() call — and a single option tick can move required
+    margin by ₹100-1000.  The buffer absorbs that drift.
     """
     if not kite_manager.is_authenticated:
         # Paper mode or no auth — just return desired_lots as-is
         return desired_lots, 0.0
+
+    usable = available - MARGIN_SAFETY_BUFFER   # conservative ceiling
+    if usable <= 0:
+        print(f"⚠️  Available ₹{available:,.0f} ≤ safety buffer ₹{MARGIN_SAFETY_BUFFER:,.0f} — blocking")
+        return 0, 0.0
 
     for lots in range(desired_lots, 0, -1):
         required = _query_zerodha_margin(symbol, lots, ltp=ltp)
@@ -408,10 +452,13 @@ def _validate_and_size(symbol: str, desired_lots: int, available: float,
             # API unavailable — block the trade: better to miss than to get rejected
             print(f"⚠️  Margin API unavailable for {symbol} — blocking trade to avoid rejection")
             return 0, 0.0
-        if required <= available:
-            print(f"✅ Pre-flight OK: {lots} lot(s) ₹{required:,.0f} ≤ ₹{available:,.0f}")
+        if required <= usable:
+            print(
+                f"✅ Pre-flight OK: {lots} lot(s) ₹{required:,.0f} ≤ ₹{usable:,.0f} "
+                f"(usable after ₹{MARGIN_SAFETY_BUFFER:,.0f} buffer)"
+            )
             return lots, required
-        print(f"⚠️  {lots}L needs ₹{required:,.0f} but only ₹{available:,.0f} — trying {lots-1}L")
+        print(f"⚠️  {lots}L needs ₹{required:,.0f} but usable ₹{usable:,.0f} — trying {lots-1}L")
 
     return 0, 0.0  # even 1 lot doesn't fit
 
@@ -483,11 +530,14 @@ def _enter_trade(direction: Direction, price: float):
             (real_ltp or estimate_crude_premium(price)) * lot_size, 0
         )
         is_mini = lot_size == MCX_CRUDE_MINI_LOT_SIZE
+        usable  = available - MARGIN_SAFETY_BUFFER
+        topup   = max(0.0, one_lot_cost - usable)
         state.last_block_reason = (
-            f"⛔ Insufficient funds. "
-            f"Need ₹{one_lot_cost:,.0f} for 1 {'mini' if is_mini else 'full'} lot "
-            f"({symbol.replace('MCX:','')}) but only ₹{available:,.0f} available. "
-            f"Top up ₹{max(0, one_lot_cost - available):,.0f} to trade."
+            f"⛔ Insufficient margin. "
+            f"1 {'mini' if is_mini else 'full'} lot ({symbol.replace('MCX:','')}) "
+            f"costs ₹{one_lot_cost:,.0f} but usable balance is ₹{usable:,.0f} "
+            f"(₹{available:,.0f} free − ₹{MARGIN_SAFETY_BUFFER:,.0f} safety buffer). "
+            f"Top up ₹{topup:,.0f} or set MARGIN_SAFETY_BUFFER lower."
         )
         print(f"🚫 {state.last_block_reason}")
         return

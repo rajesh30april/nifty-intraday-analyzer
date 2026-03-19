@@ -285,3 +285,77 @@ class TestCrudeTraderState:
         )
         ct.crude_tick_guard({'last_price': 6300.0})  # way below SL
         assert ct.state.active_trade is not None, 'kill_switch must block tick guard'
+
+
+# ── Margin safety buffer ─────────────────────────────────────────────────
+
+class TestMarginSafetyBuffer:
+    """Tests for the MARGIN_SAFETY_BUFFER pre-flight guard.
+
+    Reproduces the exact live failure:
+      required=31459.50  available=30591.00  gap=868.50
+      Pre-flight passed (31459 < 30591 is False…wait, no: 30591 < 31459
+      so the old code should have blocked. That means the issue is that
+      the order_margins call returned a LOWER value (e.g. 30500) because
+      the LTP snapshot was stale, and then the live order priced it higher.
+
+    We simulate this: order_margins says 30100 (stale), order hits
+    Zerodha with live price that requires 31459 — exchange rejects.
+    The buffer means we already rejected 30100 during pre-flight
+    because 30100 > (30591 − 2500 = 28091). We walk down to 0 lots.
+    """
+
+    def test_buffer_blocks_margin_that_fits_without_buffer(self):
+        """Pre-flight margin of 28500 should pass the buffer check —
+        28500 ≤ 30591 − 2500 = 28091? No: 28500 > 28091 — should BLOCK.
+        This validates the buffer is actually subtracting."""
+        import crude_trader as ct
+        with patch("crude_trader.kite_manager") as km, \
+             patch("crude_trader._query_zerodha_margin", return_value=28500.0):
+            km.is_authenticated = True
+            lots, req = ct._validate_and_size("MCX:CRUDEOILM25APR315CE", 1, 30591.0)
+        # 28500 > 30591 - 2500 = 28091 → must block
+        assert lots == 0
+
+    def test_buffer_passes_margin_well_within_usable(self):
+        """Pre-flight margin of 25000 clears buffer: 25000 ≤ 28091 → OK."""
+        import crude_trader as ct
+        with patch("crude_trader.kite_manager") as km, \
+             patch("crude_trader._query_zerodha_margin", return_value=25000.0):
+            km.is_authenticated = True
+            lots, req = ct._validate_and_size("MCX:CRUDEOILM25APR315CE", 1, 30591.0)
+        assert lots == 1
+        assert req == pytest.approx(25000.0)
+
+    def test_buffer_constant_is_at_least_1500(self):
+        """Buffer must be ≥20 × 100 (20 ticks of 1 lot) to cover real price drift."""
+        from crude_trader import MARGIN_SAFETY_BUFFER
+        assert MARGIN_SAFETY_BUFFER >= 1500, (
+            f"MARGIN_SAFETY_BUFFER={MARGIN_SAFETY_BUFFER} is too low. "
+            "Observed real gap was ₹868 — need room for volatility."
+        )
+
+    def test_order_insufficient_funds_rejection_parsed_cleanly(self):
+        """Zerodha 'Insufficient funds' error must be parsed into a
+        human-readable top-up message, not a raw exception string."""
+        import crude_trader as ct
+        ct.state.is_paper_mode = False
+        ct.state.kill_switch   = False
+        zerodha_err = (
+            "Insufficient funds. Required margin is 31459.50 "
+            "but available margin is 30591.00."
+        )
+        with patch("crude_trader.kite_manager") as km:
+            km.is_authenticated = True
+            km.kite.place_order.side_effect = Exception(zerodha_err)
+            with patch("crude_trader._limit_price_for", return_value=315.0):
+                ct._place_order("MCX:CRUDEOILM25APR315CE", ct.Direction.LONG, 1, 6500.0)
+
+        reason = ct.state.last_block_reason
+        assert reason is not None
+        # Zerodha reports 31459.50 — we format it rounded so accept 31459 or 31460
+        assert any(v in reason for v in ("₹31,459", "31459", "₹31,460", "31460")), (
+            f"Required margin not in reason: {reason}"
+        )
+        assert "Top up" in reason,  "Should tell user how much to top up"
+        assert "MINI" in reason,    "Should suggest switching to mini lot"
