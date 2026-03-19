@@ -384,6 +384,7 @@ async def day_chart(date: str = ""):
                     "end_time":     p.end_time,
                     "description":  p.description,
                     "key_levels":   p.key_levels or {},
+                    "pivot_times":  p.pivot_times or [],   # timestamps of key pivots
                     "emoji":        PATTERN_EMOJIS.get(p.name, "📊"),
                 }
                 for p in pat_result.get("patterns", [])

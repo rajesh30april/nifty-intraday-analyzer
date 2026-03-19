@@ -428,7 +428,14 @@ def detect_triple_top(
     high: pd.Series, low: pd.Series, close: pd.Series,
     tolerance_pct: float = 0.3,
 ) -> PatternMatch | None:
-    """Detect Triple Top (bearish reversal) — 3 peaks at similar levels."""
+    """Detect Triple Top (bearish reversal) — 3 peaks at similar levels.
+
+    Returns rich key_levels so the chart can draw:
+      - Individual peak markers (P1, P2, P3)
+      - Neckline (lowest trough between peaks)
+      - Resistance zone (min to max of the 3 peaks)
+      - Measured target (neckline − pattern height)
+    """
     peaks, troughs = _find_peaks_troughs(high, low, order=4)
     if len(peaks) < 3 or len(troughs) < 2:
         return None
@@ -436,38 +443,71 @@ def detect_triple_top(
     p1, p2, p3 = peaks[-3], peaks[-2], peaks[-1]
     v1, v2, v3 = high.iloc[p1], high.iloc[p2], high.iloc[p3]
 
-    # All three peaks within tolerance
+    # All three peaks within tolerance of their average
     avg_peak = (v1 + v2 + v3) / 3
-    if all(abs(v - avg_peak) / avg_peak * 100 < tolerance_pct for v in [v1, v2, v3]):
-        # Min spacing between peaks
-        if (p2 - p1) < 6 or (p3 - p2) < 6:
-            return None
-        # Need troughs between peaks
-        mid_troughs = [t for t in troughs if p1 < t < p3]
-        if len(mid_troughs) < 2:
-            return None
-        neckline = min(low.iloc[t] for t in mid_troughs)
-        current = close.iloc[-1]
-        confirmed = current < neckline
-        return PatternMatch(
-            name="Triple Top",
-            pattern_type="reversal",
-            bias="bearish",
-            confidence=0.9 if confirmed else 0.65,
-            description=f"Three peaks near {round(avg_peak, 1)}, neckline {round(neckline, 1)}. "
-                        f"{'CONFIRMED — broke neckline!' if confirmed else 'Watch for neckline break.'}",
-            start_idx=p1, end_idx=len(close) - 1,
-            key_levels={"peak_avg": round(avg_peak, 2), "neckline": round(neckline, 2)},
-            pivot_times=[p1, mid_troughs[0], p2, mid_troughs[-1], p3],
-        )
-    return None
+    if not all(abs(v - avg_peak) / avg_peak * 100 < tolerance_pct for v in [v1, v2, v3]):
+        return None
+
+    # Minimum spacing: at least 6 candles between each peak pair
+    if (p2 - p1) < 6 or (p3 - p2) < 6:
+        return None
+
+    # Need at least 2 troughs (one between each peak pair)
+    mid_troughs = [t for t in troughs if p1 < t < p3]
+    if len(mid_troughs) < 2:
+        return None
+
+    # Neckline = lowest trough between the three peaks
+    neckline_idx = min(mid_troughs, key=lambda t: low.iloc[t])
+    neckline = low.iloc[neckline_idx]
+
+    # Pattern height (used for measured move target)
+    pattern_height = avg_peak - neckline
+    measured_target = neckline - pattern_height  # downside projection
+
+    current = close.iloc[-1]
+    confirmed = current < neckline
+    confidence = 0.9 if confirmed else 0.65
+
+    return PatternMatch(
+        name="Triple Top",
+        pattern_type="reversal",
+        bias="bearish",
+        confidence=confidence,
+        description=(
+            f"Three peaks: P1 ₹{round(v1, 1)}, P2 ₹{round(v2, 1)}, P3 ₹{round(v3, 1)}. "
+            f"Neckline ₹{round(neckline, 1)}. "
+            f"Measured target ₹{round(measured_target, 1)}. "
+            f"{'✅ CONFIRMED — broke neckline!' if confirmed else '⏳ Watch for neckline break.'}"
+        ),
+        start_idx=p1,
+        end_idx=len(close) - 1,
+        key_levels={
+            "peak1":           round(v1,              2),
+            "peak2":           round(v2,              2),
+            "peak3":           round(v3,              2),
+            "resistance_zone": round(avg_peak,        2),  # mid of zone
+            "resistance_high": round(max(v1, v2, v3), 2),  # top of zone
+            "neckline":        round(neckline,        2),
+            "measured_target": round(measured_target, 2),
+        },
+        # Pivot order: P1 → T1 → P2 → T2 → P3
+        pivot_times=[p1, mid_troughs[0], p2, mid_troughs[-1], p3],
+    )
 
 
 def detect_triple_bottom(
     high: pd.Series, low: pd.Series, close: pd.Series,
     tolerance_pct: float = 0.3,
 ) -> PatternMatch | None:
-    """Detect Triple Bottom (bullish reversal) — 3 troughs at similar levels."""
+    """Detect Triple Bottom (bullish reversal) — 3 troughs at similar levels.
+
+    Returns rich key_levels so the chart can draw:
+      - Individual trough markers (T1, T2, T3)
+      - Neckline (highest peak between troughs)
+      - Support zone (min to max of the 3 troughs)
+      - Measured target (neckline + pattern height)
+    """
     peaks, troughs = _find_peaks_troughs(high, low, order=4)
     if len(troughs) < 3 or len(peaks) < 2:
         return None
@@ -476,27 +516,50 @@ def detect_triple_bottom(
     v1, v2, v3 = low.iloc[t1], low.iloc[t2], low.iloc[t3]
 
     avg_trough = (v1 + v2 + v3) / 3
-    if all(abs(v - avg_trough) / avg_trough * 100 < tolerance_pct for v in [v1, v2, v3]):
-        if (t2 - t1) < 6 or (t3 - t2) < 6:
-            return None
-        mid_peaks = [p for p in peaks if t1 < p < t3]
-        if len(mid_peaks) < 2:
-            return None
-        neckline = max(high.iloc[p] for p in mid_peaks)
-        current = close.iloc[-1]
-        confirmed = current > neckline
-        return PatternMatch(
-            name="Triple Bottom",
-            pattern_type="reversal",
-            bias="bullish",
-            confidence=0.9 if confirmed else 0.65,
-            description=f"Three troughs near {round(avg_trough, 1)}, neckline {round(neckline, 1)}. "
-                        f"{'CONFIRMED — broke neckline!' if confirmed else 'Watch for neckline break.'}",
-            start_idx=t1, end_idx=len(close) - 1,
-            key_levels={"trough_avg": round(avg_trough, 2), "neckline": round(neckline, 2)},
-            pivot_times=[t1, mid_peaks[0], t2, mid_peaks[-1], t3],
-        )
-    return None
+    if not all(abs(v - avg_trough) / avg_trough * 100 < tolerance_pct for v in [v1, v2, v3]):
+        return None
+
+    if (t2 - t1) < 6 or (t3 - t2) < 6:
+        return None
+
+    mid_peaks = [p for p in peaks if t1 < p < t3]
+    if len(mid_peaks) < 2:
+        return None
+
+    neckline_idx = max(mid_peaks, key=lambda p: high.iloc[p])
+    neckline = high.iloc[neckline_idx]
+
+    pattern_height = neckline - avg_trough
+    measured_target = neckline + pattern_height
+
+    current = close.iloc[-1]
+    confirmed = current > neckline
+
+    return PatternMatch(
+        name="Triple Bottom",
+        pattern_type="reversal",
+        bias="bullish",
+        confidence=0.9 if confirmed else 0.65,
+        description=(
+            f"Three troughs: T1 ₹{round(v1, 1)}, T2 ₹{round(v2, 1)}, T3 ₹{round(v3, 1)}. "
+            f"Neckline ₹{round(neckline, 1)}. "
+            f"Measured target ₹{round(measured_target, 1)}. "
+            f"{'✅ CONFIRMED — broke neckline!' if confirmed else '⏳ Watch for neckline break.'}"
+        ),
+        start_idx=t1,
+        end_idx=len(close) - 1,
+        key_levels={
+            "trough1":        round(v1,              2),
+            "trough2":        round(v2,              2),
+            "trough3":        round(v3,              2),
+            "support_zone":   round(avg_trough,      2),
+            "support_low":    round(min(v1, v2, v3), 2),
+            "neckline":       round(neckline,        2),
+            "measured_target":round(measured_target, 2),
+        },
+        # Pivot order: T1 → P1 → T2 → P2 → T3
+        pivot_times=[t1, mid_peaks[0], t2, mid_peaks[-1], t3],
+    )
 
 
 def detect_wedge(

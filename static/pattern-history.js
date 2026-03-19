@@ -170,20 +170,37 @@ function phOpenDetail(idx) {
     // Chart title
     _setEl('ph-detail-chart-title', `📈 ${p.name} — ${timeStr} (${fmtDate})`);
 
-    // Key levels
-    const levelsEl = document.getElementById('ph-detail-levels');
-    const levels   = Object.entries(p.key_levels || {});
+    // Key levels — skip internal zone-helper keys (drawn on chart, not listed)
+    const levelsEl   = document.getElementById('ph-detail-levels');
+    const _hideKeys  = new Set(['resistance_high', 'support_low', 'resistance_zone', 'support_zone']);
+    const levels     = Object.entries(p.key_levels || {}).filter(([k]) => !_hideKeys.has(k));
+
+    // Friendly label map
+    const _labelMap = {
+        peak1: '⛰ Peak 1 (P1)',  peak2: '⛰ Peak 2 (P2)',  peak3: '⛰ Peak 3 (P3)',
+        trough1: '🪣 Trough 1 (T1)', trough2: '🪣 Trough 2 (T2)', trough3: '🪣 Trough 3 (T3)',
+        neckline: '📏 Neckline',  measured_target: '🎯 Target (Measured Move)',
+        peak: '⛰ Peak',  trough: '🪣 Trough',
+        head: '👑 Head',  left_shoulder: '◀ Left Shoulder', right_shoulder: '▶ Right Shoulder',
+        flag_high: '📌 Flag High', flag_low: '📌 Flag Low',
+        upper_trend: '📐 Upper Trend', lower_trend: '📐 Lower Trend',
+    };
+
     if (levels.length) {
         levelsEl.innerHTML = levels.map(([k, v]) => {
-            const isSupport  = k.toLowerCase().includes('support');
-            const isResist   = k.toLowerCase().includes('resist');
-            const isBreakout = k.toLowerCase().includes('break');
-            const color = isSupport  ? '#2a8703'
+            const kl = k.toLowerCase();
+            const isNeckline = kl.includes('neckline');
+            const isTarget   = kl.includes('target');
+            const isResist   = kl.includes('resist') || kl.includes('peak');
+            const isSupport  = kl.includes('support') || kl.includes('trough');
+            const color = isNeckline ? '#0053e2'
+                        : isTarget   ? '#995213'
                         : isResist   ? '#ea1100'
-                        : isBreakout ? '#0053e2' : '#6b7280';
-            const icon  = isSupport ? '🟢' : isResist ? '🔴' : isBreakout ? '⚡' : '📍';
-            return `<div class="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
-                <span class="text-xs text-gray-500 capitalize">${icon} ${k.replace(/_/g,' ')}</span>
+                        : isSupport  ? '#2a8703' : '#6b7280';
+            const label = _labelMap[k] || `📍 ${k.replace(/_/g, ' ')}`;
+            const bg    = isNeckline ? 'bg-blue-50' : isTarget ? 'bg-amber-50' : '';
+            return `<div class="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0 rounded px-1 ${bg}">
+                <span class="text-xs text-gray-600 font-medium">${label}</span>
                 <span class="font-black text-sm" style="color:${color}">₹${Number(v).toLocaleString('en-IN',{maximumFractionDigits:0})}</span>
             </div>`;
         }).join('');
@@ -191,28 +208,33 @@ function phOpenDetail(idx) {
         levelsEl.innerHTML = '<p class="text-xs text-gray-400">No key levels detected</p>';
     }
 
-    // Trade idea
+    // Trade idea — use specific keys from key_levels where available
     const tradeEl = document.getElementById('ph-detail-trade-body');
+    const kl      = p.key_levels || {};
+    const fmt     = v => `₹${Number(v).toLocaleString('en-IN', {maximumFractionDigits: 0})}`;
+
     if (isBull) {
-        const sl  = levels.find(([k]) => k.toLowerCase().includes('support'));
-        const tgt = levels.find(([k]) => k.toLowerCase().includes('resist') || k.toLowerCase().includes('target'));
+        const neckline = kl['neckline'];
+        const sl       = kl['support_zone'] || kl['trough_avg'] || kl['trough1'];
+        const tgt      = kl['measured_target'];
         tradeEl.innerHTML = `
             <div class="space-y-2 text-sm">
                 <div class="flex items-center gap-2 text-green-700 font-bold">📈 Look for LONG entry</div>
-                <div class="text-xs text-gray-600">Wait for price to break out above the pattern high on volume.</div>
-                ${sl  ? `<div class="text-xs"><span class="text-gray-400">🛡 Stop Loss:</span> <b>₹${Number(sl[1]).toLocaleString('en-IN',{maximumFractionDigits:0})}</b></div>` : ''}
-                ${tgt ? `<div class="text-xs"><span class="text-gray-400">🎯 Target:</span> <b>₹${Number(tgt[1]).toLocaleString('en-IN',{maximumFractionDigits:0})}</b></div>` : ''}
+                <div class="text-xs text-gray-600">Enter on confirmed breakout above neckline ${neckline ? fmt(neckline) : ''} with strong volume.</div>
+                ${sl  ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🛡 Stop Loss (below support):</span> <b class="text-red-600">${fmt(sl)}</b></div>` : ''}
+                ${tgt ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🎯 Measured Target:</span> <b class="text-green-700">${fmt(tgt)}</b></div>` : ''}
                 <div class="text-[10px] text-gray-400 pt-1">⚠️ Always confirm with volume &amp; market context</div>
             </div>`;
     } else if (isBear) {
-        const sl  = levels.find(([k]) => k.toLowerCase().includes('resist'));
-        const tgt = levels.find(([k]) => k.toLowerCase().includes('support') || k.toLowerCase().includes('target'));
+        const neckline = kl['neckline'];
+        const sl       = kl['resistance_zone'] || kl['peak_avg'] || kl['peak3'];
+        const tgt      = kl['measured_target'];
         tradeEl.innerHTML = `
             <div class="space-y-2 text-sm">
                 <div class="flex items-center gap-2 text-red-700 font-bold">📉 Look for SHORT entry</div>
-                <div class="text-xs text-gray-600">Wait for price to break below the pattern low on volume.</div>
-                ${sl  ? `<div class="text-xs"><span class="text-gray-400">🛡 Stop Loss:</span> <b>₹${Number(sl[1]).toLocaleString('en-IN',{maximumFractionDigits:0})}</b></div>` : ''}
-                ${tgt ? `<div class="text-xs"><span class="text-gray-400">🎯 Target:</span> <b>₹${Number(tgt[1]).toLocaleString('en-IN',{maximumFractionDigits:0})}</b></div>` : ''}
+                <div class="text-xs text-gray-600">Enter on confirmed breakdown below neckline ${neckline ? fmt(neckline) : ''} with strong volume.</div>
+                ${sl  ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🛡 Stop Loss (above resistance):</span> <b class="text-red-600">${fmt(sl)}</b></div>` : ''}
+                ${tgt ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🎯 Measured Target:</span> <b class="text-green-700">${fmt(tgt)}</b></div>` : ''}
                 <div class="text-[10px] text-gray-400 pt-1">⚠️ Always confirm with volume &amp; market context</div>
             </div>`;
     } else {
@@ -303,38 +325,121 @@ function _phBuildDetailChart(p) {
         }
     }
 
-    // Arrow marker at pattern end
-    if (patEnd) {
-        const snapTime = _phSnapCandle(win, patEnd);
-        if (snapTime) {
-            _phDetailSeries.setMarkers([{
+    // ── Pattern-specific markers (P1/P2/P3 or T1/T2/T3) ────────────
+    const isTripleTop    = p.name === 'Triple Top';
+    const isTripleBottom = p.name === 'Triple Bottom';
+    const markers = [];
+
+    if ((isTripleTop || isTripleBottom) && p.pivot_times && p.pivot_times.length === 5) {
+        // pivots: [peak1_ts, trough1_ts, peak2_ts, trough2_ts, peak3_ts] for triple top
+        //         [trough1_ts, peak1_ts, trough2_ts, peak2_ts, trough3_ts] for triple bottom
+        const pivotLabels = isTripleTop
+            ? ['P1', 'T1', 'P2', 'T2', 'P3']
+            : ['T1', 'P1', 'T2', 'P2', 'T3'];
+        const pivotPositions = isTripleTop
+            ? ['aboveBar', 'belowBar', 'aboveBar', 'belowBar', 'aboveBar']
+            : ['belowBar', 'aboveBar', 'belowBar', 'aboveBar', 'belowBar'];
+        const pivotShapes = isTripleTop
+            ? ['arrowDown', 'arrowUp', 'arrowDown', 'arrowUp', 'arrowDown']
+            : ['arrowUp', 'arrowDown', 'arrowUp', 'arrowDown', 'arrowUp'];
+        const pivotColors = isTripleTop
+            ? ['#ea1100', '#6b7280', '#ea1100', '#6b7280', '#ea1100']
+            : ['#2a8703', '#6b7280', '#2a8703', '#6b7280', '#2a8703'];
+
+        p.pivot_times.forEach((ts, i) => {
+            if (!ts) return;
+            const unix = Math.floor(new Date(ts).getTime() / 1000);
+            const snapTime = _phSnapCandle(win, unix);
+            if (!snapTime) return;
+            markers.push({
                 time:     snapTime,
-                position: p.bias === 'bullish' ? 'belowBar' : 'aboveBar',
-                color:    p.bias === 'bullish' ? '#2a8703'  : '#ea1100',
-                shape:    p.bias === 'bullish' ? 'arrowUp'  : 'arrowDown',
-                text:     `${p.emoji || ''} ${p.name}`,
-                size:     2,
-            }]);
+                position: pivotPositions[i],
+                color:    pivotColors[i],
+                shape:    pivotShapes[i],
+                text:     pivotLabels[i],
+                size:     1,
+            });
+        });
+    } else {
+        // Generic single arrow at pattern end
+        if (patEnd) {
+            const snapTime = _phSnapCandle(win, patEnd);
+            if (snapTime) {
+                markers.push({
+                    time:     snapTime,
+                    position: p.bias === 'bullish' ? 'belowBar' : 'aboveBar',
+                    color:    p.bias === 'bullish' ? '#2a8703'  : '#ea1100',
+                    shape:    p.bias === 'bullish' ? 'arrowUp'  : 'arrowDown',
+                    text:     `${p.emoji || ''} ${p.name}`,
+                    size:     2,
+                });
+            }
         }
     }
 
-    // Horizontal key-level lines
+    if (markers.length) {
+        markers.sort((a, b) => a.time - b.time);
+        _phDetailSeries.setMarkers(markers);
+    }
+
+    // ── Key-level lines ─────────────────────────────────────────────
     const levels = Object.entries(p.key_levels || {});
+    const skippedZoneKeys = new Set(['resistance_high', 'support_low']); // drawn as zone, not line
+
     levels.forEach(([key, val]) => {
+        if (skippedZoneKeys.has(key)) return;   // part of zone band
         const price = parseFloat(val);
         if (isNaN(price)) return;
-        const isSupport = key.toLowerCase().includes('support');
-        const isResist  = key.toLowerCase().includes('resist');
-        const color = isSupport ? '#2a8703' : isResist ? '#ea1100' : '#0053e2';
+
+        const kl = key.toLowerCase();
+        const isNeckline = kl.includes('neckline');
+        const isTarget   = kl.includes('target');
+        const isResist   = kl.includes('resist') || kl.includes('peak');
+        const isSupport  = kl.includes('support') || kl.includes('trough');
+
+        const color     = isNeckline ? '#0053e2'
+                        : isTarget   ? '#ffc220'
+                        : isResist   ? '#ea1100'
+                        : isSupport  ? '#2a8703'
+                        : '#6b7280';
+        const lineWidth = isNeckline ? 2 : 1;
+        const lineStyle = isTarget   ? 3   // dotted
+                        : isNeckline ? 0   // solid
+                        : 2;              // dashed
+        const label     = key.replace(/_/g, ' ');
+
         _phDetailChart.addLineSeries({
             color,
-            lineWidth:        1,
-            lineStyle:        2,
+            lineWidth,
+            lineStyle,
             priceLineVisible: false,
             lastValueVisible: true,
-            title: key.replace(/_/g, ' '),
+            title: label,
         }).setData(win.map(c => ({ time: c.time, value: price })));
     });
+
+    // ── Resistance / Support zone band (Triple Top / Triple Bottom) ─
+    if (isTripleTop) {
+        const zoneMid  = parseFloat(p.key_levels['resistance_zone'] || 0);
+        const zoneTop  = parseFloat(p.key_levels['resistance_high'] || 0);
+        if (zoneMid && zoneTop) {
+            // Upper edge of zone (solid thin)
+            _phDetailChart.addLineSeries({
+                color: 'rgba(234,17,0,0.4)', lineWidth: 1, lineStyle: 2,
+                priceLineVisible: false, lastValueVisible: false, title: '',
+            }).setData(win.map(c => ({ time: c.time, value: zoneTop })));
+        }
+    }
+    if (isTripleBottom) {
+        const zoneMid = parseFloat(p.key_levels['support_zone'] || 0);
+        const zoneBot = parseFloat(p.key_levels['support_low']  || 0);
+        if (zoneMid && zoneBot) {
+            _phDetailChart.addLineSeries({
+                color: 'rgba(42,135,3,0.4)', lineWidth: 1, lineStyle: 2,
+                priceLineVisible: false, lastValueVisible: false, title: '',
+            }).setData(win.map(c => ({ time: c.time, value: zoneBot })));
+        }
+    }
 
     _phDetailChart.timeScale().fitContent();
 
