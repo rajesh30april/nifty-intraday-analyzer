@@ -672,6 +672,85 @@ def kill_crude_trader():
 _CRUDE_DELTA = 0.45
 
 
+def add_lots_to_trade(extra_lots: int) -> dict:
+    """Add extra_lots to the current active trade (scale-in / pyramid).
+
+    Places a new BUY order for the same instrument and updates the
+    active trade's quantity + recalculates weighted average entry premium.
+    Returns {success, message, new_qty, avg_premium, order_id}.
+    """
+    if extra_lots < 1:
+        return {"success": False, "error": "extra_lots must be ≥ 1"}
+
+    trade = state.active_trade
+    if not trade:
+        return {"success": False, "error": "No active trade to add lots to"}
+
+    symbol   = trade.instrument
+    clean    = symbol.replace("MCX:", "")
+    lot_size = get_crude_lot_size(clean)
+
+    # ── Live LTP for the order price ──────────────────────────────
+    current_ltp = get_crude_option_ltp(symbol)
+    if not current_ltp or current_ltp <= 0:
+        return {"success": False, "error": "Could not fetch current option LTP"}
+
+    # ── Place order ───────────────────────────────────────────────
+    direction = Direction.LONG if trade.direction == 'long' else Direction.SHORT
+
+    if state.is_paper_mode:
+        order_id = f"PAPER-ADD-{datetime.now().strftime('%H%M%S')}"
+        print(f"📝 [PAPER] ADD {extra_lots} lots × {clean} @ ₹{current_ltp:.1f}")
+    else:
+        limit_px = _limit_price_for(symbol, "BUY")
+        if limit_px is None:
+            return {"success": False, "error": "Could not get LIMIT price for add-lots order"}
+        try:
+            order_id = str(kite_manager.kite.place_order(
+                variety   = kite_manager.kite.VARIETY_REGULAR,
+                exchange  = "MCX",
+                tradingsymbol = clean,
+                transaction_type = kite_manager.kite.TRANSACTION_TYPE_BUY,
+                quantity  = extra_lots,
+                product   = kite_manager.kite.PRODUCT_MIS,
+                order_type = kite_manager.kite.ORDER_TYPE_LIMIT,
+                price     = limit_px,
+                validity  = "DAY",
+            ))
+            print(f"✅ Add-lots order placed: {order_id} — {extra_lots} lots @ ₹{limit_px}")
+        except Exception as e:
+            msg = str(e)
+            print(f"❌ Add-lots order failed: {msg}")
+            return {"success": False, "error": msg}
+
+    # ── Update trade state (weighted average) ─────────────────────
+    old_qty   = trade.quantity
+    new_qty   = old_qty + extra_lots
+    old_prem  = trade.entry_premium or current_ltp
+    avg_prem  = round(
+        (old_prem * old_qty + current_ltp * extra_lots) / new_qty, 2
+    )
+
+    trade.quantity      = new_qty
+    trade.entry_premium = avg_prem
+    state.orders_placed += 1
+    _save_snapshot()
+
+    msg = (f"➕ Added {extra_lots} lot(s) to {direction.value.upper()} "
+           f"{clean} — now {new_qty} lots @ avg ₹{avg_prem:.1f}")
+    print(f"🛢️  {msg}")
+
+    return {
+        "success":     True,
+        "message":     msg,
+        "new_qty":     new_qty,
+        "avg_premium": avg_prem,
+        "fill_price":  current_ltp,
+        "order_id":    order_id,
+        "paper":       state.is_paper_mode,
+    }
+
+
 def _estimate_sl_premium(trade: CrudeTrade) -> float | None:
     """Approx option premium if crude hits the current SL level."""
     if not trade or not trade.entry_premium:

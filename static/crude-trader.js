@@ -502,6 +502,52 @@ function _setText(id, val, cls = '') {
     if (cls) el.className = cls;
 }
 
+async function crudeAddLots() {
+    const input = document.getElementById('ct-add-lots-input');
+    const msg   = document.getElementById('ct-add-lots-msg');
+    const btn   = document.querySelector('[onclick="crudeAddLots()"]');
+    const lots  = parseInt(input?.value || '1', 10);
+
+    if (!lots || lots < 1) {
+        _crudeToast('⚠️ Enter a valid number of lots', 'warn');
+        return;
+    }
+
+    // optimistic UI
+    if (btn)  { btn.disabled = true; btn.textContent = '⏳ Placing…'; }
+    if (msg)  { msg.textContent = ''; msg.classList.add('hidden'); }
+
+    try {
+        const resp = await fetch('/api/crude/add-lots', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ lots }),
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            const detail = `${data.new_qty} lots @ avg ₹${data.avg_premium?.toFixed(1)}`;
+            _crudeToast(`✅ Added ${lots} lot(s) — now ${detail}`, 'ok');
+            _crudeLog(`➕ Add-lots: +${lots} → ${detail} (order ${data.order_id ?? 'PAPER'})`, 'ok');
+            if (msg) {
+                msg.textContent = `✅ Now ${data.new_qty} lots @ avg ₹${data.avg_premium?.toFixed(1)}`;
+                msg.className   = 'text-[11px] text-green-400';
+            }
+            await pollCrudeStatus();
+        } else {
+            const err = data.error ?? 'Unable to add lots';
+            _crudeToast(`⛔ ${err}`, 'error');
+            _crudeLog(`⛔ Add-lots blocked: ${err}`, 'error');
+            if (msg) { msg.textContent = `⛔ ${err}`; msg.className = 'text-[11px] text-red-400'; }
+        }
+    } catch (e) {
+        _crudeToast(`❌ Network error: ${e.message}`, 'error');
+        _crudeLog(`❌ Add-lots network error: ${e.message}`, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '➕ Add to Position'; }
+    }
+}
+
 async function pollCrudeStatus() {
     try {
         const resp = await fetch('/api/crude/status');

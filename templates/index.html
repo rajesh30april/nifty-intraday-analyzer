@@ -1694,6 +1694,18 @@
                     </div>
                   </div>
 
+                  <!-- ── Row 4: Add Lots ────────────────────────── -->
+                  <div class="flex items-center gap-2 pt-1">
+                    <span class="text-[11px] text-gray-400 shrink-0">➕ Add lots:</span>
+                    <input id="ct-add-lots-input" type="number" value="2" min="1" max="20" step="1"
+                      class="w-16 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-sm text-center" />
+                    <button onclick="crudeAddLots()"
+                      class="bg-[#0053e2] hover:bg-blue-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition">
+                      ➕ Add to Position
+                    </button>
+                    <span id="ct-add-lots-msg" class="text-[11px] text-gray-400 hidden"></span>
+                  </div>
+
                 </div><!-- /ct-banner-wrap -->
               </div><!-- /crude-trade-card -->
 
@@ -1940,7 +1952,7 @@
     <script src="/static/auto-trader.js?v=16"></script>
     <script src="/static/at-settings.js?v=1"></script>
     <script src="/static/at-health.js?v=1"></script>
-    <script src="/static/crude-trader.js?v=4"></script>
+    <script src="/static/crude-trader.js?v=7"></script>
     <script>/* bt-qty v1 — quantity field wired to backtest + live monitor */</script>
     <script src="/static/live-monitor.js?v=2"></script>
     <script src="/static/paper-trader.js?v=1"></script>

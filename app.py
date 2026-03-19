@@ -2384,6 +2384,27 @@ async def crude_evaluate():
         return {'success': False, 'error': str(e)}
 
 
+@app.post("/api/crude/add-lots")
+async def crude_add_lots(request: Request):
+    """Add extra lots to the current active crude trade (scale-in).
+
+    Body: { "lots": 2 }  — defaults to 1 if not provided.
+    """
+    from crude_trader import add_lots_to_trade
+    import traceback as _tb
+    try:
+        body  = await request.json()
+        extra = int(body.get("lots", 1))
+    except Exception:
+        extra = 1
+    try:
+        result = await asyncio.to_thread(add_lots_to_trade, extra)
+        return JSONResponse(result)
+    except Exception as exc:
+        _tb.print_exc()
+        return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+
+
 @app.get("/api/crude/history")
 async def crude_history():
     """Return today's completed Crude trades from log file."""
