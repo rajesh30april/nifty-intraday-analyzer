@@ -1960,10 +1960,16 @@ async def auto_trader_status():
         trade["lots"]               = lots
         trade["current_option_ltp"] = round(ltp, 2) if ltp else None
         trade["nifty_current"]      = round(nifty, 2) if nifty else None
-        trade["trailing_sl"]        = trade["stop_loss"]   # Nifty spot trailing SL (internal)
+        # trailing_sl = CURRENT stop-loss (moves up/down as trail fires)
+        # original_sl = SL at the moment of entry (never changes)
+        # UI uses these two to know whether the trail has actually advanced.
+        trade["trailing_sl"]        = round(trade["stop_loss"], 2)
+        trade["original_sl"]        = round(at_state.entry_nifty_sl, 2) if at_state.entry_nifty_sl else trade["stop_loss"]
 
-    # Always expose live Nifty price at top level
+    # Always expose live Nifty price + auto-exit time at top level
+    from auto_trader import EXIT_TIME
     status["nifty_current"] = round(at_state.last_nifty_price, 2) if at_state.last_nifty_price else None
+    status["exit_time"]     = EXIT_TIME.strftime("%H:%M") if EXIT_TIME else None
 
     return {"success": True, **status}
 

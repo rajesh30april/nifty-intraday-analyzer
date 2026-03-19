@@ -537,12 +537,54 @@ function renderAutoTrader(data) {
             distTgt.textContent = `₹${d} away`;
         }
 
+        // ── Strike price — extract from Kite tradingsymbol ─────────
+        // Format: NIFTY{YY}{M}{DD}{STRIKE}{CE/PE}  e.g. NIFTY2632422900PE
+        const strikeEl = document.getElementById('at-strike');
+        if (strikeEl) {
+            const sym   = (t.instrument || '').replace('NFO:', '');
+            const smatch = sym.match(/NIFTY\d{2}[0-9OND]\d{2}(\d+)(CE|PE)/i);
+            if (smatch) {
+                const strike    = parseInt(smatch[1], 10).toLocaleString('en-IN');
+                const optType   = smatch[2].toUpperCase();
+                const optColor  = optType === 'CE' ? 'text-green-400' : 'text-red-400';
+                strikeEl.innerHTML = `<span class="text-[#ffc220]">${strike}</span> <span class="${optColor} text-[9px] font-black">${optType}</span>`;
+                strikeEl.title     = `Full symbol: ${sym}`;
+            } else {
+                strikeEl.textContent = sym || '--';
+            }
+        }
+
+        // ── Trailing SL — CURRENT Nifty SL (advances as trail fires) ─
+        // trailing_sl = current (possibly trailed) SL level
+        // original_sl = SL at the moment of entry (fixed reference point)
+        const trailEl = document.getElementById('at-trail-sl');
+        if (trailEl) {
+            const tsl     = t.trailing_sl ?? t.stop_loss;
+            const origSl  = t.original_sl  ?? tsl;
+            if (tsl) {
+                // Trail has fired if current SL has moved >0.5 pts from original SL
+                const moved = Math.abs(tsl - origSl) > 0.5;
+                trailEl.textContent = `₹${tsl.toFixed(0)}`;
+                trailEl.className   = moved
+                    ? 'text-xs font-black text-green-400 animate-pulse'  // profit-locked ✅
+                    : 'text-xs font-black text-orange-400';              // original SL still active
+                trailEl.title = moved
+                    ? `🔒 Trail fired! Original SL ₹${origSl.toFixed(0)} → Now ₹${tsl.toFixed(0)}`
+                    : `Stop-loss @ Nifty ₹${tsl.toFixed(0)} (original — trail not fired yet)`;
+            } else {
+                trailEl.textContent = '--';
+            }
+        }
+
         // Row 2 — live prices & quantity
         const niftyCur = data.nifty_current || t.nifty_current;
         setT('at-nifty-live',  niftyCur ? `₹${niftyCur}` : '⏳ loading…');
         setT('at-opt-ltp',     ltp ? `₹${ltp}` : '⏳ loading…');
+
+        // Row 3 — entry premium, qty, auto-exit time
         setT('at-entry-prem',  t.entry_premium ? `₹${t.entry_premium.toFixed(2)}` : '⏳ loading…');
         setT('at-qty-lots',    t.lots != null  ? `${t.quantity} / ${t.lots}L` : '--');
+        setT('at-exit-time-badge', data.exit_time || '--');
 
         // ── Exchange SL-M sync badge ──────────────────────────────
         const slBadge = document.getElementById('at-sl-sync-badge');
@@ -735,9 +777,12 @@ function _renderServerEventLog(events) {
 
 // ── Sync existing Zerodha position into app ───────────────────────
 async function syncFromZerodha() {
+    // Works from both the "no position" panel button AND the banner Sync button.
+    // Show feedback via toast — the no-pos msg is a secondary indicator.
     const btn = document.getElementById('at-sync-zd-btn');
     const msg = document.getElementById('at-sync-zd-msg');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Scanning Zerodha…'; }
+    _atShowToast('⏳ Scanning Zerodha for open positions…', 'info');
     if (msg) {
         msg.textContent  = '⏳ Fetching live Nifty spot + your positions… (may take ~5s)';
         msg.className    = 'text-[10px] mt-1 text-yellow-400';

@@ -819,8 +819,8 @@
                       <div id="at-upnl" class="text-sm font-black">--</div>
                     </div>
                   </div>
-                  <!-- Row 2: Option LTP / Entry Premium / Quantity / Live Nifty -->
-                  <div class="grid grid-cols-4 gap-2 text-center">
+                  <!-- Row 2: Live Nifty / Option LTP / Strike / Trailing SL -->
+                  <div class="grid grid-cols-4 gap-2 text-center mb-2">
                     <div class="bg-gray-900/60 rounded-lg p-2">
                       <div class="text-[10px] text-gray-500">Live Nifty</div>
                       <div id="at-nifty-live" class="text-xs font-bold text-[#ffc220]">--</div>
@@ -830,12 +830,33 @@
                       <div id="at-opt-ltp" class="text-xs font-bold text-white">--</div>
                     </div>
                     <div class="bg-gray-900/60 rounded-lg p-2">
-                      <div class="text-[10px] text-gray-500">Entry Premium</div>
+                      <div class="text-[10px] text-gray-500">⚡ Strike</div>
+                      <div id="at-strike" class="text-xs font-black text-[#ffc220]">--</div>
+                    </div>
+                    <div class="bg-gray-900/60 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-500">🔄 Trail SL</div>
+                      <div id="at-trail-sl" class="text-xs font-black text-orange-400" title="Trailing Nifty stop-loss">--</div>
+                    </div>
+                  </div>
+                  <!-- Row 3: Entry Premium / Qty·Lots / Auto-exit / Sync -->
+                  <div class="grid grid-cols-4 gap-2 text-center">
+                    <div class="bg-gray-900/60 rounded-lg p-2">
+                      <div class="text-[10px] text-gray-500">Entry Prem</div>
                       <div id="at-entry-prem" class="text-xs font-bold text-gray-300">--</div>
                     </div>
                     <div class="bg-gray-900/60 rounded-lg p-2">
                       <div class="text-[10px] text-gray-500">Qty / Lots</div>
                       <div id="at-qty-lots" class="text-xs font-bold text-white">--</div>
+                    </div>
+                    <div class="bg-gray-900/60 rounded-lg p-2" title="Auto-exit if not closed by this time">
+                      <div class="text-[10px] text-gray-500">Auto-Exit</div>
+                      <div id="at-exit-time-badge" class="text-xs font-bold text-purple-400">--</div>
+                    </div>
+                    <div class="bg-gray-900/60 rounded-lg p-2 flex items-center justify-center">
+                      <button onclick="syncFromZerodha()" title="Order placed in Zerodha but not showing here? Click to sync."
+                        class="text-[9px] font-bold text-gray-400 hover:text-[#ffc220] border border-gray-600 hover:border-[#ffc220] rounded px-2 py-1 transition-all leading-tight text-center">
+                        🔗 Sync<br>Zerodha
+                      </button>
                     </div>
                   </div>
                 </div>
