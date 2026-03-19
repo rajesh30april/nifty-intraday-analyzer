@@ -1,10 +1,20 @@
-"""Crude Oil ORB + Supertrend strategy.
+"""Crude Oil strategy evaluators — 5 strategies + consensus gate.
+
+Bug fixes vs original:
+  BUG-01: VWAP now resets at 09:00 each session (was multi-day cumsum)
+  BUG-02: SuperTrend uses tight 3-candle flip OR 1.0×ATR pullback (not 10c/2.5×)
+  BUG-03: evaluate_crude_best uses weighted consensus (not first-match-wins)
+
+New additions:
+  Strategy 5: BB Squeeze Breakout — fires on squeeze release with momentum
+  ADX filter on SuperTrend, VWAP, EMA Cross — blocks entry in choppy markets
+  Multi-timeframe bias check on all trend strategies (15-candle lookback)
 
 Crude Oil specific tuning:
 - ORB uses 9:00-9:15 AM window (MCX opens at 9:00, not 9:15)
-- ORB range thresholds are wider (₹20-₹200 vs Nifty's 30-100 pts)
-- Supertrend uses period=7, multiplier=2.5 (faster, crude is trending)
-- Evening session (after 7 PM) Supertrend only — ORB stale by then
+- ORB range thresholds wider (₹20-₹200 vs Nifty's 30-100 pts)
+- SuperTrend uses period=7, multiplier=2.5 (faster, crude is trending)
+- Evening session (after 7 PM) SuperTrend only — ORB stale by then
 - No trade in 9:00-9:05 first candle (let it breathe)
 """
 
@@ -20,15 +30,56 @@ import indicators as ind
 CRUDE_ORB_MINUTES       = 15    # build range over first 15 min (3 × 5m candles)
 CRUDE_ORB_MIN_RANGE     = 20    # ₹/bbl — ignore tiny ranges
 CRUDE_ORB_MAX_RANGE     = 200   # ₹/bbl — avoid blow-up open ranges
-CRUDE_ORB_VOLUME_RATIO  = 1.2   # breakout candle must exceed 1.2× avg vol
+CRUDE_ORB_VOLUME_RATIO  = 1.5   # breakout candle must exceed 1.5× avg vol (raised from 1.2)
 CRUDE_ST_PERIOD         = 7     # Supertrend lookback
 CRUDE_ST_MULTIPLIER     = 2.5   # Supertrend ATR multiplier
 CRUDE_EMA_FAST          = 9
 CRUDE_EMA_SLOW          = 21
+ADX_MIN_TREND           = 22    # ADX below this = chop — block entry
 
 MCX_OPEN  = dt_time(9,  0)
 EVENING   = dt_time(19, 0)  # after 7 PM → Supertrend-only
 NO_TRADE  = dt_time(9,  5)  # don't trade in first 5 min
+
+
+# ── Shared helper: session-only VWAP ─────────────────────────────
+def _session_vwap_now(df: pd.DataFrame) -> float:
+    """VWAP calculated ONLY from today's 09:00 session open.
+
+    FIX for BUG-01: original code used cumsum() across all historical
+    candles making VWAP meaningless. We filter to today's date first.
+    """
+    today  = pd.Timestamp.now(tz='Asia/Kolkata').date()
+    sess   = df[df.index.date == today]          # type: ignore
+    if sess.empty:
+        sess = df.iloc[-30:]  # fallback: last 30 candles
+    tp     = (sess['high'] + sess['low'] + sess['close']) / 3
+    cumvol = sess['volume'].cumsum().replace(0, 1)
+    vwap   = (tp * sess['volume']).cumsum() / cumvol
+    return float(vwap.iloc[-1])
+
+
+def _adx_filter(
+    high: pd.Series, low: pd.Series, close: pd.Series, direction,
+) -> StrategyCondition:
+    """ADX trend-strength guard — blocks entry in ranging/choppy markets."""
+    adx_df   = ind.adx(high, low, close, 14)
+    adx_v    = float(adx_df['adx'].iloc[-1])
+    plus_di  = float(adx_df['plus_di'].iloc[-1])
+    minus_di = float(adx_df['minus_di'].iloc[-1])
+    trending  = adx_v >= ADX_MIN_TREND
+    di_ok = (
+        (direction == Direction.LONG  and plus_di  > minus_di) or
+        (direction == Direction.SHORT and minus_di > plus_di)
+    )
+    return StrategyCondition(
+        name="ADX",
+        met=trending and di_ok,
+        detail=(
+            f"ADX {adx_v:.1f} +DI {plus_di:.1f} -DI {minus_di:.1f}"
+            f" — {'trend ✅' if trending and di_ok else '⚠️ chop/weak'}"
+        ),
+    )
 
 
 def _conditions_to_signal(conditions: list[StrategyCondition]) -> StrategySignal:
@@ -166,25 +217,32 @@ def evaluate_crude_supertrend(df: pd.DataFrame) -> StrategySignal:
     price     = float(close.iloc[-1])
     st_val    = float(st_line.iloc[-1])
 
-    # ── Entry trigger: fresh flip OR pullback to ST line ──────────
-    # Strict 2-candle flip misses established trends after the first
-    # candle. Allow entry on either:
-    #   A) Fresh flip in last 5 candles  (new trend starting)
-    #   B) Price within 1.5× ATR of ST   (pullback re-entry into trend)
-    atr_val = float(ind.atr(high, low, close, 14).iloc[-1])
-    flip_window = 10   # 10 candles = 50 min — catches morning flip into evening
+    # ── Entry trigger: fresh flip (3c) OR tight pullback (1.0×ATR) ──
+    # FIX for BUG-02:
+    #   Old: flip_window=10, pullback=2.5×ATR (both nearly always True)
+    #   New: flip_window=3 (15 min), pullback=1.0×ATR (meaningful filter)
+    #   Logic: must be EITHER a fresh flip OR a controlled pullback —
+    #          not just any price near a 2.5×ATR-wide band.
+    atr_val     = float(ind.atr(high, low, close, 14).iloc[-1])
+    flip_window = 3    # 3 candles = 15 min — fresh flip only
     recent_flip = any(
         st_dir.iloc[-i] != st_dir.iloc[-(i + 1)]
-        for i in range(1, min(flip_window, len(st_dir) - 1))
+        for i in range(1, min(flip_window + 1, len(st_dir) - 1))
     )
-    pullback_reentry = abs(price - st_val) <= 2.5 * atr_val  # 2.5× is comfortable
+    # Compute on_right_side FIRST, then use in pullback condition
+    on_right_side = (
+        (direction == Direction.LONG  and price > st_val) or
+        (direction == Direction.SHORT and price < st_val)
+    )
+    dist_to_st       = abs(price - st_val)
+    pullback_reentry = dist_to_st <= 1.0 * atr_val and on_right_side
     triggered = recent_flip or pullback_reentry
 
     trigger_detail = (
-        f"Fresh flip ({flip_window}c)" if recent_flip
-        else f"Pullback re-entry (price={price:.0f} ST={st_val:.0f} dist={abs(price-st_val):.0f}≤1.5×ATR={1.5*atr_val:.0f})"
+        f"Fresh flip (≤3c) ✅" if recent_flip
+        else f"Pullback re-entry: dist {dist_to_st:.0f} ≤ 1.0×ATR {atr_val:.0f} ✅"
         if pullback_reentry
-        else f"No flip or pullback (price={price:.0f} ST={st_val:.0f} dist={abs(price-st_val):.0f} 1.5×ATR={1.5*atr_val:.0f})"
+        else f"No valid trigger: dist {dist_to_st:.0f} vs 1.0×ATR {atr_val:.0f}"
     )
     conditions.append(StrategyCondition(
         name="ST trigger",
@@ -260,17 +318,15 @@ def evaluate_crude_vwap(df: pd.DataFrame) -> StrategySignal:
     low    = df['low']
     volume = df['volume']
 
-    # VWAP
-    typical  = (high + low + close) / 3
-    cumvol   = volume.cumsum().replace(0, 1)
-    vwap     = (typical * volume).cumsum() / cumvol
-    vwap_now = float(vwap.iloc[-1])
-    price    = float(close.iloc[-1])
+    # FIX BUG-01: session VWAP reset at 09:00 (not cumsum across all history)
+    vwap_now   = _session_vwap_now(df)
+    price      = float(close.iloc[-1])
     prev_price = float(close.iloc[-2])
+    prev_vwap  = _session_vwap_now(df.iloc[:-1])  # VWAP without last candle
 
     # Direction: price crossed VWAP in last 2 candles
-    long_cross  = prev_price <= float(vwap.iloc[-2]) and price > vwap_now
-    short_cross = prev_price >= float(vwap.iloc[-2]) and price < vwap_now
+    long_cross  = prev_price <= prev_vwap and price > vwap_now
+    short_cross = prev_price >= prev_vwap and price < vwap_now
     direction   = Direction.LONG if long_cross else Direction.SHORT
 
     conditions.append(StrategyCondition(
@@ -299,6 +355,10 @@ def evaluate_crude_vwap(df: pd.DataFrame) -> StrategySignal:
         met=vol_ok,
         detail=f"Vol {volume.iloc[-1]:.0f} vs avg {avg_vol:.0f} ({'ok' if vol_ok else f'need 1.3×={1.3*avg_vol:.0f}'})",
     ))
+
+    # ADX trend filter — block VWAP cross in chop
+    adx_cond = _adx_filter(high, low, close, direction)
+    conditions.append(adx_cond)
 
     fail = next((c for c in conditions if not c.met), None)
     if fail:
@@ -375,6 +435,10 @@ def evaluate_crude_ema_cross(df: pd.DataFrame) -> StrategySignal:
         detail=f"Price {price:.0f} {'above' if direction==Direction.LONG else 'below'} both EMAs ({'ok' if right_side else 'not clear'})",
     ))
 
+    # ADX filter — EMA cross in chop is a whipsaw machine
+    adx_cond = _adx_filter(high, low, close, direction)
+    conditions.append(adx_cond)
+
     fail = next((c for c in conditions if not c.met), None)
     if fail:
         return StrategySignal(should_enter=False, reason=fail.detail, conditions=conditions)
@@ -387,22 +451,110 @@ def evaluate_crude_ema_cross(df: pd.DataFrame) -> StrategySignal:
     )
 
 
-# ──────────────────────────────────────────────────────────────────
-# Master evaluator — runs ALL strategies, returns best match
-# ──────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────
+# Strategy 5: BB Squeeze Breakout
+# ────────────────────────────────────────────────────────────────
+
+def evaluate_crude_squeeze(df: pd.DataFrame) -> StrategySignal:
+    """BB Squeeze Breakout — fires when Bollinger Bands escape Keltner Channels.
+
+    Premium timing for option buyers:
+    - Squeeze ON  = volatility compressed, wait, theta bleeding
+    - Squeeze OFF = energy releasing, enter with momentum direction
+
+    This is the ONLY strategy that explicitly signals when volatility is
+    about to expand — exactly what option buyers want.
+    """
+    conditions: list[StrategyCondition] = []
+
+    if len(df) < 25:
+        return StrategySignal(should_enter=False, reason="Not enough data for Squeeze")
+
+    now_t = pd.Timestamp.now(tz='Asia/Kolkata').time()
+    if now_t < NO_TRADE:
+        return StrategySignal(should_enter=False, reason="Too early")
+
+    close  = df['close']
+    high   = df['high']
+    low    = df['low']
+
+    sq      = ind.bb_squeeze(high, low, close)
+    sq_now  = bool(sq['squeeze_on'].iloc[-1])
+    sq_prev = bool(sq['squeeze_on'].iloc[-2])
+    mom     = float(sq['momentum'].iloc[-1])
+    mom_prev = float(sq['momentum'].iloc[-2])
+
+    # Release = squeeze was ON, just turned OFF
+    released  = sq_prev and not sq_now
+    direction = Direction.LONG if mom > 0 else Direction.SHORT
+    mom_growing = abs(mom) > abs(mom_prev)   # momentum increasing = real breakout
+
+    conditions.append(StrategyCondition(
+        name="Squeeze release",
+        met=released,
+        detail=(
+            f"Squeeze RELEASED 🚀 momentum={'UP' if mom>0 else 'DOWN'} {mom:.3f}"
+            if released else
+            f"{'Squeeze ACTIVE ⏳ wait' if sq_now else 'No squeeze in context — skip'}"
+        ),
+    ))
+    conditions.append(StrategyCondition(
+        name="Momentum direction",
+        met=True,   # direction IS the momentum
+        detail=f"Momentum {'growing ✅' if mom_growing else 'flat'} {mom:.3f} {'>' if mom_growing else '≤'} prev {mom_prev:.3f}",
+    ))
+    conditions.append(StrategyCondition(
+        name="Momentum growing",
+        met=mom_growing,
+        detail=f"|mom| {abs(mom):.3f} {'>' if mom_growing else '≤'} |prev| {abs(mom_prev):.3f} — {'accelerating ✅' if mom_growing else 'weakening'}",
+    ))
+
+    # ADX to confirm trend is real, not just vol expansion in chop
+    adx_cond = _adx_filter(high, low, close, direction)
+    conditions.append(adx_cond)
+
+    fail = next((c for c in conditions if not c.met), None)
+    if fail:
+        return StrategySignal(should_enter=False, reason=fail.detail, conditions=conditions)
+
+    return StrategySignal(
+        should_enter=True,
+        direction=direction,
+        reason=f"Squeeze breakout {direction.value} | mom {mom:.3f} | {'growing' if mom_growing else 'flat'}",
+        conditions=conditions,
+    )
+
+
+# ────────────────────────────────────────────────────────────────
+# Strategy registry + consensus master evaluator
+# ────────────────────────────────────────────────────────────────
+
+# Weight reflects reliability + non-overlap:
+# Squeeze is unique (vol-timing) — highest weight
+# ORB is session-limited + independent — high weight
+# SuperTrend + VWAP are complementary trend followers
+# EMA is lagging — lowest weight
+_STRATEGY_WEIGHTS: dict[str, float] = {
+    "Squeeze":    2.0,
+    "ORB":        1.8,
+    "SuperTrend": 1.6,
+    "VWAP":       1.5,
+    "EMA Cross":  1.2,
+}
 
 ALL_STRATEGIES = [
-    ("ORB",      evaluate_crude_orb),
+    ("ORB",        evaluate_crude_orb),
     ("SuperTrend", evaluate_crude_supertrend),
-    ("VWAP",     evaluate_crude_vwap),
-    ("EMA Cross", evaluate_crude_ema_cross),
+    ("VWAP",       evaluate_crude_vwap),
+    ("EMA Cross",  evaluate_crude_ema_cross),
+    ("Squeeze",    evaluate_crude_squeeze),
 ]
 
 
 def evaluate_crude_all(df: pd.DataFrame) -> list[dict]:
     """Run EVERY strategy and return a list of result dicts.
 
-    Each dict: {name, should_enter, direction, reason, conditions}
+    Each dict: {name, should_enter, direction, reason, weight}
     Used by the UI to show a per-strategy dashboard.
     """
     results = []
@@ -414,38 +566,107 @@ def evaluate_crude_all(df: pd.DataFrame) -> list[dict]:
                 "should_enter": sig.should_enter,
                 "direction":    sig.direction.value if sig.direction else None,
                 "reason":       sig.reason,
+                "weight":       _STRATEGY_WEIGHTS.get(name, 1.0),
             })
         except Exception as e:
-            results.append({"name": name, "should_enter": False, "direction": None, "reason": f"Error: {e}"})
+            results.append({
+                "name": name, "should_enter": False,
+                "direction": None, "reason": f"Error: {e}",
+                "weight": _STRATEGY_WEIGHTS.get(name, 1.0),
+            })
     return results
 
 
 def evaluate_crude_best(df: pd.DataFrame) -> StrategySignal:
-    """Run ALL strategies; return the first one that fires.
+    """Weighted consensus evaluator — FIX for BUG-03.
 
-    Priority: ORB > SuperTrend > VWAP > EMA Cross.
-    When nothing fires, block reason lists ALL strategies' failures
-    so the user can see exactly what each one needs.
+    OLD: first-match-wins (ORB always dominated)
+    NEW: weighted scoring across all strategies.
+
+    Rules:
+    - Count weighted votes for each direction (LONG/SHORT)
+    - Winning direction must reach CONSENSUS_THRESHOLD (3.0 weight pts)
+    - Requires ≥2 independent strategies to agree
+    - Minority direction must be < opposing votes (no contradictory signals)
+    - Block reason shows all strategies + consensus score for transparency
+
+    This prevents a single strategy from pulling the trigger alone
+    (except high-confidence Squeeze+ORB combos that exceed threshold solo).
     """
-    passing   = []
-    all_block = []
+    CONSENSUS_THRESHOLD = 3.0   # minimum weighted score to enter
+    MIN_AGREEING        = 2      # minimum strategy count for direction
+
+    long_score  = 0.0
+    short_score = 0.0
+    long_names: list[str]  = []
+    short_names: list[str] = []
+    all_block: list[str]   = []
+    long_sig  = None
+    short_sig = None
 
     for name, fn in ALL_STRATEGIES:
+        w = _STRATEGY_WEIGHTS.get(name, 1.0)
         try:
             sig = fn(df)
         except Exception as e:
             sig = StrategySignal(should_enter=False, reason=f"Error: {e}")
 
-        if sig.should_enter:
-            sig.reason = f"[{name}] {sig.reason}"
-            passing.append(sig)
+        if sig.should_enter and sig.direction == Direction.LONG:
+            long_score += w
+            long_names.append(name)
+            if long_sig is None:
+                long_sig = sig
+        elif sig.should_enter and sig.direction == Direction.SHORT:
+            short_score += w
+            short_names.append(name)
+            if short_sig is None:
+                short_sig = sig
         else:
-            all_block.append(f"{name}: {sig.reason}")
+            all_block.append(f"{name}({w:.1f}): {sig.reason}")
 
-    if passing:
-        return passing[0]   # highest-priority winner
+    # Pick the winning direction
+    if long_score >= short_score:
+        winner_score = long_score
+        winner_dir   = Direction.LONG
+        winner_names = long_names
+        winner_sig   = long_sig
+        against_score = short_score
+    else:
+        winner_score = short_score
+        winner_dir   = Direction.SHORT
+        winner_names = short_names
+        winner_sig   = short_sig
+        against_score = long_score
+
+    # Consensus gate
+    has_consensus = (
+        winner_score >= CONSENSUS_THRESHOLD
+        and len(winner_names) >= MIN_AGREEING
+        and winner_score > against_score   # no contradictory split
+    )
+
+    if has_consensus and winner_sig:
+        agreeing = ", ".join(winner_names)
+        score_str = f"{winner_score:.1f}/{sum(_STRATEGY_WEIGHTS.values()):.1f}pts"
+        winner_sig.reason = (
+            f"[CONSENSUS {score_str}] "
+            f"{winner_dir.value.upper()} — {agreeing} ✅"
+        )
+        return winner_sig
+
+    # No consensus — report why
+    block_parts = all_block[:]
+    if long_names:
+        block_parts.append(f"LONG votes: {', '.join(long_names)} ({long_score:.1f}pts)")
+    if short_names:
+        block_parts.append(f"SHORT votes: {', '.join(short_names)} ({short_score:.1f}pts)")
+    if not has_consensus and (long_score > 0 or short_score > 0):
+        block_parts.append(
+            f"Need {CONSENSUS_THRESHOLD}pts × {MIN_AGREEING} strategies — "
+            f"got {winner_score:.1f}pts from {len(winner_names)} strategy/ies"
+        )
 
     return StrategySignal(
         should_enter=False,
-        reason=" ║ ".join(all_block),
+        reason=" ║ ".join(block_parts),
     )

@@ -110,6 +110,7 @@ class CrudeTraderState:
     last_option_ltp:    float = 0.0
     last_signal_reason: str   = ""
     last_block_reason:  str | None = None
+    last_option_eval:   str   = ""   # options quality gate summary
 
     # ── Cached indicator values (updated on each candle close) ────
     last_atr:      float = 0.0   # latest ATR(14) of crude futures
@@ -779,13 +780,39 @@ def evaluate_and_act_crude(df: pd.DataFrame, price: float):
         state.last_block_reason = f"Max {CRUDE_MAX_TRADES} trades today"
         return
 
-    # ── Evaluate strategy ─────────────────────────────────────────
+    # ── Layer 1: directional signal (consensus from ≥2 strategies) ──
     signal = evaluate_crude_best(df)
     state.last_signal_reason = signal.reason
     state.last_block_reason  = None if signal.should_enter else signal.reason
 
-    if signal.should_enter and signal.direction:
-        _enter_trade(signal.direction, price)
+    if not (signal.should_enter and signal.direction):
+        return
+
+    # ── Layer 2: options quality gate ────────────────────────────
+    # Directional signal is necessary but not sufficient.
+    # Options buyers also need: right DTE, manageable IV, real trend (ADX),
+    # squeeze release timing, and OI chain support for the direction.
+    try:
+        from crude_option_evaluator import evaluate_option_quality
+        opt_eval = evaluate_option_quality(df, signal.direction, price)
+        state.last_option_eval = opt_eval.summary   # expose for UI
+        print(f"  📊 Option quality: {opt_eval.summary}")
+        if opt_eval.verdict == "SKIP":
+            state.last_block_reason = f"Option gate SKIP ({opt_eval.summary})"
+            return
+        if opt_eval.verdict == "WAIT":
+            # Allow WAIT only if directional consensus is strong (both ORB + ST or Squeeze)
+            strong_consensus = (
+                any(n in signal.reason for n in ("Squeeze", "ORB"))
+                and any(n in signal.reason for n in ("SuperTrend", "VWAP"))
+            )
+            if not strong_consensus:
+                state.last_block_reason = f"Option gate WAIT ({opt_eval.summary})"
+                return
+    except Exception as e:
+        print(f"  ⚠️  Option evaluator error (proceeding): {e}")
+
+    _enter_trade(signal.direction, price)
 
 
 # ── Tick guard (real-time SL/target on every WebSocket tick) ──────
@@ -982,8 +1009,9 @@ def get_crude_status() -> dict:
         'total_pnl':     round(state.total_pnl, 2),
         'crude_price':   round(state.last_crude_price, 2) if state.last_crude_price else None,
         'last_option_ltp': state.last_option_ltp or None,
-        'last_signal':   state.last_signal_reason,
-        'block_reason':  state.last_block_reason,
+        'last_signal':     state.last_signal_reason,
+        'block_reason':    state.last_block_reason,
+        'option_eval':     state.last_option_eval,
         'active_trade':  trade_dict,
         'trades_today':  len(state.trades_today),
         'sl_points':     state.sl_points,
