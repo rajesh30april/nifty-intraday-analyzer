@@ -6,6 +6,7 @@ Fallback : Yahoo only if Kite not logged in (volume stays 0)
 """
 
 import os
+import datetime as _dt
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
@@ -13,6 +14,25 @@ from datetime import datetime, timedelta
 # Walmart corporate proxy
 PROXY = "http://sysproxy.wal-mart.com:8080"
 os.environ.setdefault("HTTP_PROXY", PROXY)
+
+# ── NFO instruments cache ─────────────────────────────────────────────────
+# instruments('NFO') downloads ~50k rows — cache it for the session day
+# so repeated calls to _fetch_futures_volume don't hammer the API.
+_nfo_cache: list | None = None
+_nfo_cache_date: _dt.date | None = None
+_nfo_fut_token_cache: dict[str, int] = {}   # interval → token (no expiry change mid-day)
+
+
+def _get_nfo_instruments() -> list:
+    """Return NFO instruments, cached per calendar day."""
+    global _nfo_cache, _nfo_cache_date
+    today = _dt.date.today()
+    if _nfo_cache is not None and _nfo_cache_date == today:
+        return _nfo_cache
+    from kite_integration import kite_manager  # noqa: PLC0415
+    _nfo_cache = kite_manager.kite.instruments("NFO")
+    _nfo_cache_date = today
+    return _nfo_cache
 os.environ.setdefault("HTTPS_PROXY", PROXY)
 os.environ.setdefault("http_proxy", PROXY)
 os.environ.setdefault("https_proxy", PROXY)
@@ -85,23 +105,27 @@ def _fetch_futures_volume(interval: str, period: str) -> "pd.Series | None":
     """
     try:
         from kite_integration import kite_manager  # noqa: PLC0415
-        import datetime  # noqa: PLC0415
         if not kite_manager.is_authenticated:
             return None
 
-        # Dynamically find near-month NIFTY FUT token
-        instruments = kite_manager.kite.instruments("NFO")
-        today = datetime.date.today()
-        fut = [
-            i for i in instruments
-            if i["tradingsymbol"].startswith("NIFTY")
-            and i["instrument_type"] == "FUT"
-            and i["expiry"] >= today
-        ]
-        if not fut:
-            return None
-        fut.sort(key=lambda x: x["expiry"])
-        token = fut[0]["instrument_token"]
+        # Dynamically find near-month NIFTY FUT token (cached per day)
+        # instruments('NFO') is slow (~4s) — cache token to avoid re-fetching
+        today = _dt.date.today()
+        if "nifty_fut" in _nfo_fut_token_cache:
+            token = _nfo_fut_token_cache["nifty_fut"]
+        else:
+            instruments = _get_nfo_instruments()
+            fut = [
+                i for i in instruments
+                if i["tradingsymbol"].startswith("NIFTY")
+                and i["instrument_type"] == "FUT"
+                and i["expiry"] >= today
+            ]
+            if not fut:
+                return None
+            fut.sort(key=lambda x: x["expiry"])
+            token = fut[0]["instrument_token"]
+            _nfo_fut_token_cache["nifty_fut"] = token   # cache for session
 
         # Map interval to Zerodha format
         interval_map = {
@@ -116,7 +140,7 @@ def _fetch_futures_volume(interval: str, period: str) -> "pd.Series | None":
             "60d": 60, "1mo": 30, "3mo": 60, "6mo": 60,
         }
         days = period_days.get(period, 5)
-        from_date = today - datetime.timedelta(days=days + 3)  # +3 for weekends
+        from_date = today - _dt.timedelta(days=days + 3)  # +3 for weekends
 
         raw = kite_manager.kite.historical_data(
             token, from_date, today, kite_interval

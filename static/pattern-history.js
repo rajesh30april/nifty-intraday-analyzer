@@ -26,7 +26,7 @@ async function phScanDay() {
     const dateInp = document.getElementById('ph-date-input');
     const date    = dateInp?.value || new Date().toISOString().slice(0, 10);
 
-    _phShowLoading(`Scanning ${date} for patterns…`);
+    _phShowLoading(`Scanning ${date} for patterns… (first scan ~10s, cached after)`);
 
     try {
         const r = await fetch(`/api/day-chart?date=${date}`);
