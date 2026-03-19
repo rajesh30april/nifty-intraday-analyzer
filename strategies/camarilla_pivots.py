@@ -107,17 +107,42 @@ def evaluate_camarilla(df: pd.DataFrame) -> StrategySignal:
     ))
 
     # ── Condition 3: Candle type confirms ────────────────────────
-    curr = df.iloc[-1]
-    c_bull = float(curr["close"]) > float(curr["open"])
+    # REVERSAL modes (H3/L3): need a direction-flip candle — you're fading
+    #   the level so you need the candle to show the turn.
+    # BREAKOUT modes (H4/L4): price already broke and is well beyond the
+    #   level. A single bullish candle inside a downtrend (or bearish inside
+    #   an uptrend) is just noise. Requiring a bearish candle here blocked
+    #   valid entries 382pts into a breakdown (price=23255, L4=23637).
+    #   For breakouts, just confirm the close stays on the right side of
+    #   the H4/L4 level — the breakout itself is the confirmation.
+    curr      = df.iloc[-1]
+    c_bull    = float(curr["close"]) > float(curr["open"])
+    c_close   = float(curr["close"])
 
-    if "short" in mode:
-        candle_ok = not c_bull   # need bearish candle at H3/H4
-        candle_detail = f"{'✅ bearish candle confirms short' if candle_ok else '❌ bullish candle — wait for reversal'}"
-    elif "long" in mode:
-        candle_ok = c_bull       # need bullish candle at L3/L4
-        candle_detail = f"{'✅ bullish candle confirms long' if candle_ok else '❌ bearish candle — wait for reversal'}"
+    if mode == "reversal_short":
+        candle_ok    = not c_bull
+        candle_detail = f"{'✅ bearish candle confirms reversal short' if candle_ok else '❌ bullish candle — wait for rejection'}"
+    elif mode == "reversal_long":
+        candle_ok    = c_bull
+        candle_detail = f"{'✅ bullish candle confirms reversal long' if candle_ok else '❌ bearish candle — wait for bounce'}"
+    elif mode == "breakout_short":
+        # Close must stay below L4 — the breakdown is the signal, not the candle colour
+        candle_ok    = c_close < lvls["L4"]
+        candle_detail = (
+            f"✅ close {c_close:.0f} below L4 {lvls['L4']:.0f} — breakdown confirmed"
+            if candle_ok else
+            f"❌ close {c_close:.0f} reclaimed L4 {lvls['L4']:.0f} — breakdown failed"
+        )
+    elif mode == "breakout_long":
+        # Close must stay above H4 — the breakout is the signal
+        candle_ok    = c_close > lvls["H4"]
+        candle_detail = (
+            f"✅ close {c_close:.0f} above H4 {lvls['H4']:.0f} — breakout confirmed"
+            if candle_ok else
+            f"❌ close {c_close:.0f} fell back below H4 {lvls['H4']:.0f} — breakout failed"
+        )
     else:
-        candle_ok = False
+        candle_ok    = False
         candle_detail = "N/A"
 
     conditions.append(StrategyCondition(
