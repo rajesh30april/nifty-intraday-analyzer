@@ -1507,21 +1507,35 @@
 
                 <!-- ── Margin Health Card ──────────────────────── -->
                 <div id="crude-margin-card"
-                  class="flex items-center justify-between gap-3 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 mb-3 text-[11px]">
-                  <div class="flex items-center gap-2">
-                    <span id="crude-margin-icon">💰</span>
-                    <span class="text-gray-400">Available:</span>
-                    <span id="crude-margin-avail" class="font-bold text-white">—</span>
+                  class="bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 mb-3 text-[11px]">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <div class="flex items-center gap-2">
+                      <span id="crude-margin-icon">💰</span>
+                      <span class="text-gray-400 font-semibold">Margin</span>
+                      <span id="crude-margin-badge" class="font-bold px-2 py-0.5 rounded-full bg-gray-700 text-gray-400 text-[10px]">—</span>
+                    </div>
+                    <button onclick="refreshCrudeMargin()"
+                      class="text-[10px] text-blue-400 hover:text-blue-300 underline">↺ refresh</button>
                   </div>
-                  <div class="flex items-center gap-3">
-                    <span class="text-gray-500">1L cost:</span>
-                    <span id="crude-margin-1lot" class="font-mono text-gray-300">—</span>
-                    <span class="text-gray-500">2L cost:</span>
-                    <span id="crude-margin-2lot" class="font-mono text-gray-300">—</span>
-                    <span id="crude-margin-badge" class="font-bold px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">—</span>
+                  <div class="grid grid-cols-3 gap-2 text-center">
+                    <div class="bg-gray-900 rounded-lg p-1.5">
+                      <div class="text-gray-500 text-[9px] uppercase tracking-wide">Free</div>
+                      <div id="crude-margin-free" class="font-bold text-green-300">—</div>
+                    </div>
+                    <div class="bg-gray-900 rounded-lg p-1.5">
+                      <div class="text-gray-500 text-[9px] uppercase tracking-wide">Utilised</div>
+                      <div id="crude-margin-used" class="font-bold text-yellow-300">—</div>
+                    </div>
+                    <div class="bg-gray-900 rounded-lg p-1.5">
+                      <div class="text-gray-500 text-[9px] uppercase tracking-wide">Total Net</div>
+                      <div id="crude-margin-net" class="font-bold text-gray-300">—</div>
+                    </div>
                   </div>
-                  <button onclick="refreshCrudeMargin()"
-                    class="text-[10px] text-blue-400 hover:text-blue-300 underline">↺ refresh</button>
+                  <div class="flex items-center gap-3 mt-1.5 text-[10px] text-gray-500">
+                    <span>1L cost: <span id="crude-margin-1lot" class="text-gray-300 font-mono">—</span></span>
+                    <span>2L cost: <span id="crude-margin-2lot" class="text-gray-300 font-mono">—</span></span>
+                    <span id="crude-margin-shortfall" class="text-red-400 font-semibold hidden"></span>
+                  </div>
                 </div>
 
                 <!-- ── Row 2: Evaluate + result msg ─────────────── -->
@@ -1977,7 +1991,7 @@
     <script src="/static/auto-trader.js?v=16"></script>
     <script src="/static/at-settings.js?v=1"></script>
     <script src="/static/at-health.js?v=1"></script>
-    <script src="/static/crude-trader.js?v=9"></script>
+    <script src="/static/crude-trader.js?v=10"></script>
     <script>/* bt-qty v1 — quantity field wired to backtest + live monitor */</script>
     <script src="/static/live-monitor.js?v=2"></script>
     <script src="/static/paper-trader.js?v=1"></script>

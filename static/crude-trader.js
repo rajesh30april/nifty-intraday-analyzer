@@ -124,12 +124,17 @@ async function syncCrudeCapital() {
     try {
         const r = await fetch('/api/crude/margin');
         const d = await r.json();
-        if (d.success && d.available > 0) {
-            const avail = Math.floor(d.available);    // exact rupees, no decimals
-            input.value = avail;
-            if (hint) hint.textContent = `✅ Zerodha balance: ₹${avail.toLocaleString('en-IN')}`;
-            _crudeLog(`💰 Capital synced from Zerodha → ₹${avail.toLocaleString('en-IN')}`, 'ok');
-            _crudeToast(`💰 Capital set to ₹${avail.toLocaleString('en-IN')}`, 'ok');
+        if (d.success && d.free > 0) {
+            const free  = Math.floor(d.free);     // FREE margin — not gross net
+            const used  = Math.round(d.utilised || 0);
+            const net   = Math.round(d.net || 0);
+            input.value = free;
+            const detail = used > 0
+                ? `free ₹${free.toLocaleString('en-IN')} | utilised ₹${used.toLocaleString('en-IN')} | net ₹${net.toLocaleString('en-IN')}`
+                : `₹${free.toLocaleString('en-IN')}`;
+            if (hint) hint.textContent = `✅ Zerodha: ${detail}`;
+            _crudeLog(`💰 Capital synced → ₹${free.toLocaleString('en-IN')} free (net ₹${net.toLocaleString('en-IN')}, used ₹${used.toLocaleString('en-IN')})`, 'ok');
+            _crudeToast(`💰 Free margin: ₹${free.toLocaleString('en-IN')}`, 'ok');
             await saveCrudeConfig();      // push to server state immediately
         } else {
             const why = d.error || 'Could not fetch Zerodha balance';
@@ -587,44 +592,55 @@ async function pollCrudeStatus() {
 
 // ── Margin Health Card ─────────────────────────────────────────────
 async function refreshCrudeMargin() {
-    const avail  = document.getElementById('crude-margin-avail');
-    const lot1   = document.getElementById('crude-margin-1lot');
-    const lot2   = document.getElementById('crude-margin-2lot');
-    const badge  = document.getElementById('crude-margin-badge');
-    const icon   = document.getElementById('crude-margin-icon');
-    if (!avail) return;
+    const elFree  = document.getElementById('crude-margin-free');
+    const elUsed  = document.getElementById('crude-margin-used');
+    const elNet   = document.getElementById('crude-margin-net');
+    const lot1    = document.getElementById('crude-margin-1lot');
+    const lot2    = document.getElementById('crude-margin-2lot');
+    const badge   = document.getElementById('crude-margin-badge');
+    const icon    = document.getElementById('crude-margin-icon');
+    const sfEl    = document.getElementById('crude-margin-shortfall');
+    if (!elFree) return;
 
-    avail.textContent = '…';
+    elFree.textContent = '…';
     try {
         const r = await fetch('/api/crude/margin');
         const d = await r.json();
         if (!d.success) {
-            avail.textContent = '❌ ' + (d.error || 'Error');
+            elFree.textContent = '❌ ' + (d.error || 'Error');
             return;
         }
         const fmt = v => v != null ? '₹' + Number(v).toLocaleString('en-IN') : '—';
-        avail.textContent = fmt(d.available);
-        lot1.textContent  = fmt(d.margin_1lot);
-        lot2.textContent  = fmt(d.margin_2lot);
 
-        // Badge: max tradeable lots
+        elFree.textContent = fmt(d.free);
+        elUsed.textContent = fmt(d.utilised);
+        elNet.textContent  = fmt(d.net);
+        lot1.textContent   = fmt(d.margin_1lot);
+        lot2.textContent   = fmt(d.margin_2lot);
+
+        // Shortfall warning
+        if (d.shortfall > 0 && sfEl) {
+            sfEl.textContent = `⛔ Top-up ₹${Number(d.shortfall).toLocaleString('en-IN')} needed`;
+            sfEl.classList.remove('hidden');
+        } else if (sfEl) sfEl.classList.add('hidden');
+
+        // Badge + icon
         const ml = d.max_lots || 0;
         if (ml >= 2) {
             badge.textContent = `✅ ${ml} lots OK`;
-            badge.className = 'font-bold px-2 py-0.5 rounded-full bg-green-900 text-green-300';
+            badge.className = 'font-bold px-2 py-0.5 rounded-full bg-green-900 text-green-300 text-[10px]';
             icon.textContent = '✅';
         } else if (ml === 1) {
             badge.textContent = '⚠️ 1 lot only';
-            badge.className = 'font-bold px-2 py-0.5 rounded-full bg-yellow-900 text-yellow-300';
+            badge.className = 'font-bold px-2 py-0.5 rounded-full bg-yellow-900 text-yellow-300 text-[10px]';
             icon.textContent = '⚠️';
         } else {
-            const short = d.shortfall ? ` (top-up ₹${Number(d.shortfall).toLocaleString('en-IN')})` : '';
-            badge.textContent = `⛔ No lots${short}`;
-            badge.className = 'font-bold px-2 py-0.5 rounded-full bg-red-900 text-red-300';
+            badge.textContent = '⛔ Can\'t trade';
+            badge.className = 'font-bold px-2 py-0.5 rounded-full bg-red-900 text-red-300 text-[10px]';
             icon.textContent = '⛔';
         }
     } catch (e) {
-        if (avail) avail.textContent = '❌ Network error';
+        if (elFree) elFree.textContent = '❌ Network error';
     }
 }
 

@@ -249,29 +249,76 @@ def _place_order(symbol: str, direction: Direction, qty: int, price: float) -> s
         return None
 
 
-def _fetch_available_margin() -> float | None:
-    """Pull actual available funds from Zerodha.
+def _fetch_available_margin() -> tuple[float, float, float] | tuple[None, None, None]:
+    """Return (free_margin, total_net, utilised) from Zerodha.
 
-    MCX (commodity) orders are funded from the equity segment when the
-    commodity segment is not separately activated. We therefore check
-    commodity first; if disabled / zero, fall back to equity net.
+    WHY NOT equity.net?
+    ─────────────────────────────────────────────────────────────────
+    equity.net = opening_balance + intraday_payin + credited P&L
+                 BUT it does NOT subtract margin already locked in
+                 open positions (option premiums paid upfront).
+
+    Zerodha stores the LOCKED amount in utilised.debits (negative).
+    Free margin = sum of equity.available sub-fields, which excludes
+    anything already committed.
+
+    Verified against live data:
+      net=38329   available={opening=12591, intraday_payin=18000}  → 30591 free
+      utilised.debits = -7738  →  38329 + (-7738) = 30591  ✓
+
+    We use the sum-of-available approach as primary (most explicit)
+    and cross-check with net+debits. Returns the LOWER of the two
+    as the safest value so we never oversize.
+    ─────────────────────────────────────────────────────────────────
+    Returns (free_margin, total_net, utilised_amount).
+    Returns (None, None, None) on API failure.
     """
     try:
-        m = kite_manager.kite.margins()
+        m         = kite_manager.kite.margins()
         commodity = m.get('commodity', {})
         equity    = m.get('equity',    {})
 
-        if commodity.get('enabled') and float(commodity.get('net', 0)) > 0:
-            avail = float(commodity['net'])
-            print(f"💰 Margin source: COMMODITY  net=₹{avail:,.2f}")
-        else:
-            # Commodity not funded separately — equity live_balance funds MCX
-            avail = float(equity.get('net', equity.get('available', {}).get('live_balance', 0)))
-            print(f"💰 Margin source: EQUITY (commodity disabled)  net=₹{avail:,.2f}")
-        return avail if avail > 0 else None
+        # ── Prefer commodity segment if actually funded ────────────
+        if commodity.get('enabled'):
+            c_avail   = commodity.get('available', {})
+            c_free    = sum([
+                float(c_avail.get('cash', 0)             or 0),
+                float(c_avail.get('opening_balance', 0)  or 0),
+                float(c_avail.get('intraday_payin', 0)   or 0),
+                float(c_avail.get('adhoc_margin', 0)     or 0),
+                float(c_avail.get('collateral', 0)       or 0),
+            ])
+            c_net    = float(commodity.get('net', 0) or 0)
+            c_debits = float(commodity.get('utilised', {}).get('debits', 0) or 0)
+            c_free2  = c_net + c_debits           # debits is negative
+            free     = min(c_free, c_free2) if c_free > 0 else c_free2
+            used     = abs(c_debits)
+            if free > 0:
+                print(f"💰 Margin [COMMODITY]  free=₹{free:,.0f}  net=₹{c_net:,.0f}  used=₹{used:,.0f}")
+                return free, c_net, used
+
+        # ── Equity segment (MCX funded from equity when commodity=off) ─
+        e_avail   = equity.get('available', {})
+        e_free    = sum([
+            float(e_avail.get('cash', 0)             or 0),
+            float(e_avail.get('opening_balance', 0)  or 0),
+            float(e_avail.get('intraday_payin', 0)   or 0),
+            float(e_avail.get('adhoc_margin', 0)     or 0),
+            float(e_avail.get('collateral', 0)       or 0),
+        ])
+        e_net    = float(equity.get('net', 0) or 0)
+        e_debits = float(equity.get('utilised', {}).get('debits', 0) or 0)
+        e_free2  = e_net + e_debits           # debits is negative → subtracts utilized
+        free     = min(e_free, e_free2) if e_free > 0 else e_free2
+        used     = abs(e_debits)
+
+        print(f"💰 Margin [EQUITY]  free=₹{free:,.0f}  net=₹{e_net:,.0f}  used=₹{used:,.0f}  "
+              f"(opening=₹{e_avail.get('opening_balance',0):,.0f}  "
+              f"intraday=₹{e_avail.get('intraday_payin',0):,.0f})")
+        return (free, e_net, used) if free > 0 else (None, None, None)
     except Exception as e:
         print(f"⚠️  Margin fetch failed: {e}")
-        return None
+        return None, None, None
 
 
 # MCX Crude Oil OPTIONS — lot sizing note:
@@ -411,11 +458,12 @@ def _enter_trade(direction: Direction, price: float):
         return
 
     # ── Sync capital from Zerodha before every trade ─────────────
-    live_margin = _fetch_available_margin()
-    if live_margin is not None:
-        if abs(live_margin - state.capital) > 100:   # only log meaningful changes
-            print(f"💰 Capital synced: ₹{state.capital:,.0f} → ₹{live_margin:,.0f} (live Zerodha balance)")
-        state.capital = live_margin
+    free, net, used = _fetch_available_margin()
+    if free is not None:
+        if abs(free - state.capital) > 100:
+            print(f"💰 Capital synced: ₹{state.capital:,.0f} → ₹{free:,.0f} "
+                  f"(net=₹{net:,.0f}, utilised=₹{used:,.0f})")
+        state.capital = free   # always use FREE margin, not net
 
     real_ltp     = get_crude_option_ltp(symbol)
     available    = state.capital          # full live balance after sync

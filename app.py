@@ -2357,11 +2357,11 @@ async def crude_margin():
     charged before committing — no more surprise 'Insufficient funds'.
     """
     from crude_trader import _fetch_available_margin, _query_zerodha_margin
-    from crude_data import get_crude_spot, get_crude_atm_option
+    from crude_data import get_crude_spot, get_crude_atm_option, get_crude_option_ltp
     from crude_trader import state as cs
     try:
-        avail = _fetch_available_margin()
-        if avail is None:
+        free, net, used = await asyncio.to_thread(_fetch_available_margin)
+        if free is None:
             return JSONResponse({"success": False, "available": 0.0,
                     "error": "Zerodha session expired — re-login at /login"})
 
@@ -2370,33 +2370,34 @@ async def crude_margin():
         symbol = None
         if spot:
             try:
-                from crude_data import get_crude_option_ltp
                 sym, _, lot_sz = get_crude_atm_option(
-                    spot, 'long', cs.strike_offset, capital=avail
+                    spot, 'long', cs.strike_offset, capital=free  # use FREE margin for contract selection
                 )
-                symbol = sym
-                # Must pass LTP — Zerodha returns 0 for commodity options when price=0
-                ltp_val     = await asyncio.to_thread(get_crude_option_ltp, sym)
+                symbol  = sym
+                ltp_val = await asyncio.to_thread(get_crude_option_ltp, sym)
                 margin_1lot = await asyncio.to_thread(_query_zerodha_margin, sym, 1, ltp_val)
                 margin_2lot = await asyncio.to_thread(_query_zerodha_margin, sym, 2, ltp_val)
             except Exception as ex:
                 print(f"⚠️  Margin card lookup failed: {ex}")
 
         max_lots = 0
-        if margin_1lot and margin_1lot <= avail:
+        if margin_1lot and margin_1lot <= free:
             max_lots = 1
-            if margin_2lot and margin_2lot <= avail:
+            if margin_2lot and margin_2lot <= free:
                 max_lots = 2
 
         return JSONResponse({
-            "success":     True,
-            "available":   round(avail, 2),
-            "symbol":      symbol,
-            "margin_1lot": round(margin_1lot, 2) if margin_1lot else None,
-            "margin_2lot": round(margin_2lot, 2) if margin_2lot else None,
-            "max_lots":    max_lots,
-            "can_trade":   max_lots >= 1,
-            "shortfall":   round(max(0, (margin_1lot or 0) - avail), 2),
+            "success":      True,
+            "free":         round(free, 2),    # actual spendable margin
+            "available":    round(free, 2),    # alias kept for JS compatibility
+            "net":          round(net,  2),    # total net (includes utilised)
+            "utilised":     round(used, 2),   # locked in open positions
+            "symbol":       symbol,
+            "margin_1lot":  round(margin_1lot, 2) if margin_1lot else None,
+            "margin_2lot":  round(margin_2lot, 2) if margin_2lot else None,
+            "max_lots":     max_lots,
+            "can_trade":    max_lots >= 1,
+            "shortfall":    round(max(0, (margin_1lot or 0) - free), 2),
         })
     except Exception as e:
         return JSONResponse({"success": False, "available": 0.0, "error": str(e)})
