@@ -17,11 +17,11 @@ let _atTrailMode    = 'fixed';  // 'fixed' | 'atr' | 'supertrend' | 'manual'
 let _atTrailAtrMult = 1.5;
 
 const _TRAIL_DESCRIPTIONS = {
-    fixed:      '📌 Fixed: SL moves up/down by a fixed number of Nifty points as price moves in your favour.',
-    atr1.5:     '📐 ATR×1.5: SL = highest price − (ATR × 1.5). Wider room in volatile markets, tighter when calm.',
-    atr2:       '📐 ATR×2: SL = highest price − (ATR × 2). Even more breathing room. Good for big trend days.',
-    supertrend: '📈 Supertrend: SL follows the Supertrend indicator line. Tight in sideways, wide in strong trends.',
-    manual:     '✋ Manual: App does NOT auto-trail. You move SL yourself — full control.',
+    'fixed':      '📌 Fixed: SL moves up/down by a fixed number of Nifty points as price moves in your favour.',
+    'atr1.5':     '📐 ATR×1.5: SL = highest price − (ATR × 1.5). Wider room in volatile markets, tighter when calm.',
+    'atr2':       '📐 ATR×2: SL = highest price − (ATR × 2). Even more breathing room. Good for big trend days.',
+    'supertrend': '📈 Supertrend: SL follows the Supertrend indicator line. Tight in sideways, wide in strong trends.',
+    'manual':     '✋ Manual: App does NOT auto-trail. You move SL yourself — full control.',
 };
 
 function _setTrailMode(mode) {
