@@ -2497,6 +2497,146 @@ async def crude_history():
     return {'trades': [], 'count': 0}
 
 
+@app.get("/crude/chart", response_class=HTMLResponse)
+async def crude_chart_page(request: Request):
+    """Standalone live chart page for MCX Crude Oil."""
+    return templates.TemplateResponse("crude_chart.html", {"request": request})
+
+
+@app.get("/api/crude/chart-data")
+async def crude_chart_data(days: int = 3):
+    """OHLCV + indicators for the Lightweight Charts frontend.
+
+    Returns:
+      candles   — list of {time, open, high, low, close, volume}
+      st_long   — SuperTrend line values when direction=LONG  (green)
+      st_short  — SuperTrend line values when direction=SHORT (red)
+      vwap      — session VWAP line
+      ema9      — EMA 9
+      ema21     — EMA 21
+      signals   — entry/exit markers from trade log
+      meta      — {symbol, price, days_to_expiry}
+    Time values are Unix seconds (UTC) for Lightweight Charts.
+    """
+    import indicators as ind
+    from crude_data import fetch_crude_intraday_data, get_crude_spot
+    from crude_data import _last_futures_symbol, _last_days_to_expiry
+    from crude_trader import CRUDE_LOG_FILE
+    from crude_strategy import (
+        CRUDE_ST_PERIOD, CRUDE_ST_MULTIPLIER,
+        CRUDE_EMA_FAST, CRUDE_EMA_SLOW,
+    )
+    import json as _json
+
+    def _run():
+        df = fetch_crude_intraday_data('5minute', max(days, 1))
+        price = get_crude_spot()
+        return df, price
+
+    df, price = await asyncio.to_thread(_run)
+    if df is None or df.empty:
+        return JSONResponse({'error': 'No data — check Kite auth'}, status_code=503)
+
+    # Convert index to UTC Unix seconds
+    def _ts(idx):
+        return int(idx.tz_convert('UTC').timestamp())
+
+    # ── OHLCV candles ────────────────────────────────────────────
+    candles = [
+        {'time': _ts(r.Index), 'open': r.open, 'high': r.high,
+         'low': r.low, 'close': r.close, 'volume': int(r.volume)}
+        for r in df.itertuples()
+    ]
+
+    # ── SuperTrend ───────────────────────────────────────────────
+    st_df = ind.supertrend(
+        df['high'], df['low'], df['close'],
+        CRUDE_ST_PERIOD, CRUDE_ST_MULTIPLIER
+    )
+    st_long, st_short = [], []
+    for idx, row in st_df.iterrows():
+        val = row['supertrend']
+        if pd.isna(val):
+            continue
+        pt = {'time': _ts(idx), 'value': round(float(val), 2)}
+        (st_long if float(row['direction']) == 1 else st_short).append(pt)
+
+    # ── Session VWAP (today only) ─────────────────────────────────
+    import pytz
+    today_ist = pd.Timestamp.now(tz='Asia/Kolkata').date()
+    today_df  = df[df.index.tz_convert('Asia/Kolkata').map(lambda x: x.date()) == today_ist]
+    vwap_pts  = []
+    if not today_df.empty:
+        tp       = (today_df['high'] + today_df['low'] + today_df['close']) / 3
+        cum_tp   = (tp * today_df['volume']).cumsum()
+        cum_vol  = today_df['volume'].cumsum()
+        vwap_ser = cum_tp / cum_vol.replace(0, float('nan'))
+        vwap_pts = [
+            {'time': _ts(idx), 'value': round(float(v), 2)}
+            for idx, v in vwap_ser.items() if not pd.isna(v)
+        ]
+
+    # ── EMA 9 / EMA 21 ───────────────────────────────────────────
+    ema9_ser  = ind.ema(df['close'], CRUDE_EMA_FAST)
+    ema21_ser = ind.ema(df['close'], CRUDE_EMA_SLOW)
+    ema9  = [{'time': _ts(i), 'value': round(float(v), 2)}
+             for i, v in ema9_ser.items()  if not pd.isna(v)]
+    ema21 = [{'time': _ts(i), 'value': round(float(v), 2)}
+             for i, v in ema21_ser.items() if not pd.isna(v)]
+
+    # ── Trade signals from log ────────────────────────────────────
+    signals = []
+    try:
+        raw_log = _json.loads(CRUDE_LOG_FILE.read_text())
+        for t in raw_log:
+            if t.get('entry_time'):
+                try:
+                    ts = int(pd.Timestamp(t['entry_time'])
+                             .tz_localize('Asia/Kolkata')
+                             .tz_convert('UTC').timestamp())
+                    signals.append({
+                        'time': ts,
+                        'position': 'belowBar' if t.get('direction') == 'long' else 'aboveBar',
+                        'color': '#22c55e' if t.get('direction') == 'long' else '#ef4444',                  'shape': 'arrowUp' if t.get('direction') == 'long' else 'arrowDown',
+                        'text': f"{t.get('direction','?').upper()} @{t.get('entry_price','?')}",
+                    })
+                except Exception:
+                    pass
+            if t.get('exit_time'):
+                try:
+                    ts = int(pd.Timestamp(t['exit_time'])
+                             .tz_localize('Asia/Kolkata')
+                             .tz_convert('UTC').timestamp())
+                    pnl = t.get('pnl', 0)
+                    signals.append({
+                        'time': ts,
+                        'position': 'aboveBar' if t.get('direction') == 'long' else 'belowBar',
+                        'color': '#facc15',
+                        'shape': 'circle',
+                        'text': f"EXIT {'▲' if pnl>0 else '▼'}{abs(pnl):.0f}",
+                    })
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    return JSONResponse({
+        'candles':  candles,
+        'st_long':  st_long,
+        'st_short': st_short,
+        'vwap':     vwap_pts,
+        'ema9':     ema9,
+        'ema21':    ema21,
+        'signals':  signals,
+        'meta': {
+            'symbol':         _last_futures_symbol or 'CRUDEOIL',
+            'price':          price,
+            'days_to_expiry': _last_days_to_expiry,
+            'candle_count':   len(candles),
+        },
+    })
+
+
 @app.get("/api/health")
 async def health_check():
     """System health check — every critical subsystem in one glance.

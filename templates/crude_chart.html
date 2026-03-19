@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🛢️ Crude Oil Live Chart</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    body { background:#0f172a; color:#f1f5f9; font-family:ui-monospace,monospace; }
+    .pill { display:inline-flex;align-items:center;gap:4px;padding:2px 10px;
+            border-radius:9999px;font-size:11px;font-weight:700; }
+    .legend-dot { width:10px;height:10px;border-radius:50%;display:inline-block; }
+    #chart-wrap { position:relative; }
+    #loading-overlay {
+      position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      background:rgba(15,23,42,0.85);z-index:10;border-radius:12px;
+      font-size:18px;color:#94a3b8;letter-spacing:2px;
+    }
+  </style>
+</head>
+<body class="min-h-screen p-4">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+    <div class="flex items-center gap-3">
+      <a href="/" class="text-gray-400 hover:text-white text-sm">← Back</a>
+      <h1 class="text-xl font-black text-[#ffc220]">🛢️ MCX Crude Oil — Live Chart</h1>
+      <span id="hdr-symbol" class="pill bg-cyan-900 text-cyan-300">--</span>
+      <span id="hdr-expiry" class="pill bg-gray-800 text-gray-400">--</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <!-- Live price -->
+      <div class="text-right">
+        <div class="text-[10px] text-gray-500">MCX SPOT</div>
+        <div id="hdr-price" class="text-2xl font-black text-[#ffc220]">--</div>
+      </div>
+      <!-- Candle info on hover -->
+      <div id="ohlc-bar" class="text-[11px] text-gray-400 hidden">
+        <span>O:<span id="cv-o" class="text-white font-bold">-</span></span>
+        <span class="ml-2">H:<span id="cv-h" class="text-green-400 font-bold">-</span></span>
+        <span class="ml-2">L:<span id="cv-l" class="text-red-400 font-bold">-</span></span>
+        <span class="ml-2">C:<span id="cv-c" class="text-white font-bold">-</span></span>
+        <span class="ml-2">Vol:<span id="cv-v" class="text-yellow-400 font-bold">-</span></span>
+      </div>
+      <!-- Refresh -->
+      <button onclick="loadChart()" class="px-3 py-1.5 bg-[#0053e2] hover:bg-blue-700 text-white text-xs rounded-lg font-bold">⟳ Refresh</button>
+      <!-- Auto-refresh toggle -->
+      <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
+        <input type="checkbox" id="auto-refresh" checked class="accent-[#0053e2]" />
+        Auto (60s)
+      </label>
+    </div>
+  </div>
+
+  <!-- Strategy status bar -->
+  <div id="strategy-bar" class="flex flex-wrap gap-2 mb-3 text-[11px]"></div>
+
+  <!-- Legend -->
+  <div class="flex flex-wrap gap-4 mb-2 text-[11px] text-gray-400">
+    <span><span class="legend-dot bg-[#22c55e] mr-1"></span>ST Long</span>
+    <span><span class="legend-dot bg-[#ef4444] mr-1"></span>ST Short</span>
+    <span><span class="legend-dot bg-[#a78bfa] mr-1"></span>VWAP</span>
+    <span><span class="legend-dot bg-[#fb923c] mr-1"></span>EMA 9</span>
+    <span><span class="legend-dot bg-[#38bdf8] mr-1"></span>EMA 21</span>
+    <span><span class="legend-dot bg-[#22c55e] mr-1"></span>▲ Long entry</span>
+    <span><span class="legend-dot bg-[#ef4444] mr-1"></span>▼ Short entry</span>
+    <span><span class="legend-dot bg-[#facc15] mr-1"></span>● Exit</span>
+  </div>
+
+  <!-- Main chart -->
+  <div id="chart-wrap" class="rounded-xl overflow-hidden border border-gray-700 mb-3">
+    <div id="loading-overlay">⏳ Loading chart data…</div>
+    <div id="chart" style="height:520px;"></div>
+  </div>
+
+  <!-- Volume chart -->
+  <div id="vol-chart" class="rounded-xl overflow-hidden border border-gray-700"
+       style="height:120px;"></div>
+
+  <!-- Last updated -->
+  <div class="mt-2 text-[10px] text-gray-600 text-right">
+    Last updated: <span id="last-updated">--</span> &nbsp;|
+    Next refresh: <span id="next-refresh">60s</span>
+  </div>
+
+<script src="/static/crude-chart.js"></script>
+</body>
+</html>
