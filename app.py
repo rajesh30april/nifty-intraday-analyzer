@@ -2237,6 +2237,50 @@ async def crude_config(
             'rr_ratio': cs.rr_ratio, 'capital': cs.capital}
 
 
+@app.get("/api/crude/margin")
+async def crude_margin():
+    """Return live available margin from Zerodha for the crude trader."""
+    from crude_trader import _fetch_available_margin
+    try:
+        avail = _fetch_available_margin()
+        if avail is None:
+            return {"success": False, "available": 0.0,
+                    "error": "Zerodha session expired — re-login at /login"}
+        return {"success": True, "available": round(avail, 2)}
+    except Exception as e:
+        return {"success": False, "available": 0.0, "error": str(e)}
+
+
+@app.post("/api/crude/evaluate")
+async def crude_evaluate():
+    """Manually trigger one strategy evaluation cycle on latest candle data.
+
+    Does NOT require the trader to be running — useful for checking
+    the current signal without waiting for the next 5-min candle close.
+    """
+    from crude_trader import evaluate_and_act_crude, get_crude_status
+    from crude_data import fetch_crude_intraday_data, get_crude_spot
+    import asyncio
+
+    try:
+        loop = asyncio.get_event_loop()
+
+        def _run():
+            df    = fetch_crude_intraday_data('5minute', 5)
+            price = get_crude_spot()
+            if df is None or df.empty or not price:
+                return None, 'No market data available'
+            evaluate_and_act_crude(df, price)
+            return get_crude_status(), None
+
+        result, err = await loop.run_in_executor(None, _run)
+        if err:
+            return {'success': False, 'error': err}
+        return {'success': True, **result}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
 @app.get("/api/crude/history")
 async def crude_history():
     """Return today's completed Crude trades from log file."""

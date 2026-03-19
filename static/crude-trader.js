@@ -97,6 +97,72 @@ function _setCrudeStatus(s) {
 }
 
 // ── Controls ──────────────────────────────────────────────────────
+// ── Capital Sync from Zerodha ────────────────────────────────────
+async function syncCrudeCapital() {
+    const btn   = document.getElementById('crude-capital-sync-btn');
+    const input = document.getElementById('crude-capital');
+    const hint  = document.getElementById('crude-capital-hint');
+    if (!input) return;
+
+    if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+    try {
+        const r = await fetch('/api/crude/margin');
+        const d = await r.json();
+        if (d.success && d.available > 0) {
+            const avail = Math.floor(d.available);    // exact rupees, no decimals
+            input.value = avail;
+            if (hint) hint.textContent = `✅ Zerodha balance: ₹${avail.toLocaleString('en-IN')}`;
+            _crudeLog(`💰 Capital synced from Zerodha → ₹${avail.toLocaleString('en-IN')}`, 'ok');
+            _crudeToast(`💰 Capital set to ₹${avail.toLocaleString('en-IN')}`, 'ok');
+            await saveCrudeConfig();      // push to server state immediately
+        } else {
+            const why = d.error || 'Could not fetch Zerodha balance';
+            if (hint) hint.textContent = '⚠️ ' + why;
+            _crudeToast('⚠️ ' + why, 'error');
+        }
+    } catch (e) {
+        if (hint) hint.textContent = '❌ ' + e.message;
+    }
+    if (btn) { btn.textContent = '🔄 Sync'; btn.disabled = false; }
+}
+
+
+// ── Manual Evaluate ──────────────────────────────────────────────
+async function crudeManualEvaluate() {
+    const btn = document.getElementById('crude-btn-evaluate');
+    const msg = document.getElementById('crude-eval-msg');
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Evaluating…';
+    if (msg) { msg.classList.remove('hidden'); msg.textContent = 'Fetching latest candle & running signal check…'; }
+
+    try {
+        const r = await fetch('/api/crude/evaluate', { method: 'POST' });
+        const d = await r.json();
+        if (d.success) {
+            const sig = d.last_signal || d.block_reason || 'Check complete';
+            if (msg) msg.textContent = '🔍 ' + sig;
+            _crudeLog('🔍 Manual eval → ' + sig, 'info');
+            _crudeToast('🔍 Evaluation done', 'info');
+            // re-render so buttons/status reflect any new trade
+            await pollCrudeStatus();
+        } else {
+            const err = d.error || 'Unknown error';
+            if (msg) msg.textContent = '❌ ' + err;
+            _crudeLog('❌ Evaluate failed: ' + err, 'error');
+            _crudeToast('❌ ' + err, 'error');
+        }
+    } catch (e) {
+        if (msg) msg.textContent = '❌ ' + e.message;
+        _crudeLog('❌ Network error: ' + e.message, 'error');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '🔍 Evaluate Now';
+}
+
+
 async function crudeTrade(action) {
     const label = { start: '▶ Start', stop: '⏹ Stop', kill: '🚨 Kill' };
     // show transitional state immediately — same UX as Nifty AT
@@ -318,6 +384,7 @@ function onCrudeTraderTabOpen() {
     _crudeLog('👁 Crude trader tab opened', 'info');
     pollCrudeStatus();
     loadCrudeHistory();
+    syncCrudeCapital();                            // auto-sync Zerodha balance on tab open
     _crudePoller = setInterval(pollCrudeStatus, 5000);
 }
 
