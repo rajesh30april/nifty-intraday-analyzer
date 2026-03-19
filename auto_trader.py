@@ -1155,22 +1155,40 @@ def _update_trail_sl_cache(df) -> None:
     mode    = state.trail_mode
 
     if mode == "atr":
-        atr_val = float(ind.atr(df["high"], df["low"], df["close"]).iloc[-1])
-        offset  = atr_val * state.trail_atr_mult
-        new_sl  = (
-            state.highest_price_since_entry - offset if is_long
-            else state.lowest_price_since_entry + offset
-        )
-        state.cached_trail_sl = round(new_sl, 2)
+        atr_val   = float(ind.atr(df["high"], df["low"], df["close"]).iloc[-1])
+        offset    = atr_val * state.trail_atr_mult
+        entry_p   = trade.entry_price
+        # Activation guard: only trail once price has moved ≥ offset in profit.
+        # First activation places SL exactly at breakeven (entry ± offset ∓ offset).
+        # Without this, ATR trail fires on candle 1 and silently tightens the
+        # user's initial stop (e.g. 30pt → 27pt) before trade has any room.
+        if is_long:
+            activated = state.highest_price_since_entry >= entry_p + offset
+            new_sl    = (state.highest_price_since_entry - offset) if activated else None
+        else:
+            activated = state.lowest_price_since_entry <= entry_p - offset
+            new_sl    = (state.lowest_price_since_entry + offset) if activated else None
+        state.cached_trail_sl = round(new_sl, 2) if new_sl is not None else None
+        status = f"SL={state.cached_trail_sl:.0f}" if activated else f"waiting — need {'↑' if is_long else '↓'}{offset:.0f}pts profit first"
         _log("📐", "ATR Trail",
-             f"ATR={atr_val:.1f} × {state.trail_atr_mult} = {offset:.1f}pts  →  SL={state.cached_trail_sl:.0f}")
+             f"ATR={atr_val:.1f} × {state.trail_atr_mult} = {offset:.1f}pts  →  {status}")
 
     elif mode == "supertrend":
         st      = ind.supertrend(df["high"], df["low"], df["close"])
         st_val  = float(st["supertrend"].iloc[-1])
-        state.cached_trail_sl = round(st_val, 2)
-        _log("📈", "ST Trail",
-             f"Supertrend line = {state.cached_trail_sl:.0f}  →  SL moved there")
+        entry_p = trade.entry_price
+        # Activation guard: only use ST as the trail once the ST line itself
+        # has crossed the entry price. Before that the trade hasn't moved
+        # enough in profit and the ST line can sit tighter than the initial SL.
+        # For LONG: ST line rises above entry = trade is solidly profitable.
+        # For SHORT: ST line falls below entry = same.
+        if is_long:
+            activated = st_val > entry_p
+        else:
+            activated = st_val < entry_p
+        state.cached_trail_sl = round(st_val, 2) if activated else None
+        status = f"SL={state.cached_trail_sl:.0f}" if activated else f"waiting — ST={st_val:.0f} not past entry {entry_p:.0f} yet"
+        _log("📈", "ST Trail", f"Supertrend line={st_val:.0f}  →  {status}")
 
     else:
         state.cached_trail_sl = None  # fixed/manual compute in _manage_active_trade
@@ -1225,7 +1243,8 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
             activated = state.lowest_price_since_entry <= entry - trail
             new_sl = (state.lowest_price_since_entry + trail) if activated else None
     elif mode in ("atr", "supertrend"):
-        new_sl = state.cached_trail_sl   # pre-computed in candle loop
+        # None means trail hasn't activated yet — original SL holds
+        new_sl = state.cached_trail_sl   # pre-computed in candle loop (None = not active yet)
     elif mode == "manual":
         new_sl = None                    # user controls SL — never auto-trail
 
