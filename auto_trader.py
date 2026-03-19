@@ -226,6 +226,11 @@ def _save_state_snapshot():
         "last_exit_direction": state.last_exit_direction,
         # active_trade stored with full detail (includes sl_order_id for crash cancel)
         "active_trade": _trade_to_dict(active) if active else None,
+        # ── Trail tracking — survive restarts so ATR trail resumes correctly ──
+        # Without these, entry_nifty_sl=0 after restart → new guard never fires
+        "entry_nifty_sl":           state.entry_nifty_sl,
+        "lowest_price_since_entry": state.lowest_price_since_entry,
+        "highest_price_since_entry":state.highest_price_since_entry,
         # Only completed trades — avoids double-counting on recovery
         "trades_today": [_trade_to_dict(t) for t in completed_trades],
     }
@@ -371,8 +376,13 @@ def _recover_state(snapshot_file: Path | None = None):
         existing_ids = {t.id for t in state.trades_today}
         if recovered_trade.id not in existing_ids:
             state.trades_today.append(recovered_trade)
-        state.highest_price_since_entry = at["entry_price"]
-        state.lowest_price_since_entry  = at["entry_price"]
+        # ── Restore trail tracking state ─────────────────────────────────────
+        # Critical: entry_nifty_sl=0 after restart → ATR activation guard
+        # evaluates candidate < 0 → always False → trail never fires!
+        # Restore the extremes too so the trail picks up exactly where it left off.
+        state.entry_nifty_sl            = snap.get("entry_nifty_sl",            at["stop_loss"])
+        state.highest_price_since_entry = snap.get("highest_price_since_entry", at["entry_price"])
+        state.lowest_price_since_entry  = snap.get("lowest_price_since_entry",  at["entry_price"])
         state.recovery_mode    = True
         state.recovery_type    = "open"
         state.recovery_message = (
