@@ -953,8 +953,26 @@ def evaluate_crude_best(df: pd.DataFrame) -> StrategySignal:
     This prevents a single strategy from pulling the trigger alone
     (except high-confidence Squeeze+ORB combos that exceed threshold solo).
     """
-    CONSENSUS_THRESHOLD = 3.0   # minimum weighted score to enter
-    MIN_AGREEING        = 2      # minimum strategy count for direction
+    from datetime import datetime
+    import pytz
+    _now_ist    = datetime.now(pytz.timezone('Asia/Kolkata')).time()
+    _is_evening = _now_ist >= EVENING  # after 19:00
+
+    # ── Session-aware thresholds ──────────────────────────────────────────────
+    # Morning (09:00–19:00): Need ≥2 strategies agreeing at ≥3.0 pts
+    #   Rationale: ORB, VWAP, EMA, Squeeze all available — want confluence
+    # Evening  (19:00+)     : SuperTrend is the sole trusted indicator
+    #   Rationale: ORB explicitly defers (“Evening session — use Supertrend”)
+    #   Volume naturally drops — VWAP vol threshold becomes unreachable
+    #   EMAs flatten — gap=0 blocks EMA Cross
+    #   Squeeze takes hours to fire in evening chop
+    #   SuperTrend on its own is the designed evening mode
+    if _is_evening:
+        CONSENSUS_THRESHOLD = _STRATEGY_WEIGHTS["SuperTrend"]   # 1.6 — ST alone is enough
+        MIN_AGREEING        = 1
+    else:
+        CONSENSUS_THRESHOLD = 3.0
+        MIN_AGREEING        = 2
 
     long_score  = 0.0
     short_score = 0.0
@@ -1006,10 +1024,11 @@ def evaluate_crude_best(df: pd.DataFrame) -> StrategySignal:
     )
 
     if has_consensus and winner_sig:
-        agreeing = ", ".join(winner_names)
-        score_str = f"{winner_score:.1f}/{sum(_STRATEGY_WEIGHTS.values()):.1f}pts"
+        agreeing   = ", ".join(winner_names)
+        score_str  = f"{winner_score:.1f}/{sum(_STRATEGY_WEIGHTS.values()):.1f}pts"
+        mode_tag   = "[EVENING:ST-ONLY]" if _is_evening else f"[CONSENSUS {score_str}]"
         winner_sig.reason = (
-            f"[CONSENSUS {score_str}] "
+            f"{mode_tag} "
             f"{winner_dir.value.upper()} — {agreeing} ✅"
         )
         return winner_sig
@@ -1021,8 +1040,9 @@ def evaluate_crude_best(df: pd.DataFrame) -> StrategySignal:
     if short_names:
         block_parts.append(f"SHORT votes: {', '.join(short_names)} ({short_score:.1f}pts)")
     if not has_consensus and (long_score > 0 or short_score > 0):
+        mode_str = "EVENING(ST≥1.6pts×1)" if _is_evening else "MORNING(≥3.0pts×2)"
         block_parts.append(
-            f"Need {CONSENSUS_THRESHOLD}pts × {MIN_AGREEING} strategies — "
+            f"Need [{mode_str}] — "
             f"got {winner_score:.1f}pts from {len(winner_names)} strategy/ies"
         )
 

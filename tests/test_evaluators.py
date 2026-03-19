@@ -116,11 +116,15 @@ class TestConsensusEvaluator:
         assert _STRATEGY_WEIGHTS["EMA Cross"] < 3.0
 
     def test_consensus_threshold_value(self):
-        """Validate consensus threshold is in code."""
+        """Morning threshold=3.0/2-strat, Evening threshold=ST-weight/1-strat."""
         import inspect, crude_strategy as cs
         src = inspect.getsource(cs.evaluate_crude_best)
+        # Morning mode constants must be present
         assert "CONSENSUS_THRESHOLD = 3.0" in src
         assert "MIN_AGREEING        = 2"   in src
+        # Evening mode: threshold drops to ST weight, 1 strategy sufficient
+        assert "MIN_AGREEING        = 1"   in src
+        assert '_is_evening'               in src
 
     def test_evaluate_crude_all_returns_weights(self):
         """evaluate_crude_all must return 'weight' field per strategy."""
