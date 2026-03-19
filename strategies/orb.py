@@ -18,7 +18,7 @@ MARKET_CLOSE_TIME = dt_time(15, 30)
 # Range too narrow → noise, slippage kills R:R
 # Range too wide   → SL too far, option premium too expensive
 ORB_MIN_RANGE = 30   # pts — below this it's a doji session, skip
-ORB_MAX_RANGE = 100  # pts — above this SL is too large for intraday
+ORB_MAX_RANGE = 150  # pts — was 100, but volatile days (VIX>18) ORB can easily hit 120+
 
 
 def evaluate_orb(

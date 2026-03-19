@@ -89,8 +89,8 @@ def _get_prev_day_levels(df: pd.DataFrame) -> dict | None:
 
 def evaluate_vwap_breakout(
     df: pd.DataFrame,
-    proximity_points: float = 50.0,
-    wick_ratio_min: float = 0.45,
+    proximity_points: float = 150.0,   # was 50 — too tight for Nifty (moved 50pts in 1 candle)
+    wick_ratio_min: float = 0.38,      # was 0.45 — real rejections show 35-40% wicks
     body_shrink_ratio: float = 0.80,
     min_volume_ratio: float = 1.0,
 ) -> StrategySignal:

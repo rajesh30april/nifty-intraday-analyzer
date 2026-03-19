@@ -21,7 +21,7 @@ PROFILE_DAYS    = 3     # build profile from last N trading days
 N_BUCKETS       = 40    # price range split into 40 levels
 HVN_PCT         = 70    # bucket must be in top 30% of volume to be HVN
 LVN_PCT         = 30    # bucket must be in bottom 30% to be LVN
-HVN_PROXIMITY   = 15    # pts — price must be within this of a HVN to matter
+HVN_PROXIMITY   = 25    # pts — was 15, but 15pts on Nifty 24k is barely one tick worth of buffer
 POC_REVERT_MIN  = 10    # pts from POC to consider reverting to it
 
 

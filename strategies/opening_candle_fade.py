@@ -25,7 +25,7 @@ from strategies.registry import register, StrategyInfo
 # 0.4 × ATR(14) ≈ 30–50 pts on a normal day — meaningful opening move.
 ATR_BODY_RATIO    = 0.40  # body must be >= 40% of recent ATR(14)
 MIN_BODY_FLOOR    = 20    # absolute floor (pts) — never go below this
-LEVEL_TOLERANCE   = 25    # pts within which a price is "at" a level
+LEVEL_TOLERANCE   = 35    # pts within which a price is "at" a level (was 25, bumped slightly)
 CLUSTER_TOUCHES   = 2     # min touches in 5-day history to call it a cluster
 CLUSTER_ZONE      = 30    # pts — how close two touches must be to be in same zone
 
