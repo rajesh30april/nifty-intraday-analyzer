@@ -131,14 +131,22 @@ def after_market_hours(n: int = 5) -> pd.DataFrame:
 def mock_instruments(nifty_price: float = BASE_PRICE) -> list[dict]:
     """Return a minimal NFO instruments list with CE/PE options
     around the ATM strike so `_get_option_symbol` can find them.
+
+    Expiry is computed dynamically using the same logic as
+    `_get_nearest_expiry_date` so tests stay green regardless of
+    which day of the week tests run on.
     """
     from datetime import timedelta
     atm = round(nifty_price / 50) * 50
 
-    # Tuesday nearest expiry (Nifty 50 weekly, changed from Thu → Tue Oct 2024)
-    today   = datetime(2026, 3, 16)   # Monday
-    days_to_tue = (1 - today.weekday()) % 7 or 7   # weekday 1 = Tuesday
-    expiry  = (today + timedelta(days=days_to_tue)).strftime("%Y-%m-%d")
+    # Mirror auto_trader._get_nearest_expiry_date() logic exactly
+    EXPIRY_WEEKDAY = 1   # Tuesday
+    CUTOFF_HOUR    = 14  # 2 PM cutoff
+    today = datetime.now()
+    days_until = (EXPIRY_WEEKDAY - today.weekday()) % 7
+    if days_until == 0 and today.hour >= CUTOFF_HOUR:
+        days_until = 7
+    expiry = (today + timedelta(days=days_until)).strftime("%Y-%m-%d")
 
     instruments = []
     token = 100000

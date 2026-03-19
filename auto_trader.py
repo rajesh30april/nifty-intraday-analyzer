@@ -378,6 +378,57 @@ def _recover_state(snapshot_file: Path | None = None):
         print(f"🔄 [RECOVERY] {state.recovery_message}")
         return
 
+    # ── Guard: reject recovered trades on expired options ────────────
+    # If the option's expiry date (encoded in the Kite tradingsymbol) is
+    # in the past, the position has already been settled/expired by the
+    # exchange. Restoring it would create an un-exitable ghost trade.
+    def _option_expiry_is_past(instrument: str) -> bool:
+        """Parse option expiry from Kite symbol and check if it's passed.
+
+        Kite weekly Nifty symbols: NIFTY{YY}{M}{DD}{strike}{CE/PE}
+        e.g. NIFTY2632422950PE → year=26 month=3 day=24
+        Month can be 1-9, O, N, D (single-char NSE month codes).
+        """
+        import re
+        from datetime import date as dt_date
+        sym = instrument.replace("NFO:", "").upper()
+        # Standard Kite format: NIFTY + 2-digit year + 1-char month + 2-digit day
+        m = re.match(r"NIFTY(\d{2})([0-9OND])(\d{2})", sym)
+        if not m:
+            # Legacy/non-standard format (e.g. NIFTY20260317_23200CE) —
+            # try to extract an 8-digit date YYYYMMDD
+            m2 = re.search(r"(\d{4})(\d{2})(\d{2})", sym)
+            if m2:
+                try:
+                    expiry = dt_date(int(m2.group(1)), int(m2.group(2)), int(m2.group(3)))
+                    return expiry < dt_date.today()
+                except ValueError:
+                    pass
+            return False  # unknown format — don't discard
+        year_2d, month_code, day = m.group(1), m.group(2), m.group(3)
+        month_map = {'O': 10, 'N': 11, 'D': 12}
+        try:
+            month = month_map.get(month_code, int(month_code))
+            year  = 2000 + int(year_2d)
+            expiry = dt_date(year, month, int(day))
+            return expiry < dt_date.today()
+        except (ValueError, KeyError):
+            return False
+
+    instrument_str = at.get("instrument", "")
+    if _option_expiry_is_past(instrument_str):
+        print(
+            f"⏰ [RECOVERY] Option {instrument_str} has expired — "
+            f"discarding stale trade from snapshot (no ghost position)."
+        )
+        state.recovery_mode    = True
+        state.recovery_type    = "expired"
+        state.recovery_message = (
+            f"Option {instrument_str} expired — stale trade discarded. "
+            f"Check Zerodha for settlement P&L."
+        )
+        return
+
     # Check Zerodha for live position
     zerodha_qty  = _get_zerodha_position_qty(at["instrument"])
     paper_mode   = at.get("paper", True)
@@ -548,18 +599,25 @@ def _get_nfo_instruments() -> list[dict]:
 
 
 def _get_nearest_expiry_date() -> datetime:
-    """Return nearest weekly expiry date.
+    """Return nearest FUTURE weekly expiry date for Nifty options.
 
     NSE changed Nifty 50 weekly option expiry from Thursday → Tuesday
     effective October 2024 (SEBI circular on expiry-day rationalisation).
     weekday(): Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
+
+    Safety rule: if today IS expiry day and it's past 14:00 (2 PM),
+    roll forward to NEXT week. Trading a 90-minute-to-expiry option
+    is extremely risky — theta decay is brutal and liquidity dries up.
+    This also prevents the scenario where the app enters a trade on a
+    same-day contract that expires at 3:30 PM before we can exit.
     """
     from datetime import timedelta
-    EXPIRY_WEEKDAY = 1   # Tuesday (Nifty 50 weekly expiry as of Oct 2024)
+    EXPIRY_WEEKDAY  = 1      # Tuesday (Nifty 50 weekly expiry as of Oct 2024)
+    CUTOFF_HOUR     = 14     # 2 PM — no same-day expiry after this
     today = datetime.now()
     days_until_expiry = (EXPIRY_WEEKDAY - today.weekday()) % 7
-    if days_until_expiry == 0 and today.hour >= 15:
-        # Past 3 PM on expiry day → roll to next week
+    if days_until_expiry == 0 and today.hour >= CUTOFF_HOUR:
+        # Past 2 PM on expiry day → roll to next week's expiry
         days_until_expiry = 7
     return today + timedelta(days=days_until_expiry)
 
@@ -859,14 +917,35 @@ def _exit_position(reason: str, current_price: float):
                 validity="DAY",
             )
         except Exception as e:
-            # ── EXIT ORDER FAILED — do NOT clear trade from state ──
-            # Zerodha rejected/timed-out the order. The position is still
-            # open. We must keep the trade alive so the tick guard can
-            # retry, and re-arm the exchange SL-M as backstop protection.
-            err_msg = f"❌ Exit order FAILED ({e}) — trade kept active, re-arming SL-M"
-            print(err_msg)
+            err_str = str(e).lower()
+
+            # ── TERMINAL: instrument expired / does not exist ──────────────
+            # The option has expired or was never valid (stale snapshot from
+            # a previous expiry). Re-arming SL-M is pointless — it will also
+            # fail with the same error, creating a death-loop every second.
+            # Force-close the paper trade; for live, the exchange has already
+            # settled/expired the position so clearing state is correct.
+            if "expired" in err_str or "does not exist" in err_str:
+                _log("💀", "EXIT — INSTRUMENT EXPIRED",
+                     f"Option {sym_clean} has expired. Forcing trade closure (P&L unknown).")
+                print(f"💀 [FORCE CLOSE] {sym_clean} expired — clearing stale trade from state")
+                trade.exit_reason  = f"Instrument expired: {e}"
+                trade.exit_time    = datetime.now().isoformat()
+                trade.status       = OrderStatus.EXITED
+                trade.pnl          = 0.0   # can't compute — option settled
+                state.total_pnl   += 0.0
+                state.active_trade = None
+                state.exit_in_progress = False
+                state.active_option_token = None
+                _save_trade_log()
+                _save_state_snapshot()
+                return   # ← clean exit — no re-arm, no loop
+
+            # ── TRANSIENT: network / timeout / rate-limit ──────────────────
+            # Zerodha rejected/timed-out the order. Position is still open.
+            # Keep trade alive, re-arm SL-M so exchange backstop holds.
             _log("❌", "EXIT FAILED", str(e))
-            # Re-arm exchange SL-M so the position still has backstop
+            print(f"❌ Exit order FAILED ({e}) — trade kept active, re-arming SL-M")
             sl_trigger = _compute_option_trigger_for_nifty_sl(trade.stop_loss)
             new_sl_id  = _place_sl_order(trade, sl_trigger)
             if new_sl_id:
