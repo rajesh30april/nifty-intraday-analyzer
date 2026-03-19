@@ -238,7 +238,7 @@ def evaluate_crude_supertrend(df: pd.DataFrame) -> StrategySignal:
     #   Logic: must be EITHER a fresh flip OR a controlled pullback —
     #          not just any price near a 2.5×ATR-wide band.
     atr_val     = float(ind.atr(high, low, close, 14).iloc[-1])
-    flip_window = 3    # 3 candles = 15 min — fresh flip only
+    flip_window = 5    # 5 candles = 25 min — catches slightly older flips too
     recent_flip = any(
         st_dir.iloc[-i] != st_dir.iloc[-(i + 1)]
         for i in range(1, min(flip_window + 1, len(st_dir) - 1))
@@ -249,14 +249,14 @@ def evaluate_crude_supertrend(df: pd.DataFrame) -> StrategySignal:
         (direction == Direction.SHORT and price < st_val)
     )
     dist_to_st       = abs(price - st_val)
-    pullback_reentry = dist_to_st <= 1.0 * atr_val and on_right_side
+    pullback_reentry = dist_to_st <= 1.5 * atr_val and on_right_side
     triggered = recent_flip or pullback_reentry
 
     trigger_detail = (
-        f"Fresh flip (≤3c) ✅" if recent_flip
-        else f"Pullback re-entry: dist {dist_to_st:.0f} ≤ 1.0×ATR {atr_val:.0f} ✅"
+        f"Fresh flip (≤5c) ✅" if recent_flip
+        else f"Pullback re-entry: dist {dist_to_st:.0f} ≤ 1.5×ATR {atr_val:.0f} ✅"
         if pullback_reentry
-        else f"No valid trigger: dist {dist_to_st:.0f} vs 1.0×ATR {atr_val:.0f}"
+        else f"No valid trigger: dist {dist_to_st:.0f} vs 1.5×ATR {atr_val:.0f} — too far from ST line"
     )
     conditions.append(StrategyCondition(
         name="ST trigger",
@@ -730,11 +730,165 @@ def evaluate_crude_chart_pattern(df: pd.DataFrame) -> StrategySignal:
     )
 
 
+# ────────────────────────────────────────────────────────────────
+# Strategy 7: Tight Range Breakout (a.k.a. Coil Breakout)
+# ────────────────────────────────────────────────────────────────
+# Designed for EXACTLY the scenario:
+#   • Market made a directional move (SuperTrend flipped)
+#   • Price coiled into a tight range (dist > 1.5×ATR from ST line)
+#   • EMAs compressed to near-zero gap
+#   • Squeeze building
+#   • OLD entry triggers blocked (no fresh flip, too far for pullback)
+# When price closes OUT of the coil with volume, THAT is the next entry.
+
+_TRB_WINDOW_MIN   = 8    # min candles to form a coil (40 min)
+_TRB_WINDOW_MAX   = 20   # max candles to look back for range
+_TRB_TIGHT_MULT   = 1.2  # coil range must be < 1.2×ATR (tight!)
+_TRB_VOL_RATIO    = 1.2  # breakout candle volume > 1.2× avg
+
+
+def evaluate_crude_tight_range(df: pd.DataFrame) -> StrategySignal:
+    """Strategy 7: Tight Range (Coil) Breakout.
+
+    Fires when:
+      1. The last 8-20 candles formed a tight range (< 1.2×ATR)
+      2. Current candle closes OUTSIDE that range (genuine breakout)
+      3. Breakout direction aligns with SuperTrend bias
+      4. Volume ≥ 1.2× average (not a fake-out)
+      5. ADX shows trend strength
+
+    This is the strategy that covers the gap when:
+      • ST pullback is too wide (price ran, then coiled)
+      • EMA gap is flat (EMAs compressing together)
+      • Squeeze is ACTIVE (BB/KC compressed)
+    When Squeeze + this strategy both fire on the same candle:
+      weight = 2.0 + 1.5 = 3.5 pts → exceeds CONSENSUS_THRESHOLD of 3.0.
+    """
+    conditions: list[StrategyCondition] = []
+    close  = df["close"]
+    high   = df["high"]
+    low    = df["low"]
+    volume = df["volume"]
+
+    atr_val = float(ind.atr(high, low, close, 14).iloc[-1])
+
+    # ── Find the tightest coil in the look-back window ────────────────
+    # Exclude the current candle from range measurement
+    best_window = None
+    best_range  = float("inf")
+    best_n      = 0
+
+    for n in range(_TRB_WINDOW_MIN, min(_TRB_WINDOW_MAX + 1, len(df) - 1)):
+        seg       = df.iloc[-(n + 1):-1]   # last n candles, NOT including current
+        seg_range = float(seg["high"].max() - seg["low"].min())
+        if seg_range < best_range:
+            best_range  = seg_range
+            best_window = seg
+            best_n      = n
+
+    if best_window is None or best_n < _TRB_WINDOW_MIN:
+        return StrategySignal(
+            should_enter=False,
+            reason=f"Not enough candles for coil detection (need {_TRB_WINDOW_MIN}+)",
+            conditions=conditions,
+        )
+
+    tight_ok = best_range <= _TRB_TIGHT_MULT * atr_val
+    range_high = float(best_window["high"].max())
+    range_low  = float(best_window["low"].min())
+
+    conditions.append(StrategyCondition(
+        name="Tight coil",
+        met=tight_ok,
+        detail=(
+            f"Coil range {best_range:.0f} ≤ {_TRB_TIGHT_MULT}×ATR({atr_val:.0f}) = {_TRB_TIGHT_MULT*atr_val:.0f} ✅"
+            f" [{best_n}c: {range_low:.0f}–{range_high:.0f}]"
+            if tight_ok else
+            f"Range {best_range:.0f} > {_TRB_TIGHT_MULT}×ATR({atr_val:.0f}) = {_TRB_TIGHT_MULT*atr_val:.0f} ❌ not a coil"
+        ),
+    ))
+    if not tight_ok:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail, conditions=conditions)
+
+    # ── Breakout: current close outside the coil ──────────────────
+    cur_close  = float(close.iloc[-1])
+    broke_up   = cur_close > range_high
+    broke_down = cur_close < range_low
+    broke_out  = broke_up or broke_down
+    direction  = Direction.LONG if broke_up else Direction.SHORT if broke_down else None
+
+    conditions.append(StrategyCondition(
+        name="Breakout close",
+        met=broke_out,
+        detail=(
+            f"Close {cur_close:.0f} {'>' if broke_up else '<'} coil {'high' if broke_up else 'low'}"
+            f" {range_high if broke_up else range_low:.0f} ✅"
+            if broke_out else
+            f"Close {cur_close:.0f} still inside coil [{range_low:.0f}–{range_high:.0f}] ❌ wait"
+        ),
+    ))
+    if not broke_out or direction is None:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail, conditions=conditions)
+
+    # ── SuperTrend bias alignment ────────────────────────────────
+    # Only take breakouts that go WITH the broader SuperTrend direction.
+    # This is what separates coil-continuation from a random fake-out.
+    st_line, st_dir = ind.supertrend(high, low, close, CRUDE_ST_PERIOD, CRUDE_ST_MULTIPLIER)
+    st_direction    = Direction.LONG if float(st_dir.iloc[-1]) == 1 else Direction.SHORT
+    st_aligned      = direction == st_direction
+    conditions.append(StrategyCondition(
+        name="ST bias",
+        met=st_aligned,
+        detail=(
+            f"Breakout {direction.value.upper()} aligns with ST {st_direction.value.upper()} ✅"
+            if st_aligned else
+            f"Breakout {direction.value.upper()} AGAINST ST {st_direction.value.upper()} ❌"
+            f" — counter-trend coil break, skip"
+        ),
+    ))
+    if not st_aligned:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail, conditions=conditions)
+
+    # ── ADX ──────────────────────────────────────────────────
+    adx_cond = _adx_filter(high, low, close, direction)
+    conditions.append(adx_cond)
+    if not adx_cond.met:
+        return StrategySignal(should_enter=False, reason=adx_cond.detail, conditions=conditions)
+
+    # ── Volume surge ────────────────────────────────────────────
+    avg_vol = float(volume.iloc[-20:-1].mean())
+    cur_vol = float(volume.iloc[-1])
+    vol_ok  = avg_vol > 0 and cur_vol >= avg_vol * _TRB_VOL_RATIO
+    conditions.append(StrategyCondition(
+        name="Volume",
+        met=vol_ok,
+        detail=(
+            f"Vol {cur_vol:,.0f} ≥ {_TRB_VOL_RATIO}×avg({avg_vol:,.0f}) ✅"
+            if vol_ok else
+            f"Vol {cur_vol:,.0f} < {_TRB_VOL_RATIO}×avg({avg_vol:,.0f}) ❌ low-vol break"
+        ),
+    ))
+    if not vol_ok:
+        return StrategySignal(should_enter=False, reason=conditions[-1].detail, conditions=conditions)
+
+    return StrategySignal(
+        should_enter=True,
+        direction=direction,
+        reason=(
+            f"📦 Coil break {'UP' if broke_up else 'DOWN'} —"
+            f" {best_n}c coil [{range_low:.0f}–{range_high:.0f}]"
+            f" range {best_range:.0f} (ATR {atr_val:.0f}) — vol {cur_vol:,.0f}"
+        ),
+        conditions=conditions,
+    )
+
+
 # Weight reflects reliability + non-overlap:
 # Squeeze is unique (vol-timing) — highest weight
 # ORB is session-limited + independent — high weight
-# Chart Pattern: structural breakouts with objective levels — high confidence
+# Chart Patterns: structural breakouts, objective levels — high confidence
 # SuperTrend + VWAP are complementary trend followers
+# Tight Range: coil-continuation breakout — complements Squeeze perfectly
 # EMA is lagging — lowest weight
 _STRATEGY_WEIGHTS: dict[str, float] = {
     "Squeeze":        2.0,
@@ -742,6 +896,7 @@ _STRATEGY_WEIGHTS: dict[str, float] = {
     "Chart Pattern":  1.7,
     "SuperTrend":     1.6,
     "VWAP":           1.5,
+    "Tight Range":    1.5,
     "EMA Cross":      1.2,
 }
 
@@ -752,6 +907,7 @@ ALL_STRATEGIES = [
     ("EMA Cross",     evaluate_crude_ema_cross),
     ("Squeeze",       evaluate_crude_squeeze),
     ("Chart Pattern", evaluate_crude_chart_pattern),
+    ("Tight Range",   evaluate_crude_tight_range),
 ]
 
 

@@ -82,14 +82,14 @@ class TestSupertrendTrigger:
         df = _make_df(60, base=7500.0, trend=0.0, noise=5.0)  # low noise, clear ST
         # We can't easily control exact ATR, so just verify the function doesn't
         # trivially pass without a real trigger — any real pullback test works.
-        # The real check is that the condition logic uses 1.0×ATR not 2.5×ATR
+        # The real check is that the condition logic uses 1.5×ATR not 2.5×ATR
         import crude_strategy as cs
         assert cs.CRUDE_ST_PERIOD == 7     # unchanged
-        # Verify flip_window is 3, not 10 (by reading the source)
+        # Verify flip_window is 5 (widened from 3 to catch 25-min-old flips)
         import inspect
         src = inspect.getsource(cs.evaluate_crude_supertrend)
-        assert "flip_window = 3" in src, "flip_window should be 3, not 10"
-        assert "1.0 * atr_val" in src,   "pullback should use 1.0×ATR, not 2.5×"
+        assert "flip_window = 5" in src, "flip_window should be 5 (25 min window), not 3"
+        assert "1.5 * atr_val" in src,   "pullback should use 1.5×ATR (tightened from 2.5×, relaxed from 1.0×)"
 
     def test_supertrend_no_trigger_without_flip_or_pullback(self):
         """SuperTrend should block when price is far from ST and no recent flip."""
@@ -127,7 +127,7 @@ class TestConsensusEvaluator:
         from crude_strategy import evaluate_crude_all
         df      = _make_df(40)
         results = evaluate_crude_all(df)
-        assert len(results) == 6  # 6 strategies: ORB, ST, VWAP, EMA, Squeeze, Chart Pattern
+        assert len(results) == 7  # 7 strategies: ORB, ST, VWAP, EMA, Squeeze, Chart Pattern, Tight Range
         for r in results:
             assert "weight" in r, f"Strategy '{r['name']}' missing 'weight' field"
             assert r["weight"] > 0
