@@ -1,285 +1,274 @@
-/* crude-chart.js — Live Lightweight Charts page for MCX Crude Oil
- * Chart series: Candlestick | ST Long | ST Short | VWAP | EMA9 | EMA21
- * Bottom panel: Volume histogram
- * Markers: trade entries (↑↓) and exits (●)
+/* crude-chart.js — Embedded live chart for MCX Crude Oil (in-page, not new tab)
+ * Initialised lazily when the user clicks "📈 Crude Live Chart" in the sidebar.
+ * All DOM IDs are prefixed cc- to avoid collisions with other pages.
  */
 
 'use strict';
 
-// ── Chart instances (module-level so loadChart() can recreate) ────
-let _mainChart   = null;
-let _volChart    = null;
-let _autoTimer   = null;
-let _countdown   = 60;
-let _cdInterval  = null;
+// ── Module state ───────────────────────────────────────────────
+let _cc_main      = null;   // LightweightCharts main chart instance
+let _cc_vol       = null;   // volume histogram chart
+let _cc_priceInt  = null;   // setInterval for live spot price
+let _cc_cdInt     = null;   // setInterval for countdown
+let _cc_countdown = 60;
+let _cc_ready     = false;  // has initCrudeChart() run at least once?
 
-// ── Walmart colours ───────────────────────────────────────────────
-const C = {
-  bg:         '#0f172a',
-  grid:        '#1e293b',
-  border:      '#334155',
-  text:        '#94a3b8',
-  bull:        '#22c55e',   // green candle / ST long
-  bear:        '#ef4444',   // red candle  / ST short
-  vwap:        '#a78bfa',   // purple
-  ema9:        '#fb923c',   // orange
-  ema21:       '#38bdf8',   // sky blue
-  volUp:       '#22c55e44',
-  volDown:     '#ef444444',
-  crosshair:   '#475569',
-  walmart:     '#0053e2',
-  spark:       '#ffc220',
+// ── Walmart dark-mode palette ─────────────────────────────────
+const _CC = {
+  bg:      '#111827',
+  grid:    '#1f2937',
+  border:  '#374151',
+  text:    '#9ca3af',
+  bull:    '#22c55e',
+  bear:    '#ef4444',
+  vwap:    '#a78bfa',
+  ema9:    '#fb923c',
+  ema21:   '#38bdf8',
+  xhair:   '#4b5563',
+  blue:    '#0053e2',
+  spark:   '#ffc220',
 };
 
-const CHART_OPTS = {
-  layout:     { background: { color: C.bg }, textColor: C.text },
-  grid:       { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
-  crosshair:  { mode: LightweightCharts.CrosshairMode.Normal,
-                vertLine: { color: C.crosshair, labelBackgroundColor: C.walmart },
-                horzLine: { color: C.crosshair, labelBackgroundColor: C.walmart } },
-  rightPriceScale: { borderColor: C.border },
-  timeScale:  { borderColor: C.border, timeVisible: true, secondsVisible: false,
-                fixLeftEdge: true },
-  handleScroll:   { mouseWheel: true, pressedMouseMove: true },
-  handleScale:    { mouseWheel: true, pinch: true },
+const _CC_OPTS = {
+  layout:    { background: { color: _CC.bg }, textColor: _CC.text },
+  grid:      { vertLines: { color: _CC.grid }, horzLines: { color: _CC.grid } },
+  crosshair: {
+    mode: LightweightCharts.CrosshairMode.Normal,
+    vertLine: { color: _CC.xhair, labelBackgroundColor: _CC.blue },
+    horzLine: { color: _CC.xhair, labelBackgroundColor: _CC.blue },
+  },
+  rightPriceScale: { borderColor: _CC.border },
+  timeScale: { borderColor: _CC.border, timeVisible: true, secondsVisible: false },
+  handleScroll: { mouseWheel: true, pressedMouseMove: true },
+  handleScale:  { mouseWheel: true, pinch: true },
 };
 
-function _makeChart(elId, height, opts = {}) {
-  const el = document.getElementById(elId);
+// ── Helpers ──────────────────────────────────────────────────
+function _$cc(id) { return document.getElementById(id); }
+function _setcc(id, v) { const e = _$cc(id); if (e) e.textContent = v; }
+
+function _makeCC(elId, height, extra = {}) {
+  const el = _$cc(elId);
+  if (!el) return null;
   el.style.height = height + 'px';
-  return LightweightCharts.createChart(el, { ...CHART_OPTS, height, ...opts });
+  return LightweightCharts.createChart(el, { ..._CC_OPTS, height, ...extra });
 }
 
-// ── Resize observer — keeps charts fluid ─────────────────────────
-function _bindResize() {
-  const mainEl = document.getElementById('chart');
-  const volEl  = document.getElementById('vol-chart');
-  new ResizeObserver(entries => {
-    for (const e of entries) {
-      const w = e.contentRect.width;
-      if (_mainChart) _mainChart.resize(w, 520);
-      if (_volChart)  _volChart.resize(w, 120);
-    }
-  }).observe(mainEl.parentElement);
+// ── Resize: keep charts filling their container ───────────────────
+function _bindCCResize() {
+  const wrap = _$cc('cc-chart')?.parentElement;
+  if (!wrap) return;
+  new ResizeObserver(() => {
+    const w = wrap.clientWidth;
+    if (_cc_main) _cc_main.resize(w, 520);
+    if (_cc_vol)  _cc_vol.resize(w, 120);
+  }).observe(wrap);
 }
 
-// ── OHLCV crosshair tooltip ───────────────────────────────────────
-function _bindCrosshair(candleSeries) {
-  const bar = document.getElementById('ohlc-bar');
-  _mainChart.subscribeCrosshairMove(p => {
-    if (!p || !p.seriesData || !p.seriesData.has(candleSeries)) {
-      bar.classList.add('hidden'); return;
-    }
+// ── Crosshair OHLCV tooltip ──────────────────────────────────
+function _bindCCCrosshair(candleSeries) {
+  _cc_main.subscribeCrosshairMove(p => {
+    const bar = _$cc('cc-ohlc');
+    if (!bar) return;
+    if (!p?.seriesData?.has(candleSeries)) { bar.classList.add('hidden'); return; }
     const d = p.seriesData.get(candleSeries);
     if (!d) { bar.classList.add('hidden'); return; }
     bar.classList.remove('hidden');
-    document.getElementById('cv-o').textContent = d.open;
-    document.getElementById('cv-h').textContent = d.high;
-    document.getElementById('cv-l').textContent = d.low;
-    document.getElementById('cv-c').textContent = d.close;
-    document.getElementById('cv-v').textContent =
-      d.customValues?.volume?.toLocaleString('en-IN') ?? '--';
+    _setcc('cc-o', d.open);
+    _setcc('cc-h', d.high);
+    _setcc('cc-l', d.low);
+    _setcc('cc-c', d.close);
+    _setcc('cc-v', d.customValues?.volume?.toLocaleString('en-IN') ?? '--');
   });
 }
 
-// ── Strategy status bar ───────────────────────────────────────────
-async function _loadStrategyBar() {
+// ── Strategy pill bar ─────────────────────────────────────────
+async function _ccStrategyBar() {
   try {
     const r = await fetch('/api/crude/evaluate', { method: 'POST' });
     const d = await r.json();
-    const bar = document.getElementById('strategy-bar');
+    const bar = _$cc('cc-strategy-bar');
+    if (!bar) return;
     bar.innerHTML = (d.strategies || []).map(s => {
       const ok  = s.should_enter;
       const cls = ok ? 'bg-green-900 text-green-300' : 'bg-gray-800 text-gray-500';
-      const ico = ok ? '✅' : '⛔';
-      const dir = s.direction ? ` ${s.direction.toUpperCase()}` : '';
-      return `<span class="pill ${cls}" title="${s.reason}">${ico} ${s.name}(${s.weight})${dir}</span>`;
+      const dir = s.direction ? ' ' + s.direction.toUpperCase() : '';
+      return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${cls}"
+                    title="${s.reason}">
+                ${ok ? '✅' : '⛔'} ${s.name}(${s.weight})${dir}
+              </span>`;
     }).join('');
   } catch (_) {}
 }
 
-// ── Main chart loader ─────────────────────────────────────────────
-async function loadChart() {
-  const loading = document.getElementById('loading-overlay');
-  loading.style.display = 'flex';
+// ── Core chart builder ─────────────────────────────────────────
+async function _buildCCChart() {
+  const loading = _$cc('cc-loading');
+  if (loading) loading.style.display = 'flex';
 
-  // Destroy previous instances
-  if (_mainChart) { _mainChart.remove(); _mainChart = null; }
-  if (_volChart)  { _volChart.remove();  _volChart  = null; }
+  if (_cc_main) { _cc_main.remove(); _cc_main = null; }
+  if (_cc_vol)  { _cc_vol.remove();  _cc_vol  = null; }
 
   let data;
   try {
     const r = await fetch('/api/crude/chart-data?days=3');
-    if (!r.ok) throw new Error(await r.text());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     data = await r.json();
+    if (data.error) throw new Error(data.error);
   } catch (e) {
-    loading.textContent = '❌ ' + (e.message || 'Failed to load');
+    if (loading) loading.textContent = '❌ ' + (e.message || 'Load failed');
     return;
   }
 
-  // ── Header meta ────────────────────────────────────────────────
+  // Header meta
   const m = data.meta || {};
-  document.getElementById('hdr-symbol').textContent  = m.symbol || '--';
-  document.getElementById('hdr-expiry').textContent  =
-    m.days_to_expiry != null ? `Expiry in ${m.days_to_expiry}d` : '--';
-  if (m.price) {
-    document.getElementById('hdr-price').textContent = '₹' + m.price.toLocaleString('en-IN');
-  }
+  _setcc('cc-symbol', m.symbol || '--');
+  _setcc('cc-expiry', m.days_to_expiry != null ? `Expiry in ${m.days_to_expiry}d` : '--');
+  if (m.price) _setcc('cc-price', '₹' + Number(m.price).toLocaleString('en-IN'));
 
-  // ── Build main chart ───────────────────────────────────────────
-  _mainChart = _makeChart('chart', 520);
+  // ─ Main chart
+  _cc_main = _makeCC('cc-chart', 520);
+  if (!_cc_main) return;
 
-  // Candlestick series
-  const candleSeries = _mainChart.addCandlestickSeries({
-    upColor: C.bull, downColor: C.bear,
-    borderUpColor: C.bull, borderDownColor: C.bear,
-    wickUpColor: C.bull, wickDownColor: C.bear,
+  // Candlestick
+  const cs = _cc_main.addCandlestickSeries({
+    upColor: _CC.bull, downColor: _CC.bear,
+    borderUpColor: _CC.bull, borderDownColor: _CC.bear,
+    wickUpColor: _CC.bull, wickDownColor: _CC.bear,
   });
-  // Attach volume as custom value for crosshair tooltip
-  const candleData = data.candles.map(c => ({
-    ...c, customValues: { volume: c.volume }
-  }));
-  candleSeries.setData(candleData);
+  cs.setData(data.candles.map(c => ({ ...c, customValues: { volume: c.volume } })));
 
-  // SuperTrend — LONG side (green)
+  // SuperTrend Long (green solid)
   if (data.st_long?.length) {
-    const stL = _mainChart.addLineSeries({
-      color: C.bull, lineWidth: 2,
+    const s = _cc_main.addLineSeries({
+      color: _CC.bull, lineWidth: 2,
       lineStyle: LightweightCharts.LineStyle.Solid,
-      priceLineVisible: false, lastValueVisible: false,
-      title: 'ST↑',
+      priceLineVisible: false, lastValueVisible: false, title: 'ST↑',
     });
-    stL.setData(data.st_long);
+    s.setData(data.st_long);
   }
 
-  // SuperTrend — SHORT side (red)
+  // SuperTrend Short (red solid)
   if (data.st_short?.length) {
-    const stS = _mainChart.addLineSeries({
-      color: C.bear, lineWidth: 2,
+    const s = _cc_main.addLineSeries({
+      color: _CC.bear, lineWidth: 2,
       lineStyle: LightweightCharts.LineStyle.Solid,
-      priceLineVisible: false, lastValueVisible: false,
-      title: 'ST↓',
+      priceLineVisible: false, lastValueVisible: false, title: 'ST↓',
     });
-    stS.setData(data.st_short);
+    s.setData(data.st_short);
   }
 
-  // VWAP (session only — purple dashed)
+  // VWAP (purple dashed)
   if (data.vwap?.length) {
-    const vwapSeries = _mainChart.addLineSeries({
-      color: C.vwap, lineWidth: 2,
+    const s = _cc_main.addLineSeries({
+      color: _CC.vwap, lineWidth: 2,
       lineStyle: LightweightCharts.LineStyle.Dashed,
-      priceLineVisible: false, lastValueVisible: true,
-      title: 'VWAP',
+      priceLineVisible: false, lastValueVisible: true, title: 'VWAP',
     });
-    vwapSeries.setData(data.vwap);
+    s.setData(data.vwap);
   }
 
-  // EMA 9 (orange)
+  // EMA 9 (orange dotted)
   if (data.ema9?.length) {
-    const e9 = _mainChart.addLineSeries({
-      color: C.ema9, lineWidth: 1,
+    const s = _cc_main.addLineSeries({
+      color: _CC.ema9, lineWidth: 1,
       lineStyle: LightweightCharts.LineStyle.Dotted,
-      priceLineVisible: false, lastValueVisible: false,
-      title: 'EMA9',
+      priceLineVisible: false, lastValueVisible: false, title: 'EMA9',
     });
-    e9.setData(data.ema9);
+    s.setData(data.ema9);
   }
 
-  // EMA 21 (sky blue)
+  // EMA 21 (sky blue dotted)
   if (data.ema21?.length) {
-    const e21 = _mainChart.addLineSeries({
-      color: C.ema21, lineWidth: 1,
+    const s = _cc_main.addLineSeries({
+      color: _CC.ema21, lineWidth: 1,
       lineStyle: LightweightCharts.LineStyle.Dotted,
-      priceLineVisible: false, lastValueVisible: false,
-      title: 'EMA21',
+      priceLineVisible: false, lastValueVisible: false, title: 'EMA21',
     });
-    e21.setData(data.ema21);
+    s.setData(data.ema21);
   }
 
   // Trade markers
   if (data.signals?.length) {
-    candleSeries.setMarkers(
-      [...data.signals].sort((a, b) => a.time - b.time)
-    );
+    cs.setMarkers([...data.signals].sort((a, b) => a.time - b.time));
   }
 
-  // Crosshair OHLCV tooltip
-  _bindCrosshair(candleSeries);
+  _bindCCCrosshair(cs);
+  _cc_main.timeScale().scrollToRealTime();
 
-  // Scroll to latest candle
-  _mainChart.timeScale().scrollToRealTime();
-
-  // ── Volume chart (bottom panel) ────────────────────────────────
-  _volChart = _makeChart('vol-chart', 120, {
+  // ─ Volume chart
+  _cc_vol = _makeCC('cc-vol', 120, {
     rightPriceScale: { visible: false },
     leftPriceScale:  { visible: false },
-    timeScale: { visible: false },
+    timeScale:       { visible: false },
   });
-  const volSeries = _volChart.addHistogramSeries({
-    priceFormat: { type: 'volume' },
-    priceScaleId: '',
-  });
-  volSeries.priceScale().applyOptions({
-    scaleMargins: { top: 0.1, bottom: 0 },
-  });
-  volSeries.setData(data.candles.map(c => ({
-    time: c.time, value: c.volume,
-    color: c.close >= c.open ? C.volUp : C.volDown,
-  })));
-  _volChart.timeScale().scrollToRealTime();
+  if (_cc_vol) {
+    const vs = _cc_vol.addHistogramSeries({ priceScaleId: '' });
+    vs.priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom: 0 } });
+    vs.setData(data.candles.map(c => ({
+      time: c.time, value: c.volume,
+      color: c.close >= c.open ? '#22c55e44' : '#ef444444',
+    })));
+    _cc_vol.timeScale().scrollToRealTime();
 
-  // ── Sync crosshair between main and vol ───────────────────────
-  _mainChart.subscribeCrosshairMove(p => {
-    if (p?.time) _volChart.setCrosshairPosition(0, p.time, volSeries);
-    else         _volChart.clearCrosshairPosition();
-  });
+    // Sync crosshair main → vol
+    _cc_main.subscribeCrosshairMove(p => {
+      if (p?.time) _cc_vol.setCrosshairPosition(0, p.time, vs);
+      else         _cc_vol.clearCrosshairPosition();
+    });
+  }
 
-  loading.style.display = 'none';
-  document.getElementById('last-updated').textContent =
-    new Date().toLocaleTimeString('en-IN');
+  if (loading) loading.style.display = 'none';
+  _setcc('cc-updated', new Date().toLocaleTimeString('en-IN'));
 
-  // Strategy bar (non-blocking)
-  _loadStrategyBar();
-  _bindResize();
+  _bindCCResize();
+  _ccStrategyBar();   // non-blocking
 }
 
-// ── Auto-refresh (60s countdown) ─────────────────────────────────
-function _startAutoRefresh() {
-  clearInterval(_cdInterval);
-  clearInterval(_autoTimer);
-  _countdown = 60;
-  const cdEl = document.getElementById('next-refresh');
-  cdEl.textContent = _countdown + 's';
+// ── Public: called by switchPage('crude-chart') ──────────────────
+function initCrudeChart() {
+  if (!_cc_ready) {
+    _cc_ready = true;
+    _startCCPricePoll();
+    _startCCCountdown();
+  }
+  _buildCCChart();
+}
 
-  _cdInterval = setInterval(() => {
-    if (!document.getElementById('auto-refresh').checked) {
-      cdEl.textContent = 'off';
-      return;
-    }
-    _countdown--;
-    cdEl.textContent = _countdown + 's';
-    if (_countdown <= 0) {
-      _countdown = 60;
-      loadChart();
+// Public: Refresh button
+function reloadCrudeChart() {
+  _cc_countdown = 60;
+  _buildCCChart();
+}
+
+// ── 60-second auto-refresh countdown ────────────────────────────
+function _startCCCountdown() {
+  clearInterval(_cc_cdInt);
+  _cc_cdInt = setInterval(() => {
+    const autoEl = _$cc('cc-auto');
+    const nextEl = _$cc('cc-next');
+    if (!autoEl?.checked) { if (nextEl) nextEl.textContent = 'off'; return; }
+    _cc_countdown--;
+    if (nextEl) nextEl.textContent = _cc_countdown + 's';
+    if (_cc_countdown <= 0) {
+      _cc_countdown = 60;
+      // Only refresh if this page is visible
+      const page = _$cc('page-crude-chart');
+      if (page?.classList.contains('active')) _buildCCChart();
     }
   }, 1000);
 }
 
-// ── Live spot price (every 5 s) ───────────────────────────────────
-function _startPricePoll() {
-  setInterval(async () => {
+// ── Live spot price every 5 s ─────────────────────────────────
+function _startCCPricePoll() {
+  clearInterval(_cc_priceInt);
+  _cc_priceInt = setInterval(async () => {
     try {
       const r = await fetch('/api/crude/status');
       const d = await r.json();
       if (d.crude_price) {
-        document.getElementById('hdr-price').textContent =
-          '₹' + Number(d.crude_price).toLocaleString('en-IN');
+        _setcc('cc-price', '₹' + Number(d.crude_price).toLocaleString('en-IN'));
       }
     } catch (_) {}
   }, 5000);
 }
-
-// ── Boot ──────────────────────────────────────────────────────────
-loadChart();
-_startAutoRefresh();
-_startPricePoll();

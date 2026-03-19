@@ -117,11 +117,9 @@
                     <span>🛢️</span><span>Crude Oil AT</span>
                     <span id="sidebar-crude-badge" class="badge bg-gray-200 text-gray-500">⏸</span>
                 </div>
-                <a href="/crude/chart" target="_blank"
-                   class="sidebar-item text-[11px] text-gray-400 hover:text-[#ffc220]">
+                <div class="sidebar-item" data-page="crude-chart" onclick="switchPage('crude-chart'); initCrudeChart()">
                     <span>📈</span><span>Crude Live Chart</span>
-                    <span class="text-[9px] text-gray-600">↗ new tab</span>
-                </a>
+                </div>
                 <div class="sidebar-item" data-page="live-monitor" onclick="switchPage('live-monitor')">
                     <span>📡</span><span>Live Monitor</span>
                     <span id="lm-sidebar-dot" class="ml-auto w-2 h-2 rounded-full bg-gray-300"></span>
@@ -2005,6 +2003,63 @@
               </div><!-- /max-w -->
             </div><!-- /page-trade-report -->
 
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- Crude Live Chart page                                       -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <div id="page-crude-chart" class="page-section">
+              <!-- Header row -->
+              <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                <div class="flex items-center gap-3">
+                  <h2 class="text-lg font-bold">📈 MCX Crude Oil — Live Chart</h2>
+                  <span id="cc-symbol" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-cyan-900 text-cyan-300">--</span>
+                  <span id="cc-expiry" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-gray-800 text-gray-400">--</span>
+                </div>
+                <div class="flex items-center gap-4">
+                  <div class="text-right">
+                    <div class="text-[10px] text-gray-500">MCX SPOT</div>
+                    <div id="cc-price" class="text-2xl font-black text-[#ffc220]">--</div>
+                  </div>
+                  <div id="cc-ohlc" class="text-[11px] text-gray-400 hidden">
+                    <span>O:<span id="cc-o" class="text-white font-bold">-</span></span>
+                    <span class="ml-2">H:<span id="cc-h" class="text-green-400 font-bold">-</span></span>
+                    <span class="ml-2">L:<span id="cc-l" class="text-red-400 font-bold">-</span></span>
+                    <span class="ml-2">C:<span id="cc-c" class="text-white font-bold">-</span></span>
+                    <span class="ml-2">V:<span id="cc-v" class="text-yellow-400 font-bold">-</span></span>
+                  </div>
+                  <button onclick="reloadCrudeChart()" class="px-3 py-1.5 bg-[#0053e2] hover:bg-blue-700 text-white text-xs rounded-lg font-bold">⟳ Refresh</button>
+                  <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
+                    <input type="checkbox" id="cc-auto" checked class="accent-[#0053e2]" />
+                    Auto (60s)
+                  </label>
+                </div>
+              </div>
+
+              <!-- Strategy pills -->
+              <div id="cc-strategy-bar" class="flex flex-wrap gap-2 mb-3 text-[11px]"></div>
+
+              <!-- Legend -->
+              <div class="flex flex-wrap gap-4 mb-2 text-[11px] text-gray-400">
+                <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-[#22c55e] mr-1"></span>ST Long</span>
+                <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-[#ef4444] mr-1"></span>ST Short</span>
+                <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-[#a78bfa] mr-1"></span>VWAP</span>
+                <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-[#fb923c] mr-1"></span>EMA 9</span>
+                <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-[#38bdf8] mr-1"></span>EMA 21</span>
+                <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-[#22c55e] mr-1"></span>▲ Long</span>
+                <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-[#ef4444] mr-1"></span>▼ Short</span>
+                <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-[#facc15] mr-1"></span>● Exit</span>
+                <span class="ml-auto text-gray-600">Updated: <span id="cc-updated">--</span> | Next: <span id="cc-next">60s</span></span>
+              </div>
+
+              <!-- Main candlestick chart -->
+              <div class="rounded-xl overflow-hidden border border-gray-700 mb-3 relative">
+                <div id="cc-loading" class="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10 rounded-xl text-gray-400">⏳ Loading…</div>
+                <div id="cc-chart" style="height:520px;"></div>
+              </div>
+
+              <!-- Volume histogram -->
+              <div id="cc-vol" class="rounded-xl overflow-hidden border border-gray-700" style="height:120px;"></div>
+            </div><!-- /page-crude-chart -->
+
             <!-- Disclaimer -->
             <div class="text-center text-xs text-gray-400 py-3">
                 <p>⚠️ Educational only. Not financial advice. Manage your risk!</p>
@@ -2020,6 +2075,7 @@
     <script src="/static/at-settings.js?v=1"></script>
     <script src="/static/at-health.js?v=1"></script>
     <script src="/static/crude-trader.js?v=10"></script>
+    <script src="/static/crude-chart.js?v=1"></script>
     <script>/* bt-qty v1 — quantity field wired to backtest + live monitor */</script>
     <script src="/static/live-monitor.js?v=2"></script>
     <script src="/static/paper-trader.js?v=1"></script>
