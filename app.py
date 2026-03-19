@@ -2351,16 +2351,55 @@ async def crude_config(
 
 @app.get("/api/crude/margin")
 async def crude_margin():
-    """Return live available margin from Zerodha for the crude trader."""
-    from crude_trader import _fetch_available_margin
+    """Return live margin + per-lot cost for the current ATM option.
+
+    Calls Zerodha order_margins() so you can see exactly what will be
+    charged before committing — no more surprise 'Insufficient funds'.
+    """
+    from crude_trader import _fetch_available_margin, _query_zerodha_margin
+    from crude_data import get_crude_spot, get_crude_atm_option
+    from crude_trader import state as cs
     try:
         avail = _fetch_available_margin()
         if avail is None:
-            return {"success": False, "available": 0.0,
-                    "error": "Zerodha session expired — re-login at /login"}
-        return {"success": True, "available": round(avail, 2)}
+            return JSONResponse({"success": False, "available": 0.0,
+                    "error": "Zerodha session expired — re-login at /login"})
+
+        spot = await asyncio.to_thread(get_crude_spot)
+        margin_1lot = margin_2lot = None
+        symbol = None
+        if spot:
+            try:
+                from crude_data import get_crude_option_ltp
+                sym, _, lot_sz = get_crude_atm_option(
+                    spot, 'long', cs.strike_offset, capital=avail
+                )
+                symbol = sym
+                # Must pass LTP — Zerodha returns 0 for commodity options when price=0
+                ltp_val     = await asyncio.to_thread(get_crude_option_ltp, sym)
+                margin_1lot = await asyncio.to_thread(_query_zerodha_margin, sym, 1, ltp_val)
+                margin_2lot = await asyncio.to_thread(_query_zerodha_margin, sym, 2, ltp_val)
+            except Exception as ex:
+                print(f"⚠️  Margin card lookup failed: {ex}")
+
+        max_lots = 0
+        if margin_1lot and margin_1lot <= avail:
+            max_lots = 1
+            if margin_2lot and margin_2lot <= avail:
+                max_lots = 2
+
+        return JSONResponse({
+            "success":     True,
+            "available":   round(avail, 2),
+            "symbol":      symbol,
+            "margin_1lot": round(margin_1lot, 2) if margin_1lot else None,
+            "margin_2lot": round(margin_2lot, 2) if margin_2lot else None,
+            "max_lots":    max_lots,
+            "can_trade":   max_lots >= 1,
+            "shortfall":   round(max(0, (margin_1lot or 0) - avail), 2),
+        })
     except Exception as e:
-        return {"success": False, "available": 0.0, "error": str(e)}
+        return JSONResponse({"success": False, "available": 0.0, "error": str(e)})
 
 
 @app.post("/api/crude/evaluate")

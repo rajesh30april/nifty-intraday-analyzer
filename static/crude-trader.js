@@ -585,6 +585,54 @@ async function pollCrudeStatus() {
     } catch (_) { /* ignore network blips */ }
 }
 
+// ── Margin Health Card ─────────────────────────────────────────────
+async function refreshCrudeMargin() {
+    const avail  = document.getElementById('crude-margin-avail');
+    const lot1   = document.getElementById('crude-margin-1lot');
+    const lot2   = document.getElementById('crude-margin-2lot');
+    const badge  = document.getElementById('crude-margin-badge');
+    const icon   = document.getElementById('crude-margin-icon');
+    if (!avail) return;
+
+    avail.textContent = '…';
+    try {
+        const r = await fetch('/api/crude/margin');
+        const d = await r.json();
+        if (!d.success) {
+            avail.textContent = '❌ ' + (d.error || 'Error');
+            return;
+        }
+        const fmt = v => v != null ? '₹' + Number(v).toLocaleString('en-IN') : '—';
+        avail.textContent = fmt(d.available);
+        lot1.textContent  = fmt(d.margin_1lot);
+        lot2.textContent  = fmt(d.margin_2lot);
+
+        // Badge: max tradeable lots
+        const ml = d.max_lots || 0;
+        if (ml >= 2) {
+            badge.textContent = `✅ ${ml} lots OK`;
+            badge.className = 'font-bold px-2 py-0.5 rounded-full bg-green-900 text-green-300';
+            icon.textContent = '✅';
+        } else if (ml === 1) {
+            badge.textContent = '⚠️ 1 lot only';
+            badge.className = 'font-bold px-2 py-0.5 rounded-full bg-yellow-900 text-yellow-300';
+            icon.textContent = '⚠️';
+        } else {
+            const short = d.shortfall ? ` (top-up ₹${Number(d.shortfall).toLocaleString('en-IN')})` : '';
+            badge.textContent = `⛔ No lots${short}`;
+            badge.className = 'font-bold px-2 py-0.5 rounded-full bg-red-900 text-red-300';
+            icon.textContent = '⛔';
+        }
+    } catch (e) {
+        if (avail) avail.textContent = '❌ Network error';
+    }
+}
+
+// Auto-refresh margin every 60 s when the crude panel is visible
+setInterval(() => {
+    if (document.getElementById('crude-margin-avail')) refreshCrudeMargin();
+}, 60_000);
+
 // ── Trade history ─────────────────────────────────────────────────
 async function loadCrudeHistory() {
     const el = document.getElementById('crude-history');
@@ -619,7 +667,8 @@ function onCrudeTraderTabOpen() {
     _crudeLog('👁 Crude trader tab opened', 'info');
     pollCrudeStatus();
     loadCrudeHistory();
-    syncCrudeCapital();                            // auto-sync Zerodha balance on tab open
+    syncCrudeCapital();       // auto-sync Zerodha balance on tab open
+    refreshCrudeMargin();     // show margin + lot affordability immediately
     _crudePoller = setInterval(pollCrudeStatus, 5000);
 }
 

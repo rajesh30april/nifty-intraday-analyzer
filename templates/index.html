@@ -1505,6 +1505,25 @@
                   </div>
                 </div>
 
+                <!-- ── Margin Health Card ──────────────────────── -->
+                <div id="crude-margin-card"
+                  class="flex items-center justify-between gap-3 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 mb-3 text-[11px]">
+                  <div class="flex items-center gap-2">
+                    <span id="crude-margin-icon">💰</span>
+                    <span class="text-gray-400">Available:</span>
+                    <span id="crude-margin-avail" class="font-bold text-white">—</span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <span class="text-gray-500">1L cost:</span>
+                    <span id="crude-margin-1lot" class="font-mono text-gray-300">—</span>
+                    <span class="text-gray-500">2L cost:</span>
+                    <span id="crude-margin-2lot" class="font-mono text-gray-300">—</span>
+                    <span id="crude-margin-badge" class="font-bold px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">—</span>
+                  </div>
+                  <button onclick="refreshCrudeMargin()"
+                    class="text-[10px] text-blue-400 hover:text-blue-300 underline">↺ refresh</button>
+                </div>
+
                 <!-- ── Row 2: Evaluate + result msg ─────────────── -->
                 <div class="flex items-center gap-2 flex-wrap mb-2">
                   <button onclick="crudeManualEvaluate()" id="crude-btn-evaluate"
@@ -1958,7 +1977,7 @@
     <script src="/static/auto-trader.js?v=16"></script>
     <script src="/static/at-settings.js?v=1"></script>
     <script src="/static/at-health.js?v=1"></script>
-    <script src="/static/crude-trader.js?v=8"></script>
+    <script src="/static/crude-trader.js?v=9"></script>
     <script>/* bt-qty v1 — quantity field wired to backtest + live monitor */</script>
     <script src="/static/live-monitor.js?v=2"></script>
     <script src="/static/paper-trader.js?v=1"></script>

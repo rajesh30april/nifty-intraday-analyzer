@@ -289,72 +289,112 @@ def _fetch_available_margin() -> float | None:
 MCX_OPTION_MARGIN_RATE = 0.15   # kept for _crude_margin_info() display only — NOT used for lot sizing
 
 
-def _fetch_margin_per_lot(symbol: str, qty: int = 1) -> float | None:
-    """Ask Zerodha exactly what margin 1 lot of this option costs.
+def _query_zerodha_margin(symbol: str, lots: int,
+                          ltp: float | None = None) -> float | None:
+    """Call Zerodha order_margins() for exactly `lots` lots.
 
-    Uses kite.order_margins() — the most accurate source.
-    Falls back to None so callers can use the rule-of-thumb estimate.
+    IMPORTANT: Zerodha returns zeros when price=0 for commodity options.
+    We must pass the actual LTP so the `option_premium` field is populated.
+    If ltp is not provided, we fetch it live.
+
+    Returns total required margin in ₹, or None on API failure.
     """
-    if not kite_manager.is_authenticated:
+    if not kite_manager.is_authenticated or lots <= 0:
         return None
     clean = symbol.replace("MCX:", "")
+
+    # Zerodha REQUIRES a real price for commodity options — price=0 → zeros
+    price = ltp
+    if not price or price <= 0:
+        price = get_crude_option_ltp(symbol)
+    if not price or price <= 0:
+        print(f"⚠️  Cannot query Zerodha margin — no LTP for {clean}")
+        return None
+
     try:
-        result = kite_manager.kite.order_margins([
-            {
-                "exchange":        "MCX",
-                "tradingsymbol":   clean,
-                "transaction_type": "BUY",
-                "variety":         "regular",
-                "product":         "MIS",
-                "order_type":      "LIMIT",
-                "quantity":        qty,
-                "price":           0,
-            }
-        ])
+        result = kite_manager.kite.order_margins([{
+            "exchange":          "MCX",
+            "tradingsymbol":     clean,
+            "transaction_type":  "BUY",
+            "variety":           "regular",
+            "product":           "MIS",
+            "order_type":        "LIMIT",
+            "quantity":          lots,
+            "price":             round(price, 1),
+        }])
         if result and isinstance(result, list) and result[0]:
             total = float(result[0].get("total", 0) or 0)
-            print(f"📋 Zerodha margin check: ₹{total:,.0f} for {qty} lot(s) of {clean}")
-            return total if total > 0 else None
+            if total > 0:
+                print(f"📋 Zerodha margin ({lots}L {clean} @ ₹{price:.1f}): ₹{total:,.0f}")
+                return total
+            # option_premium might be the right field for buyers
+            prem_field = float(result[0].get("option_premium", 0) or 0)
+            if prem_field > 0:
+                print(f"📋 Zerodha margin [prem] ({lots}L {clean}): ₹{prem_field:,.0f}")
+                return prem_field
     except Exception as e:
-        print(f"⚠️  order_margins() failed ({e}) — using rule-of-thumb")
+        print(f"⚠️  order_margins({lots}L {clean}) failed: {e}")
     return None
+
+
+def _validate_and_size(symbol: str, desired_lots: int, available: float,
+                       ltp: float | None = None) -> tuple[int, float]:
+    """Ask Zerodha for the EXACT margin for `desired_lots`, walk down if needed.
+
+    This is the pre-flight gatekeeper — called RIGHT BEFORE we hit the exchange.
+    Loops lots = desired → 1, asking Zerodha each time.
+    Returns (approved_lots, required_margin).
+    approved_lots == 0  →  block the trade entirely.
+
+    Why walk down instead of just math?  Zerodha margin for N lots is
+    NOT always exactly N × (margin for 1 lot).  Edge fees, rounding, and
+    MIS intraday levies can push it above the simple multiple.
+    """
+    if not kite_manager.is_authenticated:
+        # Paper mode or no auth — just return desired_lots as-is
+        return desired_lots, 0.0
+
+    for lots in range(desired_lots, 0, -1):
+        required = _query_zerodha_margin(symbol, lots, ltp=ltp)
+        if required is None:
+            # API unavailable — block the trade: better to miss than to get rejected
+            print(f"⚠️  Margin API unavailable for {symbol} — blocking trade to avoid rejection")
+            return 0, 0.0
+        if required <= available:
+            print(f"✅ Pre-flight OK: {lots} lot(s) ₹{required:,.0f} ≤ ₹{available:,.0f}")
+            return lots, required
+        print(f"⚠️  {lots}L needs ₹{required:,.0f} but only ₹{available:,.0f} — trying {lots-1}L")
+
+    return 0, 0.0  # even 1 lot doesn't fit
 
 
 def _resolve_qty(spot: float, real_premium: float | None = None,
                  lot_size: int = MCX_CRUDE_LOT_SIZE,
                  symbol: str = "") -> int:
-    """Return order quantity in LOTS (what the exchange expects).
+    """Estimate order quantity in LOTS from available capital.
 
-    MCX quantity unit = LOTS, NOT barrels.
-      1 lot CRUDEOIL  = 100 barrels  → qty=1 buys 100 barrels
-      1 lot CRUDEOILM = 10  barrels  → qty=1 buys 10  barrels
-
-    MCX option BUYERS pay only the option premium (just like NSE equity
-    option buyers). We size based on premium × lot_size.
-    Zerodha's order_margins() API is tried first for the exact figure;
-    if unavailable we fall back to premium × barrels.
-    Returns 0 if capital is insufficient — caller must block the trade.
+    This is just the INITIAL ESTIMATE for sizing — the real gatekeeper
+    is _validate_and_size() which calls Zerodha for the exact number.
+    We keep this fast (no exchange call) so it can run without auth.
     """
-    available = state.capital * 0.9   # keep 10% buffer
+    available = state.capital   # use full available balance; _validate_and_size guards the rest
 
-    # ── Step 1: try Zerodha's exact required margin for 1 lot ─────
-    cost_per_lot = _fetch_margin_per_lot(symbol) if symbol else None
+    # Try to get per-lot margin from Zerodha (fast — 1-lot check)
+    # Pass LTP so Zerodha doesn't return zeros for commodity options
+    cost_per_lot = _query_zerodha_margin(symbol, 1, ltp=real_premium) if symbol else None
     if cost_per_lot and cost_per_lot > 0:
-        print(f"📐 Margin from Zerodha API: ₹{cost_per_lot:,.0f}/lot")
+        print(f"📐 Zerodha 1-lot cost: ₹{cost_per_lot:,.0f}")
     else:
-        # ── Step 2: fallback — premium × barrels (correct for buyers) ─
+        # Fallback: premium × barrels (underestimates — that's OK, pre-flight fixes it)
         premium      = real_premium if real_premium and real_premium > 0 else estimate_crude_premium(spot)
         cost_per_lot = premium * lot_size
-        print(f"📐 Margin estimate (premium): "
-              f"₹{premium:.1f} × {lot_size}bbl = ₹{cost_per_lot:,.0f}/lot")
+        print(f"📐 Estimate 1-lot cost: ₹{premium:.1f} × {lot_size}bbl = ₹{cost_per_lot:,.0f}")
 
     if not cost_per_lot or cost_per_lot <= 0:
         return 0
 
     lots = int(available / cost_per_lot)
-    print(f"📐 Qty: ₹{state.capital:,.0f} × 90% = ₹{available:,.0f} "
-          f"÷ ₹{cost_per_lot:,.0f}/lot = {lots} lots "
-          f"(lot_sz={lot_size}bbl, total ₹{lots * cost_per_lot:,.0f})")
+    print(f"📐 Initial size: ₹{available:,.0f} ÷ ₹{cost_per_lot:,.0f}/lot = {lots} lots")
     return lots
 
 
@@ -377,24 +417,37 @@ def _enter_trade(direction: Direction, price: float):
             print(f"💰 Capital synced: ₹{state.capital:,.0f} → ₹{live_margin:,.0f} (live Zerodha balance)")
         state.capital = live_margin
 
-    real_ltp = get_crude_option_ltp(symbol)
-    qty      = _resolve_qty(price, real_ltp, lot_size=lot_size, symbol=symbol)
+    real_ltp     = get_crude_option_ltp(symbol)
+    available    = state.capital          # full live balance after sync
+    desired_lots = _resolve_qty(price, real_ltp, lot_size=lot_size, symbol=symbol)
 
-    # ── Capital guard — block before hitting exchange ──────────────
+    # ── Pre-flight: ask Zerodha for EXACT margin for our lot count ─
+    # This is the real gatekeeper — walks down lots until Zerodha says OK.
+    # Pass real_ltp so Zerodha's commodity option pricing is correct (price=0 → zeros).
+    qty, required_margin = _validate_and_size(
+        symbol, desired_lots, available, ltp=real_ltp
+    )
+
     if qty == 0:
-        premium      = real_ltp or estimate_crude_premium(price)
-        needed       = round(premium * lot_size, 0)
-        is_mini      = lot_size == MCX_CRUDE_MINI_LOT_SIZE
+        # Even 1 lot rejected — pull the exact 1-lot cost for the error message
+        one_lot_cost = _query_zerodha_margin(symbol, 1) or round(
+            (real_ltp or estimate_crude_premium(price)) * lot_size, 0
+        )
+        is_mini = lot_size == MCX_CRUDE_MINI_LOT_SIZE
         state.last_block_reason = (
-            f"⛔ Need ₹{needed:,.0f} for 1 {'mini' if is_mini else 'full'} lot "
-            f"(₹{premium:.0f} prem × {lot_size}bbl) but only "
-            f"₹{state.capital:,.0f} available."
+            f"⛔ Insufficient funds. "
+            f"Need ₹{one_lot_cost:,.0f} for 1 {'mini' if is_mini else 'full'} lot "
+            f"({symbol.replace('MCX:','')}) but only ₹{available:,.0f} available. "
+            f"Top up ₹{max(0, one_lot_cost - available):,.0f} to trade."
         )
         print(f"🚫 {state.last_block_reason}")
         return
-    sl_pts   = state.sl_points
-    trail    = state.trail_points
-    rr       = state.rr_ratio
+
+    if qty < desired_lots:
+        print(f"⚠️  Lot count reduced {desired_lots} → {qty} to fit margin (₹{required_margin:,.0f} ≤ ₹{available:,.0f})")
+
+    sl_pts = state.sl_points
+    rr     = state.rr_ratio
 
     sl     = price - sl_pts if direction == Direction.LONG else price + sl_pts
     target = price + sl_pts * rr if direction == Direction.LONG else price - sl_pts * rr
@@ -463,8 +516,12 @@ def _exit_position(reason: str, price: float):
         clean    = trade.instrument.replace("MCX:", "")
         # MCX options: LIMIT order required (MARKET is exchange-blocked)
         limit_px = _limit_price_for(trade.instrument, "SELL")
+        if limit_px is None:
+            # Last-resort fallback: use last known LTP with 2% buffer below
+            limit_px = round(exit_prem * 0.98, 1) if exit_prem > 0 else None
+            print(f"⚠️  LTP fetch failed for exit — using fallback LIMIT ₹{limit_px}")
         try:
-            kite_manager.kite.place_order(
+            oid = kite_manager.kite.place_order(
                 variety=kite_manager.kite.VARIETY_REGULAR,
                 exchange="MCX",
                 tradingsymbol=clean,
@@ -472,14 +529,18 @@ def _exit_position(reason: str, price: float):
                 quantity=trade.quantity,
                 product=kite_manager.kite.PRODUCT_MIS,
                 order_type=(
-                    kite_manager.kite.ORDER_TYPE_LIMIT if limit_px
+                    kite_manager.kite.ORDER_TYPE_LIMIT
+                    if limit_px
                     else kite_manager.kite.ORDER_TYPE_MARKET
                 ),
                 price=limit_px,
                 validity="DAY",
             )
+            print(f"✅ Exit order placed: {oid} | {clean} SELL {trade.quantity}L @ ₹{limit_px}")
         except Exception as e:
-            print(f"❌ Crude exit order failed: {e}")
+            print(f"❌ Crude exit order failed: {e} | Instrument: {clean} | Qty: {trade.quantity}L")
+            # Log the failure but still clear the trade locally
+            # The position needs to be closed manually in Zerodha if this fails
 
     # P&L = premium Δ × lots × barrels_per_lot
     pnl = (exit_prem - trade.entry_premium) * trade.quantity * trade.lot_size
