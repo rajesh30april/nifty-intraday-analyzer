@@ -207,10 +207,13 @@ def _save_state_snapshot():
         "total_pnl":       round(state.total_pnl, 2),
         "orders_placed":   state.orders_placed,
         "is_paper_mode":   state.is_paper_mode,
+        "is_running":      state.is_running,       # ← survive server restarts
         "selected_strategy": state.selected_strategy,
         # ── Runtime trade settings (survive restart) ──
         "sl_points":          state.sl_points,
         "trailing_sl_points": state.trailing_sl_points,
+        "trail_mode":         state.trail_mode,
+        "trail_atr_mult":     state.trail_atr_mult,
         "rr_ratio":           state.rr_ratio,
         "qty_mode":           state.qty_mode,
         "manual_qty":         state.manual_qty,
@@ -302,6 +305,8 @@ def _recover_state(snapshot_file: Path | None = None):
     # ── Restore runtime trade settings ───────────────────────
     state.sl_points          = snap.get("sl_points",          SL_POINTS)
     state.trailing_sl_points = snap.get("trailing_sl_points", TRAILING_SL_POINTS)
+    state.trail_mode         = snap.get("trail_mode",         "fixed")
+    state.trail_atr_mult     = snap.get("trail_atr_mult",     1.5)
     state.rr_ratio           = snap.get("rr_ratio",           2.0)
     state.qty_mode           = snap.get("qty_mode",           "manual")
     state.manual_qty         = snap.get("manual_qty",         DEFAULT_QUANTITY)
@@ -309,6 +314,8 @@ def _recover_state(snapshot_file: Path | None = None):
     state.capital            = snap.get("capital",            DEFAULT_CAPITAL)
     state.strike_offset      = snap.get("strike_offset",      0)   # default ATM
     state.max_trades_per_day = snap.get("max_trades_per_day", MAX_ORDERS_PER_DAY)
+    # ── Restore running flag (auto-resume after server restart) ──
+    state.is_running         = snap.get("is_running",         False)
 
     # ── Restore historical trades ─────────────────────────────
     for t in snap.get("trades_today", []):

@@ -219,6 +219,16 @@ async def _maybe_start_ticker():
 @asynccontextmanager
 async def lifespan(_app):
     """Startup: launch background tasks. Shutdown: cancel them."""
+    # Auto-resume auto-trader if it was running before server restart
+    if trader_state.is_running:
+        import threading
+        threading.Thread(
+            target=start_auto_trader,
+            kwargs={"strategy_id": trader_state.selected_strategy},
+            daemon=True,
+            name="at-auto-resume",
+        ).start()
+        print("🔄 Auto-trader auto-resumed from snapshot (was running before restart)")
     task_trader       = asyncio.create_task(_auto_trader_loop())
     task_ltp          = asyncio.create_task(_ltp_refresh_loop())
     task_ticker       = asyncio.create_task(_maybe_start_ticker())

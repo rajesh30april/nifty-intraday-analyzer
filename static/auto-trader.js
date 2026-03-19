@@ -959,8 +959,7 @@ function renderTradeHistory(data) {
 
 // ── Init ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
-        pollAutoTraderStatus();
-        loadTradeHistory();
-    }, 1500);
+    // Poll immediately — server is already running, no need to wait
+    pollAutoTraderStatus();
+    loadTradeHistory();
 });
