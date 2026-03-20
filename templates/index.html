@@ -1662,108 +1662,22 @@
                 </div>
               </div>
 
-              <!-- Signal Status Card -->
-              <div class="bg-gradient-to-r from-indigo-900 to-purple-900 border border-indigo-700 rounded-xl p-4 mb-4 shadow-lg">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-xl">📡</div>
-                  <div class="flex-1">
-                    <div class="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-1">Latest Signal</div>
-                    <div id="crude-signal" class="text-sm text-white font-medium leading-relaxed">--</div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Professional Controls Panel -->
+              <!-- ═══════════════════════════════════════════════════════════════════ -->
+              <!-- TRADE PARAMETERS (MOVED TO TOP - matches Nifty layout)             -->
+              <!-- ═══════════════════════════════════════════════════════════════════ -->
               <div class="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
-                <h3 class="text-sm font-black text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                  <span class="w-6 h-6 rounded-lg bg-blue-600 flex items-center justify-center text-white text-xs">⚙️</span>
-                  Trading Controls
-                </h3>
-
-                <!-- Control Buttons + Status -->
-                <div class="flex items-center gap-3 flex-wrap mb-6">
-                  <button onclick="crudeTrade('start')" id="crude-start-btn"
-                    class="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg flex items-center gap-2">
-                    <span class="text-lg">▶</span> Start Trading
-                  </button>
-                  <button onclick="crudeTrade('stop')" id="crude-stop-btn"
-                    class="bg-gray-200 text-gray-400 cursor-not-allowed px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center gap-2" disabled>
-                    <span class="text-lg">⏹</span> Stop
-                  </button>
-                  <button onclick="crudeTrade('kill')" id="crude-kill-btn"
-                    class="bg-gray-200 text-gray-400 cursor-not-allowed px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center gap-2" disabled>
-                    <span class="text-lg">🚨</span> Kill Switch
-                  </button>
-                  <div class="ml-auto bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-xl px-5 py-3 text-center min-w-[120px] shadow-sm">
-                    <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Status</div>
-                    <div id="crude-status" class="text-sm font-black text-gray-700">⏸ Idle</div>
-                  </div>
-                </div>
-                <!-- Professional Margin Health Dashboard -->
-                <div class="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5 mb-6 shadow-sm">
-                  <div class="flex items-center justify-between mb-4">
-                    <div class="flex items-center gap-2">
-                      <span class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">💰</span>
-                      <span class="text-sm font-black text-gray-900">Margin Health</span>
-                      <span id="crude-margin-badge" class="font-bold px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-gray-600 text-[10px] shadow-sm">—</span>
-                    </div>
-                    <button onclick="refreshCrudeMargin()"
-                      class="text-xs text-blue-600 hover:text-blue-700 font-semibold underline flex items-center gap-1">
-                      <span>↺</span> Refresh
-                    </button>
-                  </div>
-                  <div class="grid grid-cols-3 gap-3 mb-3">
-                    <div class="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
-                      <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Free</div>
-                      <div id="crude-margin-free" class="text-lg font-black text-green-600">—</div>
-                    </div>
-                    <div class="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
-                      <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Utilised</div>
-                      <div id="crude-margin-used" class="text-lg font-black text-orange-600">—</div>
-                    </div>
-                    <div class="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
-                      <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Net</div>
-                      <div id="crude-margin-net" class="text-lg font-black text-blue-600">—</div>
-                    </div>
-                  </div>
-                  <div class="flex items-center gap-4 text-xs bg-white rounded-lg p-3 border border-gray-200">
-                    <span class="text-gray-600">1 Lot: <span id="crude-margin-1lot" class="font-bold text-gray-900">—</span></span>
-                    <span class="text-gray-600">2 Lots: <span id="crude-margin-2lot" class="font-bold text-gray-900">—</span></span>
-                    <span id="crude-margin-shortfall" class="text-red-600 font-bold hidden ml-auto"></span>
-                  </div>
-                  <span id="crude-margin-icon" class="hidden">💰</span>
-                </div>
-
-                <!-- Signal Evaluation -->
-                <div class="mb-6">
-                  <button onclick="crudeManualEvaluate()" id="crude-btn-evaluate"
-                    class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-4 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 text-sm">
-                    <span class="text-xl">🔍</span> Evaluate Signal Now
-                  </button>
-                  <span id="crude-eval-msg" class="hidden text-xs text-gray-500 mt-2 block text-center"></span>
-                  
-                  <!-- Pattern Charts (shown after Evaluate) -->
-                  <div id="crude-pattern-charts" class="hidden mt-6">
-                    <div class="text-sm font-black text-gray-900 uppercase tracking-wide mb-3 flex items-center gap-2">
-                      <span class="w-6 h-6 rounded-lg bg-purple-600 flex items-center justify-center text-white text-xs">📊</span>
-                      Chart Patterns
-                    </div>
-                    <div id="crude-pattern-cards" class="space-y-3"></div>
-                  </div>
-                </div>
-
-                <!-- Strategy Dashboard (shown after Evaluate) -->
-                <div id="crude-strategy-panel"
-                  class="hidden bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-xl p-5 mb-6 shadow-sm">
-                  <!-- filled by _renderStrategyDashboard() -->
-                </div>
-
-                <!-- Professional Trade Settings -->
-                <div class="bg-white border border-gray-200 rounded-xl p-6">
-                  <h4 class="text-sm font-black text-gray-900 uppercase tracking-wider mb-5 flex items-center gap-2">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="text-sm font-black text-gray-900 uppercase tracking-wider flex items-center gap-2">
                     <span class="w-6 h-6 rounded-lg bg-purple-600 flex items-center justify-center text-white text-xs">⚙️</span>
                     Trade Parameters
-                  </h4>
+                  </h3>
+                  <button onclick="toggleCrudeSettings()" id="crude-settings-toggle-btn"
+                    class="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 transition">
+                    <span id="crude-settings-toggle-icon">▼</span> <span id="crude-settings-toggle-text">Collapse</span>
+                  </button>
+                </div>
+                
+                <div id="crude-settings-body">
                   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5">
 
                     <!-- SL Points -->
@@ -1876,31 +1790,23 @@
                   </div>
 
                   <!-- Apply Button -->
-                  <div class="mt-6">
+                  <div class="mt-6 flex items-center gap-3">
                     <button onclick="applyCrudeSettings()"
-                      class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-3 rounded-xl transition-all shadow-md hover:shadow-lg text-sm">
+                      class="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-3 rounded-xl transition-all shadow-md hover:shadow-lg text-sm">
                       ✅ Apply Settings
+                    </button>
+                    <button onclick="crudeResetDaily()" title="Reset today's trade counter (keeps active position)"
+                      class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-gray-300 text-xs font-semibold px-4 py-3 rounded-xl transition">
+                      🔄 Reset Daily
                     </button>
                   </div>
                 </div>
               </div>
-                      <div id="crude-trail-st-row" class="hidden text-[10px] text-gray-400 mt-1">
-                        SL follows Supertrend (7, 2.5) on each candle
-                        <span id="crude-st-live" class="text-yellow-400 ml-1">ST: —</span>
-                      </div>
-                    </div>
 
-                  </div><!-- /grid -->
-                  <div class="flex items-center gap-3 mt-4 flex-wrap">
-                    <button onclick="saveCrudeConfig()" class="bg-[#0053e2] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition">💾 Save Settings</button>
-                    <button onclick="crudeResetDaily()" title="Reset today's trade counter (keeps active position)"
-                      class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-gray-300 text-xs font-semibold px-3 py-2 rounded-lg transition">
-                      🔄 Reset Daily Counter
-                    </button>
-                  </div>
-                </div><!-- /settings -->
-              </div>
-
+              <!-- ═══════════════════════════════════════════════════════════════════ -->
+              <!-- POSITION BANNER (MOVED TO TOP - matches Nifty layout)              -->
+              <!-- ═══════════════════════════════════════════════════════════════════ -->
+              
               <!-- ── Why not trading? (block reason) ────────────── -->
               <div id="crude-block-card" class="hidden bg-yellow-950 border border-yellow-700 rounded-xl p-3 mb-3 flex items-start gap-2">
                 <span class="text-yellow-400 text-lg shrink-0">⚠️</span>
@@ -1910,14 +1816,13 @@
                 </div>
               </div>
 
-              <!-- ── Crude Position Banner (Nifty-style) ── -->
               <!-- NO POSITION placeholder -->
-              <div id="ct-no-pos" class="bg-gray-900 border border-dashed border-gray-700 rounded-xl p-4 mb-3 text-center text-gray-500 text-sm">
+              <div id="ct-no-pos" class="bg-gray-900 border border-dashed border-gray-700 rounded-xl p-4 mb-4 text-center text-gray-500 text-sm">
                 🛢️ No open crude position
               </div>
 
               <!-- ACTIVE POSITION BANNER -->
-              <div id="crude-trade-card" class="hidden mb-3">
+              <div id="crude-trade-card" class="hidden mb-4">
                 <!-- glowing border wrapper -->
                 <div id="ct-banner-wrap" class="rounded-xl border-2 border-green-500 bg-gray-900 p-4 space-y-3 shadow-lg shadow-green-900/20">
 
@@ -1997,6 +1902,117 @@
                   </div>
 
                   <!-- ── Row 4: Add Lots ────────────────────────── -->
+                  <div class="flex items-center gap-2 pt-1">
+                    <span class="text-[11px] text-gray-400 shrink-0">➕ Add lots:</span>
+                    <input id="ct-add-lots-input" type="number" value="2" min="1" max="20" step="1"
+                      class="w-16 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-sm text-center" />
+                    <button onclick="crudeAddLots()"
+                      class="bg-[#0053e2] hover:bg-blue-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition">
+                      ➕ Add to Position
+                    </button>
+                    <span id="ct-add-lots-msg" class="text-[11px] text-gray-400 hidden"></span>
+                  </div>
+
+                </div><!-- /ct-banner-wrap -->
+              </div><!-- /crude-trade-card -->
+
+              <!-- Signal Status Card -->
+              <div class="bg-gradient-to-r from-indigo-900 to-purple-900 border border-indigo-700 rounded-xl p-4 mb-4 shadow-lg">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-xl">📡</div>
+                  <div class="flex-1">
+                    <div class="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-1">Latest Signal</div>
+                    <div id="crude-signal" class="text-sm text-white font-medium leading-relaxed">--</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Professional Controls Panel -->
+              <div class="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
+                <h3 class="text-sm font-black text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-lg bg-blue-600 flex items-center justify-center text-white text-xs">⚙️</span>
+                  Trading Controls
+                </h3>
+
+                <!-- Control Buttons + Status -->
+                <div class="flex items-center gap-3 flex-wrap mb-6">
+                  <button onclick="crudeTrade('start')" id="crude-start-btn"
+                    class="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg flex items-center gap-2">
+                    <span class="text-lg">▶</span> Start Trading
+                  </button>
+                  <button onclick="crudeTrade('stop')" id="crude-stop-btn"
+                    class="bg-gray-200 text-gray-400 cursor-not-allowed px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center gap-2" disabled>
+                    <span class="text-lg">⏹</span> Stop
+                  </button>
+                  <button onclick="crudeTrade('kill')" id="crude-kill-btn"
+                    class="bg-gray-200 text-gray-400 cursor-not-allowed px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center gap-2" disabled>
+                    <span class="text-lg">🚨</span> Kill Switch
+                  </button>
+                  <div class="ml-auto bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-xl px-5 py-3 text-center min-w-[120px] shadow-sm">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Status</div>
+                    <div id="crude-status" class="text-sm font-black text-gray-700">⏸ Idle</div>
+                  </div>
+                </div>
+                <!-- Professional Margin Health Dashboard -->
+                <div class="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5 mb-6 shadow-sm">
+                  <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                      <span class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">💰</span>
+                      <span class="text-sm font-black text-gray-900">Margin Health</span>
+                      <span id="crude-margin-badge" class="font-bold px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-gray-600 text-[10px] shadow-sm">—</span>
+                    </div>
+                    <button onclick="refreshCrudeMargin()"
+                      class="text-xs text-blue-600 hover:text-blue-700 font-semibold underline flex items-center gap-1">
+                      <span>↺</span> Refresh
+                    </button>
+                  </div>
+                  <div class="grid grid-cols-3 gap-3 mb-3">
+                    <div class="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
+                      <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Free</div>
+                      <div id="crude-margin-free" class="text-lg font-black text-green-600">—</div>
+                    </div>
+                    <div class="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
+                      <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Utilised</div>
+                      <div id="crude-margin-used" class="text-lg font-black text-orange-600">—</div>
+                    </div>
+                    <div class="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
+                      <div class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Net</div>
+                      <div id="crude-margin-net" class="text-lg font-black text-blue-600">—</div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-4 text-xs bg-white rounded-lg p-3 border border-gray-200">
+                    <span class="text-gray-600">1 Lot: <span id="crude-margin-1lot" class="font-bold text-gray-900">—</span></span>
+                    <span class="text-gray-600">2 Lots: <span id="crude-margin-2lot" class="font-bold text-gray-900">—</span></span>
+                    <span id="crude-margin-shortfall" class="text-red-600 font-bold hidden ml-auto"></span>
+                  </div>
+                  <span id="crude-margin-icon" class="hidden">💰</span>
+                </div>
+
+                <!-- Signal Evaluation -->
+                <div class="mb-6">
+                  <button onclick="crudeManualEvaluate()" id="crude-btn-evaluate"
+                    class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-4 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 text-sm">
+                    <span class="text-xl">🔍</span> Evaluate Signal Now
+                  </button>
+                  <span id="crude-eval-msg" class="hidden text-xs text-gray-500 mt-2 block text-center"></span>
+                  
+                  <!-- Pattern Charts (shown after Evaluate) -->
+                  <div id="crude-pattern-charts" class="hidden mt-6">
+                    <div class="text-sm font-black text-gray-900 uppercase tracking-wide mb-3 flex items-center gap-2">
+                      <span class="w-6 h-6 rounded-lg bg-purple-600 flex items-center justify-center text-white text-xs">📊</span>
+                      Chart Patterns
+                    </div>
+                    <div id="crude-pattern-cards" class="space-y-3"></div>
+                  </div>
+                </div>
+
+                <!-- Strategy Dashboard (shown after Evaluate) -->
+                <div id="crude-strategy-panel"
+                  class="hidden bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-xl p-5 mb-6 shadow-sm">
+                  <!-- filled by _renderStrategyDashboard() -->
+                </div>
+
+                <!-- Trade Parameters section has been MOVED TO TOP (after metrics) -->
                   <div class="flex items-center gap-2 pt-1">
                     <span class="text-[11px] text-gray-400 shrink-0">➕ Add lots:</span>
                     <input id="ct-add-lots-input" type="number" value="2" min="1" max="20" step="1"

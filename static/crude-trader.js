@@ -365,6 +365,39 @@ async function crudeTrade(action) {
     }
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// Toggle Crude Settings Panel (collapsible)
+// ──────────────────────────────────────────────────────────────────────
+function toggleCrudeSettings() {
+    const body = document.getElementById('crude-settings-body');
+    const icon = document.getElementById('crude-settings-toggle-icon');
+    const text = document.getElementById('crude-settings-toggle-text');
+    
+    if (!body || !icon || !text) return;
+    
+    const isHidden = body.classList.contains('hidden');
+    
+    if (isHidden) {
+        // Show settings
+        body.classList.remove('hidden');
+        icon.textContent = '▼';
+        text.textContent = 'Collapse';
+    } else {
+        // Hide settings
+        body.classList.add('hidden');
+        icon.textContent = '▶';
+        text.textContent = 'Expand';
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Apply Crude Settings (validates + saves)
+// ──────────────────────────────────────────────────────────────────────
+async function applyCrudeSettings() {
+    // Just call saveCrudeConfig which does all the validation + save
+    await saveCrudeConfig();
+}
+
 async function saveCrudeConfig() {
     const sl        = parseFloat(document.getElementById('crude-sl')?.value);
     const trail     = parseFloat(document.getElementById('crude-trail')?.value);
