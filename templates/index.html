@@ -1984,14 +1984,16 @@
                   <div class="px-4 py-3 bg-gradient-to-r from-blue-700 to-indigo-700 text-white flex items-center justify-between">
                     <div>
                       <h3 class="text-sm font-bold">📊 Trade Report &amp; Pattern Analysis</h3>
-                      <p class="text-blue-200 text-xs" id="tr-source-label">Upload Zerodha tradebook or auto-load from Downloads</p>
+                      <p class="text-blue-200 text-xs" id="tr-source-label">Click 'Load Today's App Trades' or upload Zerodha CSV</p>
                     </div>
                     <button onclick="loadTradeReport()" class="bg-white bg-opacity-20 hover:bg-opacity-30 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">🔄 Refresh</button>
                   </div>
 
                   <!-- Upload bar -->
                   <div class="p-4 bg-gray-50 border-b flex flex-wrap items-center gap-3">
-                    <label class="cursor-pointer flex items-center gap-2 bg-[#0053e2] text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                    <button onclick="loadAppTrades()" class="bg-[#0053e2] text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-blue-700 transition">🤖 Load Today's App Trades</button>
+                    <span class="text-xs text-gray-400">or</span>
+                    <label class="cursor-pointer flex items-center gap-2 border border-gray-300 text-gray-600 text-xs font-bold px-4 py-2 rounded-lg hover:bg-gray-100 transition">
                       📂 Upload Zerodha CSV
                       <input type="file" id="tr-csv-input" accept=".csv" class="hidden" onchange="trUploadCSV(this)">
                     </label>
@@ -2432,6 +2434,22 @@ async function loadTradeReport() {
       _trShowEmpty(j.error + ' — Upload CSV manually above.');
     }
   } catch(e) { _trShowEmpty('Failed to load: ' + e.message); }
+}
+
+async function loadAppTrades() {
+  _trShowLoading();
+  try {
+    const r = await fetch('/api/report/app-trades');
+    const j = await r.json();
+    if (j.success) {
+      document.getElementById('tr-source-label').textContent =
+        '🤖 App Trade Log — ' + j.count + ' trades (today)';
+      _trRender(j.data);
+      _trLoaded = true;
+    } else {
+      _trShowEmpty('Failed to load app trades: ' + (j.error || 'Unknown error'));
+    }
+  } catch(e) { _trShowEmpty('Failed to load app trades: ' + e.message); }
 }
 
 async function trUploadCSV(input) {
