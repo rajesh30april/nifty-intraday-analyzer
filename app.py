@@ -2500,7 +2500,13 @@ async def crude_patterns(interval: str = "5m"):
     """Detect chart patterns in crude oil data."""
     try:
         from crude_data import fetch_crude_intraday_data
-        df = await asyncio.to_thread(fetch_crude_intraday_data, interval=interval, period="5d")
+        # Convert interval format: 5m → 5minute for Kite API
+        kite_interval = interval.replace('m', 'minute') if 'm' in interval else interval
+        df = await asyncio.to_thread(fetch_crude_intraday_data, interval=kite_interval, days_back=5)
+        
+        if df is None or df.empty:
+            return {"success": False, "error": "No crude data available"}
+        
         result = await asyncio.to_thread(detect_all_patterns, df, timeframe=interval)
 
         patterns_data = [
@@ -2548,8 +2554,14 @@ async def crude_pattern_chart(pattern_index: int, interval: str = "5m", lookback
         from crude_data import fetch_crude_intraday_data
         from pattern_chart import generate_pattern_chart
         
+        # Convert interval format: 5m → 5minute for Kite API
+        kite_interval = interval.replace('m', 'minute') if 'm' in interval else interval
+        
         # Fetch crude data
-        df = await asyncio.to_thread(fetch_crude_intraday_data, interval=interval, period="5d")
+        df = await asyncio.to_thread(fetch_crude_intraday_data, interval=kite_interval, days_back=5)
+        
+        if df is None or df.empty:
+            return {"success": False, "error": "No crude data available"}
         
         # Detect patterns
         result = await asyncio.to_thread(detect_all_patterns, df, timeframe=interval)
