@@ -2005,6 +2005,12 @@ async def auto_trader_status():
         # UI uses these two to know whether the trail has actually advanced.
         trade["trailing_sl"]        = round(trade["stop_loss"], 2)
         trade["original_sl"]        = round(at_state.entry_nifty_sl, 2) if at_state.entry_nifty_sl else trade["stop_loss"]
+        
+        # trailing_sl_premium = CURRENT SL in option premium terms (what trader sees!)
+        # original_sl_premium = original SL in option premium terms
+        from auto_trader import _nifty_to_option_premium
+        trade["trailing_sl_premium"] = round(_nifty_to_option_premium(trade["stop_loss"], at_state.active_trade), 2) if trade["stop_loss"] else None
+        trade["original_sl_premium"] = round(_nifty_to_option_premium(at_state.entry_nifty_sl, at_state.active_trade), 2) if at_state.entry_nifty_sl else None
 
     # Always expose live Nifty price + auto-exit time at top level
     from auto_trader import EXIT_TIME

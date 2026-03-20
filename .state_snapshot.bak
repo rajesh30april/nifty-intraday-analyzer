@@ -26,7 +26,7 @@
     "entry_price": 23214.44921875,
     "entry_premium": 212.0,
     "quantity": 130,
-    "stop_loss": 23212.81,
+    "stop_loss": 23229.05,
     "target": 23304.44921875,
     "exit_price": null,
     "exit_premium": null,
@@ -41,7 +41,7 @@
   },
   "entry_nifty_sl": 23184.44921875,
   "lowest_price_since_entry": 23214.44921875,
-  "highest_price_since_entry": 23263.5,
+  "highest_price_since_entry": 23278.35,
   "active_option_token": 16022530,
   "trades_today": [
     {

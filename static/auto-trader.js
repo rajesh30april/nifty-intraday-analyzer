@@ -563,30 +563,30 @@ function renderAutoTrader(data) {
             }
         }
 
-        // ── Trailing SL — CURRENT Nifty SL (advances as trail fires) ─
-        // trailing_sl = current (possibly trailed) SL level
-        // original_sl = SL at the moment of entry (fixed reference point)
+        // ── Trailing SL — CURRENT Premium SL (advances as trail fires) ─
+        // trailing_sl_premium = current (possibly trailed) SL in premium terms
+        // original_sl_premium = SL at entry in premium terms
         const trailEl = document.getElementById('at-trail-sl-display');
         
         console.log('[Trail SL Element]', trailEl ? 'FOUND ✅' : 'NOT FOUND ❌', trailEl);
         
         if (trailEl) {
-            const tsl     = t.trailing_sl ?? t.stop_loss;
-            const origSl  = t.original_sl  ?? tsl;
+            const tslPrem    = t.trailing_sl_premium ?? t.option_sl_premium;
+            const origSlPrem = t.original_sl_premium ?? tslPrem;
             
             // DEBUG: Log the values to see what we're getting
             console.log('[Trail SL Debug]', {
-                trailing_sl: t.trailing_sl,
-                stop_loss: t.stop_loss,
-                original_sl: t.original_sl,
-                computed_tsl: tsl,
-                computed_origSl: origSl
+                trailing_sl_premium: t.trailing_sl_premium,
+                option_sl_premium: t.option_sl_premium,
+                original_sl_premium: t.original_sl_premium,
+                computed_tslPrem: tslPrem,
+                computed_origSlPrem: origSlPrem
             });
             
-            if (tsl && !isNaN(tsl)) {
-                // Trail has fired if current SL has moved >0.5 pts from original SL
-                const moved = Math.abs(tsl - origSl) > 0.5;
-                const newValue = `₹${tsl.toFixed(0)}`;
+            if (tslPrem && !isNaN(tslPrem)) {
+                // Trail has fired if current SL premium has moved from original
+                const moved = Math.abs(tslPrem - origSlPrem) > 1.0;  // 1 rupee threshold
+                const newValue = `₹${tslPrem.toFixed(1)}`;
                 
                 console.log('[Trail SL Update] Setting value:', newValue, 'moved:', moved);
                 
@@ -595,17 +595,17 @@ function renderAutoTrader(data) {
                     ? 'text-xs font-black text-green-400 animate-pulse'  // profit-locked ✅
                     : 'text-xs font-black text-orange-400';              // original SL still active
                 trailEl.title = moved
-                    ? `🔒 Trail fired! Original SL ₹${origSl.toFixed(0)} → Now ₹${tsl.toFixed(0)}`
-                    : `Stop-loss @ Nifty ₹${tsl.toFixed(0)} (original — trail not fired yet)`;
+                    ? `🔒 Trail fired! Original SL ₹${origSlPrem.toFixed(1)} → Now ₹${tslPrem.toFixed(1)}`
+                    : `Stop-loss @ Premium ₹${tslPrem.toFixed(1)} (original — trail not fired yet)`;
                     
                 // Verify it was actually set
                 console.log('[Trail SL Verify] Element text after update:', trailEl.textContent);
             } else {
-                console.warn('[Trail SL] No valid SL value:', tsl);
+                console.warn('[Trail SL] No valid SL premium value:', tslPrem);
                 trailEl.textContent = '--';
             }
         } else {
-            console.error('[Trail SL] Element with ID "at-trail-sl" not found in DOM!');
+            console.error('[Trail SL] Element with ID "at-trail-sl-display" not found in DOM!');
         }
 
         // Row 2 — live prices & quantity
