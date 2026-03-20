@@ -640,8 +640,19 @@ def evaluate_crude_chart_pattern(df: pd.DataFrame) -> StrategySignal:
     conditions: list[StrategyCondition] = []
 
     # ── Session candle filter ───────────────────────────────────────
+    # Session-aware: Morning (9:00–19:00) vs Evening (19:00–23:30)
+    # Volume naturally drops in evening — compare to session-local avg.
     last_ts       = df.index[-1]
-    session_start = last_ts.normalize().replace(hour=9, minute=0)
+    ist_hour      = last_ts.hour
+    is_evening    = ist_hour >= 19
+
+    if is_evening:
+        # Evening session: only look at candles from 19:00 onwards
+        session_start = last_ts.normalize().replace(hour=19, minute=0)
+    else:
+        # Morning session: 9:00 onwards
+        session_start = last_ts.normalize().replace(hour=9, minute=0)
+
     session_df    = df[df.index >= session_start]
     n_session     = len(session_df)
 
@@ -695,18 +706,23 @@ def evaluate_crude_chart_pattern(df: pd.DataFrame) -> StrategySignal:
     if not adx_cond.met:
         return StrategySignal(should_enter=False, reason=adx_cond.detail, conditions=conditions)
 
-    # ── Volume surge ────────────────────────────────────────────
-    volume  = session_df["volume"]
-    avg_vol = float(volume.iloc[:-1].mean())
-    cur_vol = float(volume.iloc[-1])
-    vol_ok  = avg_vol > 0 and cur_vol >= avg_vol * _CP_VOL_RATIO_MIN
+    # ── Volume surge ────────────────────────────────────────
+    # Session-aware volume threshold:
+    #   Morning: 1.15× avg (need clear volume spike)
+    #   Evening: 1.05× avg (volume is naturally lower, less noise)
+    volume      = session_df["volume"]
+    avg_vol     = float(volume.iloc[:-1].mean())
+    cur_vol     = float(volume.iloc[-1])
+    vol_mult    = 1.05 if is_evening else _CP_VOL_RATIO_MIN
+    vol_ok      = avg_vol > 0 and cur_vol >= avg_vol * vol_mult
+    session_tag = "evening" if is_evening else "morning"
     conditions.append(StrategyCondition(
         name="Volume surge",
         met=vol_ok,
         detail=(
-            f"Vol {cur_vol:,.0f} ≥ {_CP_VOL_RATIO_MIN}×avg = {avg_vol*_CP_VOL_RATIO_MIN:,.0f} ✅"
+            f"Vol {cur_vol:,.0f} ≥ {vol_mult}×avg = {avg_vol*vol_mult:,.0f} ✅ ({session_tag})"
             if vol_ok else
-            f"Vol {cur_vol:,.0f} < {_CP_VOL_RATIO_MIN}×avg = {avg_vol*_CP_VOL_RATIO_MIN:,.0f} ❌ low-vol breakout"
+            f"Vol {cur_vol:,.0f} < {vol_mult}×avg({session_tag}) = {avg_vol*vol_mult:,.0f} ❌ low-vol breakout"
         ),
     ))
     if not vol_ok:
