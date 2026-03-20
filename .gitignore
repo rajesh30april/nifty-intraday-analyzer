@@ -19,3 +19,6 @@ paper_trades.db
 .crude_snapshot.json
 crude_trade_log.json
 crude_settings.json
+
+# Azure deployment credentials (contains sensitive service principal data)
+azure-config.txt
