@@ -32,7 +32,7 @@ load_dotenv()
 
 # ── Configuration ────────────────────────────────────────────────
 LIVE_TRADING = os.getenv("LIVE_TRADING", "false").lower() == "true"
-MAX_LOSS_PER_DAY = float(os.getenv("MAX_LOSS_PER_DAY", "5000"))  # ₹5000
+MAX_LOSS_PER_DAY = float(os.getenv("MAX_LOSS_PER_DAY", "3000"))  # ₹3000 (reduced from 5000!)
 MAX_ORDERS_PER_DAY = int(os.getenv("MAX_ORDERS_PER_DAY", "30"))
 DEFAULT_QUANTITY   = int(os.getenv("DEFAULT_QUANTITY",   "780"))   # 12 lots × 65 units
 SL_POINTS          = float(os.getenv("SL_POINTS",          "30"))   # Fixed SL in points
@@ -1134,6 +1134,61 @@ def evaluate_and_act(df, current_price: float):
         state.last_block_reason = None
         _log("⏸", "No entry", signal.reason[:150])  # ← outcome: conditions not fully met
         return
+
+    # ── REGIME FILTER: Block trades against the trend! ─────────────────
+    # This is THE most important safety check to prevent over-trading in
+    # the wrong direction. If market is trending DOWN, we BLOCK all LONG
+    # signals. If trending UP, we BLOCK all SHORT signals.
+    #
+    # Why: Today you lost ₹6,500 taking 10 LONG signals in a DOWN market!
+    #      This filter alone would have blocked 8+ losing trades.
+    from market_regime import detect_regime, MarketRegime  # noqa: PLC0415
+    
+    regime = detect_regime(df)
+    state.last_meta_regime = regime.regime.value  # Update UI
+    
+    # HARD BLOCK: No longs in downtrend
+    if regime.regime == MarketRegime.TRENDING_DOWN and signal.direction == Direction.LONG:
+        block_msg = (
+            f"🚫 BLOCKED LONG in downtrend! "
+            f"ADX={regime.adx:.1f}, trend={regime.trend_direction}, "
+            f"confidence={regime.confidence:.0f}% — "
+            f"Market is trending DOWN, only SHORT signals allowed!"
+        )
+        state.last_block_reason = block_msg
+        state.last_signal_reason = f"{signal.reason} | {block_msg}"
+        _log("🚫", "Regime Block", block_msg)
+        return
+    
+    # HARD BLOCK: No shorts in uptrend
+    if regime.regime == MarketRegime.TRENDING_UP and signal.direction == Direction.SHORT:
+        block_msg = (
+            f"🚫 BLOCKED SHORT in uptrend! "
+            f"ADX={regime.adx:.1f}, trend={regime.trend_direction}, "
+            f"confidence={regime.confidence:.0f}% — "
+            f"Market is trending UP, only LONG signals allowed!"
+        )
+        state.last_block_reason = block_msg
+        state.last_signal_reason = f"{signal.reason} | {block_msg}"
+        _log("🚫", "Regime Block", block_msg)
+        return
+    
+    # HARD BLOCK: No trading in high volatility (whipsaw city!)
+    if regime.regime == MarketRegime.VOLATILE:
+        block_msg = (
+            f"🚫 BLOCKED entry in volatile market! "
+            f"ATR={regime.atr_pct:.2f}% (threshold: 0.8%), "
+            f"ADX={regime.adx:.1f} — "
+            f"Too much whipsaw risk, waiting for market to settle."
+        )
+        state.last_block_reason = block_msg
+        state.last_signal_reason = f"{signal.reason} | {block_msg}"
+        _log("🚫", "Volatility Block", block_msg)
+        return
+    
+    # If we get here, regime is favorable or sideways (neutral)
+    _log("✅", "Regime OK", f"{regime.regime.value} (ADX={regime.adx:.1f}, ATR={regime.atr_pct:.2f}%)")
+    # ───────────────────────────────────────────────────
 
     # All conditions met — enter trade!
     dir_label = "LONG 📈" if signal.direction == Direction.LONG else "SHORT 📉"

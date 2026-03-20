@@ -1,7 +1,7 @@
 {
   "date": "2026-03-20",
-  "total_pnl": -2008.5,
-  "orders_placed": 8,
+  "total_pnl": -6506.5,
+  "orders_placed": 11,
   "paper_mode": false,
   "trades": [
     {
@@ -154,6 +154,63 @@
       "pnl": 1891.5,
       "status": "exited",
       "order_id": "2034866122234716160",
+      "paper": false
+    },
+    {
+      "id": "T-20260320-113021880936",
+      "timestamp": "2026-03-20T11:30:21.880968",
+      "direction": "long",
+      "instrument": "NIFTY2632423400CE",
+      "entry_price": 23318.599609375,
+      "entry_premium": 195.75,
+      "quantity": 130,
+      "stop_loss": 23294.97,
+      "target": 23408.599609375,
+      "exit_price": 23299.2,
+      "exit_premium": 183.95,
+      "exit_time": "2026-03-20T11:41:16.739132",
+      "exit_reason": "\u26a1 tick \u2014 Premium SL \u20b9183.9 hit (LTP \u20b9183.9)",
+      "pnl": -1534.0,
+      "status": "exited",
+      "order_id": "2034872655932743681",
+      "paper": false
+    },
+    {
+      "id": "T-20260320-114313217181",
+      "timestamp": "2026-03-20T11:43:13.217215",
+      "direction": "long",
+      "instrument": "NIFTY2632423400CE",
+      "entry_price": 23292.69921875,
+      "entry_premium": 182.0,
+      "quantity": 130,
+      "stop_loss": 23262.69921875,
+      "target": 23382.69921875,
+      "exit_price": 23260.8,
+      "exit_premium": 167.9,
+      "exit_time": "2026-03-20T11:51:01.202264",
+      "exit_reason": "\u26a1 tick \u2014 SL hit \u20b923262.69921875 @ \u20b923261",
+      "pnl": -1833.0,
+      "status": "exited",
+      "order_id": "2034875891313991680",
+      "paper": false
+    },
+    {
+      "id": "T-20260320-115211552805",
+      "timestamp": "2026-03-20T11:52:11.552837",
+      "direction": "long",
+      "instrument": "NIFTY2632423350CE",
+      "entry_price": 23259.400390625,
+      "entry_premium": 191.25,
+      "quantity": 130,
+      "stop_loss": 23235.19,
+      "target": 23349.400390625,
+      "exit_price": 23235.1,
+      "exit_premium": 182.55,
+      "exit_time": "2026-03-20T11:56:34.157771",
+      "exit_reason": "\u26a1 tick \u2014 SL hit \u20b923235.19 @ \u20b923235",
+      "pnl": -1131.0,
+      "status": "exited",
+      "order_id": "2034878149338521600",
       "paper": false
     }
   ]
