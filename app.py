@@ -2462,6 +2462,50 @@ async def crude_evaluate():
         return JSONResponse({'success': False, 'error': str(e)})
 
 
+@app.post("/api/crude/force-entry")
+async def crude_force_entry(direction: str = Query(...)):
+    """Manually force a Crude trade entry (LONG or SHORT) bypassing signal check."""
+    from crude_trader import state as crude_state, _enter_trade, get_crude_status
+    from crude_data import fetch_crude_intraday_data, get_crude_spot
+    from strategy import Direction
+    
+    direction = direction.upper()
+    if direction not in ("LONG", "SHORT"):
+        return JSONResponse({"success": False, "error": "direction must be LONG or SHORT"})
+    if crude_state.active_trade:
+        return JSONResponse({"success": False, "error": "Already in a trade — exit first"})
+    if not crude_state.is_running:
+        return JSONResponse({"success": False, "error": "Crude trader not running — press Start first"})
+    try:
+        def _run():
+            price = get_crude_spot() or crude_state.last_crude_price or 9000.0
+            _enter_trade(Direction(direction.lower()), price)
+            return get_crude_status()
+        result = await asyncio.to_thread(_run)
+        return JSONResponse({"success": True, **result})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+
+
+@app.post("/api/crude/force-exit")
+async def crude_force_exit():
+    """Manually exit the active Crude trade at market price immediately."""
+    from crude_trader import state as crude_state, _exit_position, get_crude_status
+    from crude_data import get_crude_spot
+    
+    if not crude_state.active_trade:
+        return JSONResponse({"success": False, "error": "No active trade to exit"})
+    try:
+        def _run():
+            price = get_crude_spot() or crude_state.last_crude_price or 9000.0
+            _exit_position("MANUAL EXIT", price)
+            return get_crude_status()
+        result = await asyncio.to_thread(_run)
+        return JSONResponse({"success": True, **result})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+
+
 @app.post("/api/crude/add-lots")
 async def crude_add_lots(request: Request):
     """Add extra lots to the current active crude trade (scale-in).
@@ -2862,10 +2906,9 @@ async def auto_trader_force_exit():
 @app.post("/api/auto-trader/force-entry")
 async def auto_trader_force_entry(direction: str = Query(...)):
     """Manually force a trade entry (LONG or SHORT) bypassing signal check."""
-    from auto_trader import (
-        state as at_state, Direction, _enter_trade,
-        fetch_intraday_data
-    )
+    from auto_trader import state as at_state, Direction, _enter_trade
+    from data_fetcher import fetch_intraday_data  # ← FIX: correct import
+    
     direction = direction.upper()
     if direction not in ("LONG", "SHORT"):
         return {"success": False, "error": "direction must be LONG or SHORT"}
@@ -2884,6 +2927,7 @@ async def auto_trader_force_entry(direction: str = Query(...)):
         result = await loop.run_in_executor(None, _run)
         return {"success": True, **result}
     except Exception as e:
+        return {"success": False, "error": str(e)}
         return {"success": False, "error": str(e)}
 
 
