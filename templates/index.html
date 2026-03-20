@@ -740,12 +740,12 @@
                       <label class="text-[10px] text-gray-400 block mb-1">How to size each trade?</label>
                       <div class="flex gap-1">
                         <button id="at-qty-mode-manual" onclick="setAtQtyMode('manual')"
-                          class="flex-1 text-xs px-2 py-1.5 rounded-l-lg font-bold border border-gray-600 bg-[#0053e2] text-white transition"
+                          class="flex-1 text-xs px-2 py-1.5 rounded-l-lg font-bold border border-gray-600 bg-gray-700 text-gray-300 transition"
                           title="You pick how many lots to trade every time">
                           📌 Fixed Lots
                         </button>
                         <button id="at-qty-mode-capital" onclick="setAtQtyMode('capital')"
-                          class="flex-1 text-xs px-2 py-1.5 rounded-r-lg font-bold border border-gray-600 bg-gray-700 text-gray-300 transition"
+                          class="flex-1 text-xs px-2 py-1.5 rounded-r-lg font-bold border border-gray-600 bg-[#0053e2] text-white transition"
                           title="App auto-calculates lots from your capital at entry time">
                           💰 Auto (by Capital)
                         </button>
@@ -758,7 +758,7 @@
                   <div class="mt-3 space-y-2">
 
                     <!-- ── Fixed Lots mode ── -->
-                    <div id="at-qty-manual-row">
+                    <div id="at-qty-manual-row" class="hidden">
                       <div class="flex items-end gap-3">
                         <div class="w-28">
                           <label class="text-[10px] text-gray-400 block mb-1" for="at-manual-qty">Lots to trade</label>
@@ -780,7 +780,7 @@
                     </div>
 
                     <!-- ── Auto Capital mode ── -->
-                    <div id="at-qty-capital-row" class="hidden">
+                    <div id="at-qty-capital-row">
                       <div class="flex items-end gap-3 flex-wrap">
                         <div class="w-44">
                           <div class="flex items-center justify-between mb-1">
@@ -788,7 +788,7 @@
                             <span id="at-capital-lock-badge" class="hidden text-[8px] bg-yellow-600 text-black font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">🔒 MAX</span>
                           </div>
                           <div class="relative">
-                            <input id="at-capital" type="number" value="96000" min="1000" max="10000000" step="1000"
+                            <input id="at-capital" type="number" value="50000" min="1000" max="10000000" step="1000"
                               class="w-full bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-sm text-white font-bold"
                               onfocus="_atMarkDirty()" oninput="_onCapitalInput(event)">
                             <span id="at-capital-lock-icon" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-yellow-400 text-xs pointer-events-none">🔒</span>
@@ -2181,7 +2181,7 @@
     <script src="/static/dashboard.js?v=3"></script>
     <script src="/static/charts.js?v=3"></script>
     <script src="/static/auto-trader.js?v=16"></script>
-    <script src="/static/at-settings.js?v=1"></script>
+    <script src="/static/at-settings.js?v=3"></script>
     <script src="/static/at-health.js?v=1"></script>
     <script src="/static/crude-trader.js?v=10"></script>
     <script src="/static/crude-chart.js?v=1"></script>

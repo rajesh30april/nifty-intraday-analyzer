@@ -613,7 +613,38 @@ async function _applyBalanceSuggestion(offset, balance) {
 }
 
 // ── Init hints on load ───────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+// ── Load and apply saved config from backend ───────────────────────────
+async function loadAtConfig() {
+    try {
+        const resp = await fetch('/api/auto-trader/status');
+        const data = await resp.json();
+        
+        // Apply qty_mode (default: capital)
+        const qtyMode = data.qty_mode || 'capital';
+        _atQtyMode = qtyMode;
+        _applyQtyModeUI(qtyMode, false);
+        
+        // Apply capital value
+        const capital = data.capital || 50000;
+        const capitalInput = document.getElementById('at-capital');
+        if (capitalInput) capitalInput.value = capital;
+        
+        // Apply manual qty value
+        const manualQty = data.manual_qty || 10;
+        const manualInput = document.getElementById('at-manual-qty');
+        if (manualInput) manualInput.value = Math.floor(manualQty / 65);  // Convert units to lots
+        
+        console.log('✅ Loaded AT config:', { qtyMode, capital, manualQty });
+    } catch (err) {
+        console.error('❌ Failed to load AT config:', err);
+        // Fallback to capital mode as default
+        _atQtyMode = 'capital';
+        _applyQtyModeUI('capital', false);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadAtConfig();  // ← Load config FIRST
     _updateLotsHint();
     _updateCapitalEstimate();
     _applyStrikeUI(_atStrikeOffset);
