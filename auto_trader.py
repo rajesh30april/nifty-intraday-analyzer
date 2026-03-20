@@ -1258,6 +1258,26 @@ def _enter_trade(direction: Direction, price: float):
     # Falls back to 0.35%-of-spot estimate if Kite is unavailable.
     real_ltp = kite_manager.get_option_ltp(symbol.replace("NFO:", ""))
 
+    # ── Advisory: Show option quality info (non-blocking) ──────────
+    try:
+        from nifty_option_info import get_nifty_option_info
+        from data import fetch_nifty_intraday  # need multi-day df for HV
+        df_multi = fetch_nifty_intraday('5minute', days_back=5)
+        
+        premium_for_info = real_ltp if isinstance(real_ltp, (int, float)) and real_ltp > 0 else _estimate_premium_fallback(price)
+        
+        if df_multi is not None and len(df_multi) > 90:
+            info = get_nifty_option_info(df_multi, premium_for_info)
+            print(f"\n📊 Option Quality (advisory):")
+            print(f"   {info.summary}")
+            for w in info.warnings:
+                print(f"   {w}")
+            print(f"   Proceeding with trade...\n")
+        else:
+            print(f"📊 Option info: insufficient data (< 90 candles)\n")
+    except Exception as e:
+        print(f"⚠️  Option info unavailable: {e}\n")
+
     # ── Resolve trade settings from runtime state (overrideable from UI) ──
     sl_pts  = state.sl_points
     trail   = state.trailing_sl_points
