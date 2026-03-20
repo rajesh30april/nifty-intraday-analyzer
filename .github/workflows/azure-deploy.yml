@@ -1,0 +1,93 @@
+# ═══════════════════════════════════════════════════════════════════
+# Inevitable - Azure Container Apps CI/CD Pipeline
+# Automated build, push to ACR, and deploy on push to main
+# ═══════════════════════════════════════════════════════════════════
+
+name: Deploy to Azure Container Apps
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Manual trigger
+
+env:
+  AZURE_CONTAINER_REGISTRY: <YOUR_ACR_NAME>  # e.g., inevitable
+  RESOURCE_GROUP: <YOUR_RESOURCE_GROUP>       # e.g., rg-inevitable
+  CONTAINER_APP_NAME: inevitable-trader       # Your app name
+  IMAGE_NAME: inevitable
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # ── Checkout code ──────────────────────────────────────────────
+    - name: 📦 Checkout repository
+      uses: actions/checkout@v4
+    
+    # ── Azure Login ────────────────────────────────────────────────
+    - name: 🔐 Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    # ── Login to Azure Container Registry ─────────────────────────
+    - name: 🐳 Login to ACR
+      run: |
+        az acr login --name ${{ env.AZURE_CONTAINER_REGISTRY }}
+    
+    # ── Build and push Docker image ───────────────────────────────
+    - name: 🏗️ Build and push Docker image
+      run: |
+        IMAGE_TAG=${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        IMAGE_LATEST=${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+        
+        docker build -t $IMAGE_TAG -t $IMAGE_LATEST .
+        docker push $IMAGE_TAG
+        docker push $IMAGE_LATEST
+        
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+    
+    # ── Deploy to Azure Container Apps ────────────────────────────
+    - name: 🚀 Deploy to Container Apps
+      run: |
+        az containerapp update \
+          --name ${{ env.CONTAINER_APP_NAME }} \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --image ${{ env.IMAGE_TAG }}
+    
+    # ── Verify deployment ──────────────────────────────────────────
+    - name: ✅ Verify deployment
+      run: |
+        echo "Waiting 30s for container to start..."
+        sleep 30
+        
+        APP_URL=$(az containerapp show \
+          --name ${{ env.CONTAINER_APP_NAME }} \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --query properties.configuration.ingress.fqdn \
+          --output tsv)
+        
+        echo "App URL: https://$APP_URL"
+        
+        # Check health endpoint
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://$APP_URL/health)
+        
+        if [ $HTTP_CODE -eq 200 ]; then
+          echo "✅ Deployment successful! Health check passed."
+        else
+          echo "❌ Deployment failed! Health check returned $HTTP_CODE"
+          exit 1
+        fi
+    
+    # ── Post deployment info ───────────────────────────────────────
+    - name: 📊 Deployment Summary
+      run: |
+        echo "═══════════════════════════════════════════════════════"
+        echo "🎉 Deployment Complete!"
+        echo "═══════════════════════════════════════════════════════"
+        echo "Image: ${{ env.IMAGE_TAG }}"
+        echo "Container App: ${{ env.CONTAINER_APP_NAME }}"
+        echo "Resource Group: ${{ env.RESOURCE_GROUP }}"
+        echo "═══════════════════════════════════════════════════════"

@@ -299,12 +299,33 @@ class NoCacheStaticMiddleware(BaseHTTPMiddleware):
 app.add_middleware(NoCacheStaticMiddleware)
 
 
-# ── Simple response cache (avoid hammering Yahoo Finance) ────────
+# ── Simple response cache (avoid hammering Yahoo Finance) ────────────
 _mtf_cache: dict = {"data": None, "timestamp": 0}
 MTF_CACHE_TTL = 30  # seconds
 
 
-# ── Pages ──────────────────────────────────────────────────────────
+# ── Azure Container Apps Health Check ────────────────────────────────
+@app.get("/health")
+async def simple_health():
+    """Lightweight health check for Docker and Azure Container Apps.
+    
+    Returns 200 OK if the app is running.
+    Used by Docker HEALTHCHECK and Azure health probes.
+    """
+    import psutil
+    import os
+    
+    return {
+        "status": "healthy",
+        "service": "Inevitable Algorithmic Trading Platform",
+        "timestamp": datetime.now().isoformat(),
+        "uptime_seconds": int(_time.time() - psutil.Process(os.getpid()).create_time()),
+        "memory_mb": round(psutil.Process().memory_info().rss / 1024 / 1024, 1),
+        "cpu_percent": psutil.Process().cpu_percent(interval=0.1),
+    }
+
+
+# ── Pages ───────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):

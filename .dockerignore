@@ -1,0 +1,87 @@
+# ═══════════════════════════════════════════════════════════════
+# Docker build exclusions - keep image size minimal
+# ═══════════════════════════════════════════════════════════════
+
+# ── Python runtime ────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# ── Virtual environments ────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Environment & secrets (NEVER include in image) ────────────────────
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.crt
+.kite_session.json
+
+# ── Runtime state (regenerated at runtime) ──────────────────────────
+*.db
+*.sqlite
+*.db-shm
+*.db-wal
+.state_snapshot.json
+.state_snapshot.bak
+.crude_snapshot.json
+trade_log.json
+trade_log.bak
+crude_trade_log.json
+crude_settings.json
+paper_trades.db
+
+# ── Data files (too large, fetch at runtime) ─────────────────────────
+*.csv
+*.xlsx
+*.xls
+*.json.bak
+data/
+logs/
+
+# ── Testing ───────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ── Git ──────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ── IDE ───────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ── Documentation ──────────────────────────────────────────────
+README.md
+LICENSE
+docs/
+*.md
+
+# ── CI/CD ───────────────────────────────────────────────────
+.github/
+.azure/
+Dockerfile.dev
+docker-compose*.yml
+
+# ── Scripts (deployment only, not runtime) ───────────────────────────
+scripts/
+service_install.sh

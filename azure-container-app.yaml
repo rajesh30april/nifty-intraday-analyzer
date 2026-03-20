@@ -1,0 +1,81 @@
+# ═══════════════════════════════════════════════════════════════
+# Inevitable - Azure Container Apps Deployment Configuration
+# ═══════════════════════════════════════════════════════════════
+
+properties:
+  configuration:
+    ingress:
+      external: true
+      targetPort: 8000
+      transport: http
+      allowInsecure: false
+    
+  template:
+    containers:
+    - name: inevitable
+      image: <YOUR_ACR_NAME>.azurecr.io/inevitable:latest
+      resources:
+        cpu: 1.0
+        memory: 2Gi
+      env:
+      # ── Environment Variables (Set via Azure Portal or CLI) ────────────
+      - name: LIVE_TRADING
+        value: "false"  # Set to "true" for live trading
+      
+      - name: KITE_API_KEY
+        secretRef: kite-api-key
+      
+      - name: KITE_API_SECRET
+        secretRef: kite-api-secret
+      
+      - name: DEFAULT_QUANTITY
+        value: "780"
+      
+      - name: TRADING_CAPITAL
+        value: "96000"
+      
+      - name: SL_POINTS
+        value: "30"
+      
+      - name: TRAILING_SL_POINTS
+        value: "15"
+      
+      - name: RR_RATIO
+        value: "2.0"
+      
+      - name: MAX_ORDERS_PER_DAY
+        value: "3"
+      
+      - name: CRUDE_LIVE
+        value: "false"
+      
+      - name: CRUDE_CAPITAL
+        value: "50000"
+      
+      probes:
+        liveness:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        readiness:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+    
+    scale:
+      minReplicas: 1
+      maxReplicas: 3
+      rules:
+      - name: http-scaling
+        http:
+          metadata:
+            concurrentRequests: "10"
