@@ -548,9 +548,9 @@ def _check_safety() -> tuple[bool, str]:
     if now >= EXIT_TIME:
         return False, f"Past exit time ({EXIT_TIME.strftime('%H:%M')})"
 
-    # No trading in first 3 minutes
-    if now < dt_time(9, 18):
-        return False, "Too early — waiting for market to settle (first 3 min)"
+    # No trading in first 1 minute
+    if now < dt_time(9, 16):
+        return False, "Too early — waiting for market to settle (first 1 min)"
 
     # ── Post-exit cooldown ────────────────────────────────────────
     # After any exit, wait COOLDOWN_MINUTES before re-entering.
