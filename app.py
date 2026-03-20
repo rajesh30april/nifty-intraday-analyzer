@@ -2458,6 +2458,7 @@ async def crude_config(
     trail_mode:     str   | None = None,   # 'fixed' | 'atr' | 'supertrend'
     atr_multiplier: float | None = None,
     max_trades:     int   | None = None,   # max entries per day (1-20)
+    max_daily_loss: float | None = None,   # ← NEW: daily loss limit
 ):
     from crude_trader import state as cs, CRUDE_MAX_TRADES, save_crude_settings
     if sl_points      is not None: cs.sl_points      = sl_points
@@ -2469,6 +2470,7 @@ async def crude_config(
         cs.trail_mode = trail_mode
     if atr_multiplier is not None: cs.atr_multiplier = atr_multiplier
     if max_trades     is not None: cs.max_trades     = max(1, min(20, max_trades))
+    if max_daily_loss is not None: cs.max_daily_loss = max(100, abs(max_daily_loss))  # ← NEW: min ₹100
     save_crude_settings()   # ← persist to disk immediately
     return {
         'success': True,
@@ -2476,6 +2478,7 @@ async def crude_config(
         'rr_ratio': cs.rr_ratio,   'capital': cs.capital,
         'trail_mode': cs.trail_mode, 'atr_multiplier': cs.atr_multiplier,
         'max_trades': cs.max_trades,
+        'max_daily_loss': cs.max_daily_loss,  # ← NEW: return to UI
     }
 
 
@@ -2488,6 +2491,94 @@ async def crude_margin():
     """
     from crude_trader import _fetch_available_margin, _query_zerodha_margin
     from crude_data import get_crude_spot, get_crude_atm_option, get_crude_option_ltp
+
+
+# ── Crude Pattern Detection ─────────────────────────────
+
+@app.get("/api/crude/patterns")
+async def crude_patterns(interval: str = "5m"):
+    """Detect chart patterns in crude oil data."""
+    try:
+        from crude_data import fetch_crude_intraday_data
+        df = await asyncio.to_thread(fetch_crude_intraday_data, interval=interval, period="5d")
+        result = await asyncio.to_thread(detect_all_patterns, df, timeframe=interval)
+
+        patterns_data = [
+            {
+                "name": p.name,
+                "type": p.pattern_type,
+                "bias": p.bias,
+                "confidence": p.confidence,
+                "description": p.description,
+                "key_levels": p.key_levels,
+                "timeframe": p.timeframe,
+                "start_time": p.start_time,
+                "end_time": p.end_time,
+                "pivot_times": p.pivot_times,
+                "start_idx": p.start_idx,
+                "end_idx": p.end_idx,
+            }
+            for p in result["patterns"]
+        ]
+
+        return {
+            "success": True,
+            "patterns": patterns_data,
+            "pattern_candles": result.get("pattern_candles", {}),
+            "support_resistance": result["support_resistance"],
+        }
+    except Exception as e:
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/crude/pattern-chart/{pattern_index}")
+async def crude_pattern_chart(pattern_index: int, interval: str = "5m", lookback: int = 50):
+    """Generate a visual chart for a detected crude oil pattern.
+    
+    Args:
+        pattern_index: Index of the pattern in the detected list
+        interval: Timeframe ('5m', '15m', etc.)
+        lookback: Number of candles to show before pattern start
+    
+    Returns:
+        JSON with base64-encoded PNG image
+    """
+    try:
+        from crude_data import fetch_crude_intraday_data
+        from pattern_chart import generate_pattern_chart
+        
+        # Fetch crude data
+        df = await asyncio.to_thread(fetch_crude_intraday_data, interval=interval, period="5d")
+        
+        # Detect patterns
+        result = await asyncio.to_thread(detect_all_patterns, df, timeframe=interval)
+        patterns = result["patterns"]
+        
+        if pattern_index < 0 or pattern_index >= len(patterns):
+            return {"success": False, "error": f"Pattern index {pattern_index} out of range (0-{len(patterns)-1})"}
+        
+        pattern = patterns[pattern_index]
+        
+        # Generate chart
+        img_base64 = await asyncio.to_thread(generate_pattern_chart, df, pattern, lookback)
+        
+        if not img_base64:
+            return {"success": False, "error": "Failed to generate pattern chart"}
+        
+        return {
+            "success": True,
+            "image": img_base64,
+            "pattern": {
+                "name": pattern.name,
+                "bias": pattern.bias,
+                "confidence": pattern.confidence,
+                "description": pattern.description,
+            }
+        }
+    except Exception as e:
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
     from crude_trader import state as cs
     try:
         free, net, used = await asyncio.to_thread(_fetch_available_margin)

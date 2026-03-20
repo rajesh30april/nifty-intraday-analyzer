@@ -170,11 +170,14 @@ function _renderStrategyDashboard(strategies) {
 async function crudeManualEvaluate() {
     const btn = document.getElementById('crude-btn-evaluate');
     const msg = document.getElementById('crude-eval-msg');
+    const patternContainer = document.getElementById('crude-pattern-charts');
+    const patternCards = document.getElementById('crude-pattern-cards');
     if (!btn) return;
 
     btn.disabled = true;
     btn.innerHTML = '⏳ Evaluating…';
     if (msg) { msg.classList.remove('hidden'); msg.textContent = 'Checking all strategies…'; }
+    if (patternContainer) patternContainer.classList.add('hidden');
 
     try {
         const r = await fetch('/api/crude/evaluate', { method: 'POST' });
@@ -194,6 +197,10 @@ async function crudeManualEvaluate() {
             _crudeLog(`🔍 Eval: ${summary}`, nPass > 0 ? 'ok' : 'info');
             if (nPass > 0) _crudeToast(`🚀 ${passing[0].name} triggered!`, 'ok');
             else           _crudeToast(`🔍 No entry — ${summary}`, 'info');
+            
+            // ✨ NEW: Fetch and display pattern charts inline!
+            if (msg) msg.textContent += ' | Fetching crude patterns...';
+            await loadCrudePatternCharts(patternContainer, patternCards);
 
             await pollCrudeStatus();
         } else {
@@ -209,6 +216,88 @@ async function crudeManualEvaluate() {
 
     btn.disabled = false;
     btn.innerHTML = '🔍 Evaluate Signal Now';
+}
+
+// ✨ NEW: Load crude oil pattern charts inline after evaluation
+async function loadCrudePatternCharts(container, cardsDiv) {
+    try {
+        // For crude, we'll use the same pattern detection API but with crude data
+        // NOTE: We might need a separate crude pattern endpoint if crude uses different logic
+        const patternsResp = await fetch('/api/crude/patterns?interval=5m');
+        const patternsData = await patternsResp.json();
+        
+        if (!patternsData.success || !patternsData.patterns || patternsData.patterns.length === 0) {
+            container.classList.add('hidden');
+            return;
+        }
+        
+        const patterns = patternsData.patterns;
+        container.classList.remove('hidden');
+        cardsDiv.innerHTML = '<div class="text-center text-gray-500 text-xs">📊 Loading crude charts...</div>';
+        
+        // Render pattern cards with charts
+        let html = '';
+        for (let i = 0; i < Math.min(patterns.length, 3); i++) {  // Show max 3 patterns
+            const p = patterns[i];
+            const biasColor = p.bias === 'bullish' ? 'green' : p.bias === 'bearish' ? 'red' : 'yellow';
+            const biasEmoji = p.bias === 'bullish' ? '📈' : p.bias === 'bearish' ? '📉' : '↔️';
+            
+            html += `
+                <div class="bg-gray-800 border border-gray-700 rounded-lg p-3 mb-3">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-lg">${biasEmoji}</span>
+                            <div>
+                                <div class="text-sm font-bold text-white">${p.name}</div>
+                                <div class="text-[10px] text-gray-400">${p.description?.substring(0, 60) || ''}...</div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs font-black text-${biasColor}-400">${Math.round(p.confidence * 100)}%</div>
+                            <div class="text-[9px] text-gray-500">confidence</div>
+                        </div>
+                    </div>
+                    <div id="crude-pattern-chart-${i}" class="bg-black rounded-lg p-2 flex items-center justify-center" style="min-height: 200px;">
+                        <div class="text-gray-500 text-xs">⏳ Loading chart...</div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        cardsDiv.innerHTML = html;
+        
+        // Load each chart image
+        for (let i = 0; i < Math.min(patterns.length, 3); i++) {
+            loadCrudePatternChartImage(i);
+        }
+        
+    } catch (error) {
+        console.error('Failed to load crude pattern charts:', error);
+        container.classList.add('hidden');
+    }
+}
+
+// Load individual crude pattern chart image
+async function loadCrudePatternChartImage(index) {
+    const chartDiv = document.getElementById(`crude-pattern-chart-${index}`);
+    if (!chartDiv) return;
+    
+    try {
+        const chartResp = await fetch(`/api/crude/pattern-chart/${index}?interval=5m&lookback=40`);
+        const chartData = await chartResp.json();
+        
+        if (chartData.success && chartData.image) {
+            chartDiv.innerHTML = `
+                <img src="data:image/png;base64,${chartData.image}" 
+                     alt="Crude Pattern Chart" 
+                     class="w-full h-auto rounded" />
+            `;
+        } else {
+            chartDiv.innerHTML = `<div class="text-red-400 text-xs">⚠️ Chart failed: ${chartData.error || 'Unknown error'}</div>`;
+        }
+    } catch (error) {
+        chartDiv.innerHTML = `<div class="text-red-400 text-xs">⚠️ ${error.message}</div>`;
+    }
 }
 
 

@@ -1,7 +1,7 @@
 {
   "date": "2026-03-20",
   "total_pnl": -5177.9,
-  "orders_placed": 15,
+  "orders_placed": 16,
   "paper_mode": false,
   "trades": [
     {
@@ -306,6 +306,25 @@
       "pnl": 8178.3,
       "status": "exited",
       "order_id": null,
+      "paper": false
+    },
+    {
+      "id": "T-20260320-151452550783",
+      "timestamp": "2026-03-20T15:14:52.550827",
+      "direction": "short",
+      "instrument": "NIFTY2632423000PE",
+      "entry_price": 23108.69921875,
+      "entry_premium": 190.1,
+      "quantity": 130,
+      "stop_loss": 23138.69921875,
+      "target": 23018.69921875,
+      "exit_price": null,
+      "exit_premium": null,
+      "exit_time": null,
+      "exit_reason": null,
+      "pnl": 0.0,
+      "status": "filled",
+      "order_id": "2034929154033901568",
       "paper": false
     }
   ]
