@@ -566,7 +566,10 @@ function renderAutoTrader(data) {
         // ── Trailing SL — CURRENT Nifty SL (advances as trail fires) ─
         // trailing_sl = current (possibly trailed) SL level
         // original_sl = SL at the moment of entry (fixed reference point)
-        const trailEl = document.getElementById('at-trail-sl');
+        const trailEl = document.getElementById('at-trail-sl-display');
+        
+        console.log('[Trail SL Element]', trailEl ? 'FOUND ✅' : 'NOT FOUND ❌', trailEl);
+        
         if (trailEl) {
             const tsl     = t.trailing_sl ?? t.stop_loss;
             const origSl  = t.original_sl  ?? tsl;
@@ -583,17 +586,26 @@ function renderAutoTrader(data) {
             if (tsl && !isNaN(tsl)) {
                 // Trail has fired if current SL has moved >0.5 pts from original SL
                 const moved = Math.abs(tsl - origSl) > 0.5;
-                trailEl.textContent = `₹${tsl.toFixed(0)}`;
+                const newValue = `₹${tsl.toFixed(0)}`;
+                
+                console.log('[Trail SL Update] Setting value:', newValue, 'moved:', moved);
+                
+                trailEl.textContent = newValue;
                 trailEl.className   = moved
                     ? 'text-xs font-black text-green-400 animate-pulse'  // profit-locked ✅
                     : 'text-xs font-black text-orange-400';              // original SL still active
                 trailEl.title = moved
                     ? `🔒 Trail fired! Original SL ₹${origSl.toFixed(0)} → Now ₹${tsl.toFixed(0)}`
                     : `Stop-loss @ Nifty ₹${tsl.toFixed(0)} (original — trail not fired yet)`;
+                    
+                // Verify it was actually set
+                console.log('[Trail SL Verify] Element text after update:', trailEl.textContent);
             } else {
                 console.warn('[Trail SL] No valid SL value:', tsl);
                 trailEl.textContent = '--';
             }
+        } else {
+            console.error('[Trail SL] Element with ID "at-trail-sl" not found in DOM!');
         }
 
         // Row 2 — live prices & quantity
