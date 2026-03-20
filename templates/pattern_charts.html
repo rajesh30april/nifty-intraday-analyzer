@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pattern Charts | Nifty Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        .pattern-card { transition: all 0.3s; }
+        .pattern-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.15); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .loading-pulse { animation: pulse 1.5s ease-in-out infinite; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-6 shadow-lg">
+        <div class="container mx-auto px-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-black">📊 Chart Pattern Visualizations</h1>
+                    <p class="text-indigo-100 text-sm mt-1">See exactly what the patterns look like on the chart</p>
+                </div>
+                <a href="/" class="bg-white text-indigo-600 px-4 py-2 rounded-lg font-bold hover:bg-indigo-50 transition">
+                    ← Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container mx-auto px-6 py-8">
+        <!-- Loading State -->
+        <div id="loading" class="text-center py-12">
+            <div class="inline-block loading-pulse text-6xl mb-4">📊</div>
+            <p class="text-gray-600 text-lg font-semibold">Loading pattern charts...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error" class="hidden">
+            <div class="bg-red-50 border-l-4 border-red-500 p-6 rounded-lg">
+                <div class="flex items-start">
+                    <div class="text-4xl mr-4">⚠️</div>
+                    <div>
+                        <h3 class="text-red-900 font-bold text-lg mb-2">Failed to Load Patterns</h3>
+                        <p class="text-red-700" id="error-msg"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- No Patterns State -->
+        <div id="no-patterns" class="hidden text-center py-12">
+            <div class="text-6xl mb-4">🔍</div>
+            <h2 class="text-2xl font-bold text-gray-700 mb-2">No Patterns Detected</h2>
+            <p class="text-gray-500">No chart patterns were found in the current data. Check back later!</p>
+        </div>
+
+        <!-- Pattern Cards Container -->
+        <div id="patterns-container" class="hidden">
+            <div class="mb-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800">Detected Patterns</h2>
+                        <p class="text-gray-600 text-sm mt-1" id="pattern-count"></p>
+                    </div>
+                    <div class="flex gap-2">
+                        <label class="text-sm font-semibold text-gray-700 mr-2">Timeframe:</label>
+                        <select id="timeframe" class="border border-gray-300 rounded-lg px-3 py-1 text-sm font-semibold">
+                            <option value="5m">5 Minutes</option>
+                            <option value="15m">15 Minutes</option>
+                            <option value="1h">1 Hour</option>
+                        </select>
+                        <button onclick="loadPatterns()" class="bg-indigo-600 text-white px-4 py-1 rounded-lg text-sm font-bold hover:bg-indigo-700 transition">
+                            🔄 Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Patterns Grid -->
+            <div id="patterns-grid" class="grid grid-cols-1 gap-6">
+                <!-- Pattern cards will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTimeframe = '5m';
+
+        // Load patterns on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadPatterns();
+        });
+
+        // Timeframe change handler
+        document.getElementById('timeframe').addEventListener('change', (e) => {
+            currentTimeframe = e.target.value;
+            loadPatterns();
+        });
+
+        async function loadPatterns() {
+            // Show loading
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('error').classList.add('hidden');
+            document.getElementById('no-patterns').classList.add('hidden');
+            document.getElementById('patterns-container').classList.add('hidden');
+
+            try {
+                // Fetch patterns
+                const response = await fetch(`/api/patterns?interval=${currentTimeframe}`);
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to load patterns');
+                }
+
+                const patterns = data.patterns || [];
+
+                // Hide loading
+                document.getElementById('loading').classList.add('hidden');
+
+                if (patterns.length === 0) {
+                    document.getElementById('no-patterns').classList.remove('hidden');
+                    return;
+                }
+
+                // Show patterns container
+                document.getElementById('patterns-container').classList.remove('hidden');
+                document.getElementById('pattern-count').textContent = `${patterns.length} pattern${patterns.length > 1 ? 's' : ''} found on ${currentTimeframe} timeframe`;
+
+                // Render patterns
+                await renderPatterns(patterns);
+
+            } catch (error) {
+                console.error('Error loading patterns:', error);
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('error').classList.remove('hidden');
+                document.getElementById('error-msg').textContent = error.message;
+            }
+        }
+
+        async function renderPatterns(patterns) {
+            const grid = document.getElementById('patterns-grid');
+            grid.innerHTML = '';
+
+            for (let i = 0; i < patterns.length; i++) {
+                const pattern = patterns[i];
+                const card = createPatternCard(pattern, i);
+                grid.appendChild(card);
+
+                // Load chart for this pattern
+                loadPatternChart(i, pattern);
+            }
+        }
+
+        function createPatternCard(pattern, index) {
+            const card = document.createElement('div');
+            card.className = 'pattern-card bg-white rounded-xl shadow-lg overflow-hidden border-2';
+            
+            const biasColor = pattern.bias === 'bullish' ? 'border-green-500' : 
+                             pattern.bias === 'bearish' ? 'border-red-500' : 'border-yellow-500';
+            card.classList.add(biasColor);
+
+            const biasEmoji = pattern.bias === 'bullish' ? '📈' : 
+                             pattern.bias === 'bearish' ? '📉' : '↔️';
+
+            const biasBgColor = pattern.bias === 'bullish' ? 'bg-green-50 text-green-700' : 
+                               pattern.bias === 'bearish' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700';
+
+            card.innerHTML = `
+                <!-- Header -->
+                <div class="bg-gradient-to-r ${pattern.bias === 'bullish' ? 'from-green-600 to-green-700' : pattern.bias === 'bearish' ? 'from-red-600 to-red-700' : 'from-yellow-600 to-yellow-700'} text-white p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-xl font-black">${biasEmoji} ${pattern.name}</h3>
+                            <p class="text-sm opacity-90 mt-1">${pattern.description || 'Chart pattern detected'}</p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-2xl font-black">${Math.round(pattern.confidence * 100)}%</div>
+                            <div class="text-xs opacity-90">Confidence</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pattern Info -->
+                <div class="p-4 bg-gray-50 border-b">
+                    <div class="grid grid-cols-3 gap-4 text-center">
+                        <div>
+                            <div class="text-xs font-semibold text-gray-500 uppercase">Type</div>
+                            <div class="text-sm font-bold text-gray-800 mt-1">${pattern.type}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs font-semibold text-gray-500 uppercase">Bias</div>
+                            <div class="text-sm font-bold ${biasBgColor} px-2 py-1 rounded mt-1 inline-block">
+                                ${pattern.bias.toUpperCase()}
+                            </div>
+                        </div>
+                        <div>
+                            <div class="text-xs font-semibold text-gray-500 uppercase">Timeframe</div>
+                            <div class="text-sm font-bold text-gray-800 mt-1">${pattern.timeframe}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chart Container -->
+                <div class="p-6 bg-black">
+                    <div id="chart-${index}" class="flex items-center justify-center py-12">
+                        <div class="text-center">
+                            <div class="loading-pulse text-4xl mb-2">📊</div>
+                            <p class="text-gray-400 text-sm">Loading chart...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Key Levels -->
+                ${pattern.key_levels && Object.keys(pattern.key_levels).length > 0 ? `
+                <div class="p-4 bg-gray-50">
+                    <h4 class="text-xs font-bold text-gray-500 uppercase mb-3">Key Levels</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        ${pattern.key_levels.support ? `
+                        <div class="flex items-center justify-between bg-white p-2 rounded border border-green-200">
+                            <span class="text-sm font-semibold text-gray-700">🟢 Support</span>
+                            <span class="text-sm font-bold text-green-700">₹${pattern.key_levels.support.toFixed(0)}</span>
+                        </div>
+                        ` : ''}
+                        ${pattern.key_levels.resistance ? `
+                        <div class="flex items-center justify-between bg-white p-2 rounded border border-red-200">
+                            <span class="text-sm font-semibold text-gray-700">🔴 Resistance</span>
+                            <span class="text-sm font-bold text-red-700">₹${pattern.key_levels.resistance.toFixed(0)}</span>
+                        </div>
+                        ` : ''}
+                        ${pattern.key_levels.entry ? `
+                        <div class="flex items-center justify-between bg-white p-2 rounded border border-yellow-200">
+                            <span class="text-sm font-semibold text-gray-700">🟡 Entry</span>
+                            <span class="text-sm font-bold text-yellow-700">₹${pattern.key_levels.entry.toFixed(0)}</span>
+                        </div>
+                        ` : ''}
+                        ${pattern.key_levels.stop_loss ? `
+                        <div class="flex items-center justify-between bg-white p-2 rounded border border-red-300">
+                            <span class="text-sm font-semibold text-gray-700">🛑 Stop Loss</span>
+                            <span class="text-sm font-bold text-red-600">₹${pattern.key_levels.stop_loss.toFixed(0)}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+                ` : ''}
+            `;
+
+            return card;
+        }
+
+        async function loadPatternChart(index, pattern) {
+            const container = document.getElementById(`chart-${index}`);
+
+            try {
+                const response = await fetch(`/api/pattern-chart/${index}?interval=${currentTimeframe}&lookback=50`);
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to generate chart');
+                }
+
+                if (!data.image) {
+                    throw new Error('No image data received');
+                }
+
+                // Display the chart image
+                container.innerHTML = `
+                    <img src="data:image/png;base64,${data.image}" 
+                         alt="${pattern.name} Chart"
+                         class="w-full h-auto rounded-lg" />
+                `;
+
+            } catch (error) {
+                console.error(`Error loading chart for pattern ${index}:`, error);
+                container.innerHTML = `
+                    <div class="bg-red-900 text-red-200 p-4 rounded-lg text-center">
+                        <div class="text-3xl mb-2">⚠️</div>
+                        <p class="text-sm font-semibold">Chart generation failed</p>
+                        <p class="text-xs mt-1 opacity-75">${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

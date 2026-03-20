@@ -342,6 +342,12 @@ async def patterns_page(request: Request):
     return templates.TemplateResponse("patterns.html", {"request": request})
 
 
+@app.get("/pattern-charts", response_class=HTMLResponse)
+async def pattern_charts_page(request: Request):
+    """Visual chart pattern viewer with candlestick charts."""
+    return templates.TemplateResponse("pattern_charts.html", {"request": request})
+
+
 # ── In-process cache for pattern scan results ───────────────────────────────
 # Key: YYYY-MM-DD date string. Invalidated on server restart.
 # Historical dates are stable — serve from cache on repeat scans.
