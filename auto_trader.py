@@ -113,7 +113,7 @@ class TraderState:
     cached_trail_sl:    float | None = None         # pre-computed SL for atr/supertrend (candle loop)
     rr_ratio:           float = 2.0                 # risk:reward
     capital:            float = DEFAULT_CAPITAL      # ₹ available for qty calc
-    qty_mode:           str   = "manual"            # 'manual' | 'capital'
+    qty_mode:           str   = "capital"           # 'manual' | 'capital' — DEFAULT: capital (auto-size from Zerodha)
     manual_qty:         int   = DEFAULT_QUANTITY    # used when qty_mode=manual
     strike_offset:      int   = 0                   # -3=ITM3,-2=ITM2,-1=ITM1,0=ATM,1=OTM1,2=OTM2,3=OTM3
     max_trades_per_day: int   = MAX_ORDERS_PER_DAY  # runtime-overridable (1-50)
@@ -340,7 +340,7 @@ def _recover_state(snapshot_file: Path | None = None):
     state.trail_mode         = snap.get("trail_mode",         "fixed")
     state.trail_atr_mult     = snap.get("trail_atr_mult",     1.5)
     state.rr_ratio           = snap.get("rr_ratio",           2.0)
-    state.qty_mode           = snap.get("qty_mode",           "manual")
+    state.qty_mode           = snap.get("qty_mode",           "capital")  # NEW default: capital mode
     state.manual_qty         = snap.get("manual_qty",         DEFAULT_QUANTITY)
     state.cooldown_minutes   = snap.get("cooldown_minutes",   state.cooldown_minutes)
     state.capital            = snap.get("capital",            DEFAULT_CAPITAL)
