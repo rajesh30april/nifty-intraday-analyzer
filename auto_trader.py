@@ -39,8 +39,10 @@ SL_POINTS          = float(os.getenv("SL_POINTS",          "30"))   # Fixed SL i
 TRAILING_SL_POINTS = float(os.getenv("TRAILING_SL_POINTS", "15"))   # Trail by 15pts
 DEFAULT_CAPITAL    = float(os.getenv("TRADING_CAPITAL",  "96000"))  # ₹ available
 EXIT_TIME = dt_time(15, 28)  # 3:28 PM IST — auto-exit all positions
-TRADE_LOG_FILE     = Path(__file__).parent / "trade_log.json"
-STATE_SNAPSHOT_FILE = Path(__file__).parent / ".state_snapshot.json"
+# Azure-compatible paths: Use /app/data (volume mount) if available, fallback to local
+DATA_DIR = Path(os.getenv("DATA_DIR", Path(__file__).parent))
+TRADE_LOG_FILE     = DATA_DIR / "trade_log.json"
+STATE_SNAPSHOT_FILE = DATA_DIR / ".state_snapshot.json"
 
 
 class OrderStatus(str, Enum):

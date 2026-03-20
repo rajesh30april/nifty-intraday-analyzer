@@ -73,9 +73,9 @@ properties:
     
     scale:
       minReplicas: 1
-      maxReplicas: 3
-      rules:
-      - name: http-scaling
-        http:
-          metadata:
-            concurrentRequests: "10"
+      maxReplicas: 1  # CRITICAL: MUST be 1 (stateful app with active trades)
+      # DO NOT SCALE: Multiple replicas will cause:
+      #   - Duplicate trades
+      #   - State conflicts (.state_snapshot.json)
+      #   - WebSocket connection issues
+      #   - Zerodha order rejections

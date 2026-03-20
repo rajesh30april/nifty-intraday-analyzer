@@ -55,9 +55,9 @@ RUN mkdir -p /app/data /app/logs && \
 # Switch to non-root user
 USER appuser
 
-# Health check endpoint
+# Health check endpoint (use simple HTTP check)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=5)"
+    CMD python -c "from urllib.request import urlopen; urlopen('http://localhost:8000/health', timeout=5).read()" || exit 1
 
 # Expose port (Azure Container Apps will map this)
 EXPOSE 8000

@@ -16,6 +16,103 @@
 
 ---
 
+## ⚠️ Prerequisites
+
+### **CRITICAL WARNINGS - READ BEFORE DEPLOYING!**
+
+#### 🚨 State Persistence Issue
+
+**YOUR APP STORES STATE LOCALLY - AZURE CONTAINERS ARE EPHEMERAL!**
+
+```
+Files that will be LOST on container restart:
+  ❌ .state_snapshot.json  (active trade state)
+  ❌ .kite_session.json    (Zerodha login session)
+  ❌ trade_log.json        (trade history)
+  ❌ paper_trades.db       (SQLite database)
+```
+
+**IMPACT:**
+```
+9:20 AM: Enter trade → Profit ₹10,000
+9:30 AM: Container restarts (Azure auto-update)
+         → Active trade state LOST!
+         → No SL protection!
+         → Manual recovery required!
+```
+
+**FIX REQUIRED:**
+
+**Option 1: Azure Files (Recommended)**
+```bash
+# Create storage account
+az storage account create \
+  --name inevitablestate \
+  --resource-group rg-inevitable \
+  --location eastus \
+  --sku Standard_LRS
+
+# Create file share
+az storage share create \
+  --name state-data \
+  --account-name inevitablestate
+
+# Mount in Container App
+az containerapp update \
+  --name inevitable-trader \
+  --resource-group rg-inevitable \
+  --set-env-vars DATA_DIR=/mnt/state \
+  --add-persistent-storage \
+    name=state-volume \
+    storage-account=inevitablestate \
+    share-name=state-data \
+    mount-path=/mnt/state
+```
+
+**Option 2: Azure Blob Storage**
+- Implement blob storage adapter for state files
+- Higher complexity but better for backups
+
+**Option 3: Accept Data Loss (Development Only)**
+- OK for testing/backtesting
+- NEVER for live trading!
+
+#### 🚨 Single Replica Requirement
+
+**YOUR APP MUST RUN AS SINGLE INSTANCE!**
+
+```yaml
+# CORRECT (azure-container-app.yaml):
+scale:
+  minReplicas: 1
+  maxReplicas: 1  # ← MUST be 1!
+
+# WRONG:
+scale:
+  minReplicas: 1  
+  maxReplicas: 3  # ← Will cause duplicate trades!
+```
+
+**Why:**
+- Stateful application (active trades)
+- WebSocket connections (Kite)
+- Local state files
+- Multiple replicas = duplicate orders = 3× risk!
+
+#### 🚨 WebSocket Considerations
+
+**Kite WebSocket may disconnect:**
+- Azure load balancer idle timeouts
+- Network restarts
+- Container health checks
+
+**Ensure:**
+- Auto-reconnection enabled (already in code)
+- Monitor connection status in logs
+- Set up alerts for disconnections
+
+---
+
 ## ⚙️ Prerequisites
 
 ### Required Tools
