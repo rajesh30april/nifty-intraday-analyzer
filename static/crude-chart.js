@@ -13,18 +13,18 @@ let _cc_cdInt     = null;   // setInterval for countdown
 let _cc_countdown = 60;
 let _cc_ready     = false;  // has initCrudeChart() run at least once?
 
-// ── Walmart dark-mode palette ─────────────────────────────────
+// ── Walmart light-mode palette ───────────────────────────────────
 const _CC = {
-  bg:      '#111827',
-  grid:    '#1f2937',
-  border:  '#374151',
-  text:    '#9ca3af',
+  bg:      '#ffffff',
+  grid:    '#f1f5f9',
+  border:  '#e2e8f0',
+  text:    '#64748b',
   bull:    '#22c55e',
   bear:    '#ef4444',
   vwap:    '#a78bfa',
   ema9:    '#fb923c',
   ema21:   '#38bdf8',
-  xhair:   '#4b5563',
+  xhair:   '#94a3b8',
   blue:    '#0053e2',
   spark:   '#ffc220',
 };
@@ -56,54 +56,55 @@ function _makeCC(elId, height, extra = {}) {
 
 // ── Resize: keep charts filling their container ───────────────────
 function _bindCCResize() {
-  const wrap = _$cc('cc-chart')?.parentElement;
+  const wrap = _$cc('chart')?.parentElement;
   if (!wrap) return;
   new ResizeObserver(() => {
     const w = wrap.clientWidth;
-    if (_cc_main) _cc_main.resize(w, 520);
-    if (_cc_vol)  _cc_vol.resize(w, 120);
+    if (_cc_main) _cc_main.resize(w, 560);
+    if (_cc_vol)  _cc_vol.resize(w, 140);
   }).observe(wrap);
 }
 
 // ── Crosshair OHLCV tooltip ──────────────────────────────────
 function _bindCCCrosshair(candleSeries) {
   _cc_main.subscribeCrosshairMove(p => {
-    const bar = _$cc('cc-ohlc');
+    const bar = _$cc('ohlc-bar');
     if (!bar) return;
-    if (!p?.seriesData?.has(candleSeries)) { bar.classList.add('hidden'); return; }
+    if (!p?.seriesData?.has(candleSeries)) { return; }
     const d = p.seriesData.get(candleSeries);
-    if (!d) { bar.classList.add('hidden'); return; }
-    bar.classList.remove('hidden');
-    _setcc('cc-o', d.open);
-    _setcc('cc-h', d.high);
-    _setcc('cc-l', d.low);
-    _setcc('cc-c', d.close);
-    _setcc('cc-v', d.customValues?.volume?.toLocaleString('en-IN') ?? '--');
+    if (!d) { return; }
+    _setcc('cv-o', d.open?.toFixed(2) || '--');
+    _setcc('cv-h', d.high?.toFixed(2) || '--');
+    _setcc('cv-l', d.low?.toFixed(2) || '--');
+    _setcc('cv-c', d.close?.toFixed(2) || '--');
+    _setcc('cv-v', d.customValues?.volume?.toLocaleString('en-IN') || '--');
   });
 }
 
-// ── Strategy pill bar ─────────────────────────────────────────
+// ── Strategy pill bar ─────────────────────────────────────────────
 async function _ccStrategyBar() {
   try {
     const r = await fetch('/api/crude/evaluate', { method: 'POST' });
     const d = await r.json();
-    const bar = _$cc('cc-strategy-bar');
+    const bar = _$cc('strategy-bar');
     if (!bar) return;
-    bar.innerHTML = (d.strategies || []).map(s => {
+    const container = bar.querySelector('.flex.flex-wrap');
+    if (!container) return;
+    container.innerHTML = (d.strategies || []).map(s => {
       const ok  = s.should_enter;
-      const cls = ok ? 'bg-green-900 text-green-300' : 'bg-gray-800 text-gray-500';
+      const cls = ok ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-400';
       const dir = s.direction ? ' ' + s.direction.toUpperCase() : '';
-      return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${cls}"
+      return `<span class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold ${cls}"
                     title="${s.reason}">
-                ${ok ? '✅' : '⛔'} ${s.name}(${s.weight})${dir}
+                ${ok ? '✅' : '⛔'} ${s.name} (${s.weight})${dir}
               </span>`;
     }).join('');
   } catch (_) {}
 }
 
-// ── Core chart builder ─────────────────────────────────────────
+// ── Core chart builder ─────────────────────────────────────────────
 async function _buildCCChart() {
-  const loading = _$cc('cc-loading');
+  const loading = _$cc('loading-overlay');
   if (loading) loading.style.display = 'flex';
 
   if (_cc_main) { _cc_main.remove(); _cc_main = null; }
@@ -116,18 +117,23 @@ async function _buildCCChart() {
     data = await r.json();
     if (data.error) throw new Error(data.error);
   } catch (e) {
-    if (loading) loading.textContent = '❌ ' + (e.message || 'Load failed');
+    if (loading) loading.innerHTML = `<div class="flex flex-col items-center gap-3">
+      <svg class="w-12 h-12 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+      </svg>
+      <span>❌ ${e.message || 'Load failed'}</span>
+    </div>`;
     return;
   }
 
   // Header meta
   const m = data.meta || {};
-  _setcc('cc-symbol', m.symbol || '--');
-  _setcc('cc-expiry', m.days_to_expiry != null ? `Expiry in ${m.days_to_expiry}d` : '--');
-  if (m.price) _setcc('cc-price', '₹' + Number(m.price).toLocaleString('en-IN'));
+  _setcc('hdr-symbol', m.symbol || '--');
+  _setcc('hdr-expiry', m.days_to_expiry != null ? `Exp: ${m.days_to_expiry}d` : '--');
+  if (m.price) _setcc('hdr-price', '₹' + Number(m.price).toLocaleString('en-IN'));
 
   // ─ Main chart
-  _cc_main = _makeCC('cc-chart', 520);
+  _cc_main = _makeCC('chart', 560);
   if (!_cc_main) return;
 
   // Candlestick
@@ -197,7 +203,7 @@ async function _buildCCChart() {
   _cc_main.timeScale().scrollToRealTime();
 
   // ─ Volume chart
-  _cc_vol = _makeCC('cc-vol', 120, {
+  _cc_vol = _makeCC('vol-chart', 140, {
     rightPriceScale: { visible: false },
     leftPriceScale:  { visible: false },
     timeScale:       { visible: false },
@@ -219,7 +225,7 @@ async function _buildCCChart() {
   }
 
   if (loading) loading.style.display = 'none';
-  _setcc('cc-updated', new Date().toLocaleTimeString('en-IN'));
+  _setcc('last-updated', new Date().toLocaleTimeString('en-IN'));
 
   _bindCCResize();
   _ccStrategyBar();   // non-blocking
@@ -241,25 +247,28 @@ function reloadCrudeChart() {
   _buildCCChart();
 }
 
-// ── 60-second auto-refresh countdown ────────────────────────────
+// Alias for external calls
+function loadChart() {
+  reloadCrudeChart();
+}
+
+// ── 60-second auto-refresh countdown ────────────────────────────────
 function _startCCCountdown() {
   clearInterval(_cc_cdInt);
   _cc_cdInt = setInterval(() => {
-    const autoEl = _$cc('cc-auto');
-    const nextEl = _$cc('cc-next');
+    const autoEl = _$cc('auto-refresh');
+    const nextEl = _$cc('next-refresh');
     if (!autoEl?.checked) { if (nextEl) nextEl.textContent = 'off'; return; }
     _cc_countdown--;
     if (nextEl) nextEl.textContent = _cc_countdown + 's';
     if (_cc_countdown <= 0) {
       _cc_countdown = 60;
-      // Only refresh if this page is visible
-      const page = _$cc('page-crude-chart');
-      if (page?.classList.contains('active')) _buildCCChart();
+      _buildCCChart();
     }
   }, 1000);
 }
 
-// ── Live spot price every 5 s ─────────────────────────────────
+// ── Live spot price every 5 s ─────────────────────────────────────
 function _startCCPricePoll() {
   clearInterval(_cc_priceInt);
   _cc_priceInt = setInterval(async () => {
@@ -267,7 +276,7 @@ function _startCCPricePoll() {
       const r = await fetch('/api/crude/status');
       const d = await r.json();
       if (d.crude_price) {
-        _setcc('cc-price', '₹' + Number(d.crude_price).toLocaleString('en-IN'));
+        _setcc('hdr-price', '₹' + Number(d.crude_price).toLocaleString('en-IN'));
       }
     } catch (_) {}
   }, 5000);

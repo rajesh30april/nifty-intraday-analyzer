@@ -7,81 +7,215 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <style>
-    body { background:#0f172a; color:#f1f5f9; font-family:ui-monospace,monospace; }
-    .pill { display:inline-flex;align-items:center;gap:4px;padding:2px 10px;
-            border-radius:9999px;font-size:11px;font-weight:700; }
+    body { background: linear-gradient(to bottom, #f8fafc, #f1f5f9); }
     .legend-dot { width:10px;height:10px;border-radius:50%;display:inline-block; }
     #chart-wrap { position:relative; }
     #loading-overlay {
       position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-      background:rgba(15,23,42,0.85);z-index:10;border-radius:12px;
-      font-size:18px;color:#94a3b8;letter-spacing:2px;
+      background:rgba(255,255,255,0.95);z-index:10;border-radius:12px;
+      font-size:18px;color:#64748b;letter-spacing:1px;font-weight:600;
     }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin 1s linear infinite; }
   </style>
 </head>
-<body class="min-h-screen p-4">
+<body class="min-h-screen">
 
-  <!-- Header -->
-  <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
-    <div class="flex items-center gap-3">
-      <a href="/" class="text-gray-400 hover:text-white text-sm">← Back</a>
-      <h1 class="text-xl font-black text-[#ffc220]">🛢️ MCX Crude Oil — Live Chart</h1>
-      <span id="hdr-symbol" class="pill bg-cyan-900 text-cyan-300">--</span>
-      <span id="hdr-expiry" class="pill bg-gray-800 text-gray-400">--</span>
-    </div>
-    <div class="flex items-center gap-4">
-      <!-- Live price -->
-      <div class="text-right">
-        <div class="text-[10px] text-gray-500">MCX SPOT</div>
-        <div id="hdr-price" class="text-2xl font-black text-[#ffc220]">--</div>
+  <div class="max-w-7xl mx-auto p-6">
+    
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- HEADER SECTION                                                   -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div class="bg-gradient-to-r from-gray-900 to-gray-800 border border-gray-700 rounded-2xl p-6 mb-6 shadow-lg">
+      <div class="flex items-center justify-between flex-wrap gap-4">
+        <!-- Left: Title + Breadcrumb -->
+        <div>
+          <div class="flex items-center gap-3 mb-2">
+            <a href="/" class="text-gray-400 hover:text-white text-sm transition flex items-center gap-1">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+              </svg>
+              Back to Dashboard
+            </a>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-yellow-500 to-orange-600 flex items-center justify-center text-2xl shadow-lg">
+              🛢️
+            </div>
+            <div>
+              <h1 class="text-2xl font-black text-white">MCX Crude Oil</h1>
+              <p class="text-sm text-gray-400 font-medium">Live 5-Minute Chart</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Right: Controls -->
+        <div class="flex items-center gap-4">
+          <button onclick="loadChart()" 
+            class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            Refresh
+          </button>
+          <label class="flex items-center gap-2 bg-gray-800 border border-gray-600 px-4 py-2.5 rounded-xl cursor-pointer hover:bg-gray-700 transition">
+            <input type="checkbox" id="auto-refresh" checked class="accent-blue-600 w-4 h-4" />
+            <span class="text-sm text-gray-300 font-medium">Auto-refresh (60s)</span>
+          </label>
+        </div>
       </div>
-      <!-- Candle info on hover -->
-      <div id="ohlc-bar" class="text-[11px] text-gray-400 hidden">
-        <span>O:<span id="cv-o" class="text-white font-bold">-</span></span>
-        <span class="ml-2">H:<span id="cv-h" class="text-green-400 font-bold">-</span></span>
-        <span class="ml-2">L:<span id="cv-l" class="text-red-400 font-bold">-</span></span>
-        <span class="ml-2">C:<span id="cv-c" class="text-white font-bold">-</span></span>
-        <span class="ml-2">Vol:<span id="cv-v" class="text-yellow-400 font-bold">-</span></span>
-      </div>
-      <!-- Refresh -->
-      <button onclick="loadChart()" class="px-3 py-1.5 bg-[#0053e2] hover:bg-blue-700 text-white text-xs rounded-lg font-bold">⟳ Refresh</button>
-      <!-- Auto-refresh toggle -->
-      <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
-        <input type="checkbox" id="auto-refresh" checked class="accent-[#0053e2]" />
-        Auto (60s)
-      </label>
     </div>
-  </div>
 
-  <!-- Strategy status bar -->
-  <div id="strategy-bar" class="flex flex-wrap gap-2 mb-3 text-[11px]"></div>
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- LIVE METRICS                                                     -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <!-- Crude Spot -->
+      <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">MCX Spot Price</span>
+          <span class="text-xl">🛢️</span>
+        </div>
+        <div id="hdr-price" class="text-3xl font-black text-gray-900 mb-1">--</div>
+        <div class="flex items-center gap-2">
+          <span id="hdr-symbol" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-bold">--</span>
+          <span id="hdr-expiry" class="text-xs text-gray-400">--</span>
+        </div>
+      </div>
 
-  <!-- Legend -->
-  <div class="flex flex-wrap gap-4 mb-2 text-[11px] text-gray-400">
-    <span><span class="legend-dot bg-[#22c55e] mr-1"></span>ST Long</span>
-    <span><span class="legend-dot bg-[#ef4444] mr-1"></span>ST Short</span>
-    <span><span class="legend-dot bg-[#a78bfa] mr-1"></span>VWAP</span>
-    <span><span class="legend-dot bg-[#fb923c] mr-1"></span>EMA 9</span>
-    <span><span class="legend-dot bg-[#38bdf8] mr-1"></span>EMA 21</span>
-    <span><span class="legend-dot bg-[#22c55e] mr-1"></span>▲ Long entry</span>
-    <span><span class="legend-dot bg-[#ef4444] mr-1"></span>▼ Short entry</span>
-    <span><span class="legend-dot bg-[#facc15] mr-1"></span>● Exit</span>
-  </div>
+      <!-- Candle Info -->
+      <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Candle (Hover)</span>
+          <span class="text-xl">🕯️</span>
+        </div>
+        <div id="ohlc-bar" class="space-y-1">
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">Open:</span>
+            <span id="cv-o" class="font-bold text-gray-900">--</span>
+          </div>
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">High:</span>
+            <span id="cv-h" class="font-bold text-green-600">--</span>
+          </div>
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">Low:</span>
+            <span id="cv-l" class="font-bold text-red-600">--</span>
+          </div>
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">Close:</span>
+            <span id="cv-c" class="font-bold text-gray-900">--</span>
+          </div>
+        </div>
+      </div>
 
-  <!-- Main chart -->
-  <div id="chart-wrap" class="rounded-xl overflow-hidden border border-gray-700 mb-3">
-    <div id="loading-overlay">⏳ Loading chart data…</div>
-    <div id="chart" style="height:520px;"></div>
-  </div>
+      <!-- Volume -->
+      <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Volume</span>
+          <span class="text-xl">📈</span>
+        </div>
+        <div id="cv-v" class="text-3xl font-black text-blue-600 mb-1">--</div>
+        <div class="text-xs text-gray-400">Current Candle</div>
+      </div>
+    </div>
 
-  <!-- Volume chart -->
-  <div id="vol-chart" class="rounded-xl overflow-hidden border border-gray-700"
-       style="height:120px;"></div>
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- STRATEGY STATUS                                                  -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div id="strategy-bar" class="bg-gradient-to-r from-indigo-900 to-purple-900 border border-indigo-700 rounded-xl p-4 mb-6 shadow-lg">
+      <div class="flex items-center gap-2 mb-2">
+        <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-lg">📡</div>
+        <span class="text-xs font-bold text-indigo-300 uppercase tracking-wider">Strategy Signals</span>
+      </div>
+      <div class="flex flex-wrap gap-2 text-xs"></div>
+    </div>
 
-  <!-- Last updated -->
-  <div class="mt-2 text-[10px] text-gray-600 text-right">
-    Last updated: <span id="last-updated">--</span> &nbsp;|
-    Next refresh: <span id="next-refresh">60s</span>
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- CHART LEGEND                                                     -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div class="bg-white rounded-xl border border-gray-200 p-4 mb-4 shadow-sm">
+      <div class="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">Chart Legend</div>
+      <div class="flex flex-wrap gap-x-6 gap-y-2 text-xs text-gray-600">
+        <span class="flex items-center gap-1.5">
+          <span class="legend-dot bg-[#22c55e]"></span>
+          Supertrend Long
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="legend-dot bg-[#ef4444]"></span>
+          Supertrend Short
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="legend-dot bg-[#a78bfa]"></span>
+          VWAP
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="legend-dot bg-[#fb923c]"></span>
+          EMA 9
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="legend-dot bg-[#38bdf8]"></span>
+          EMA 21
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="text-green-600 font-bold">▲</span>
+          Long Entry
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="text-red-600 font-bold">▼</span>
+          Short Entry
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="legend-dot bg-[#facc15]"></span>
+          Exit
+        </span>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- MAIN CHART                                                       -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-4">
+      <div class="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 px-4 py-3">
+        <span class="text-sm font-bold text-gray-900">Price Chart (5-Minute)</span>
+      </div>
+      <div id="chart-wrap" class="relative">
+        <div id="loading-overlay">
+          <div class="flex flex-col items-center gap-3">
+            <svg class="w-12 h-12 text-blue-600 spinner" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Loading chart data...</span>
+          </div>
+        </div>
+        <div id="chart" style="height:560px;"></div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- VOLUME CHART                                                     -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-4">
+      <div class="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 px-4 py-3">
+        <span class="text-sm font-bold text-gray-900">Volume</span>
+      </div>
+      <div id="vol-chart" style="height:140px;"></div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- FOOTER                                                           -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+      <div class="flex items-center justify-between text-xs text-gray-500">
+        <div class="flex items-center gap-4">
+          <span>🔄 Last updated: <span id="last-updated" class="font-bold text-gray-700">--</span></span>
+          <span>⏱️ Next refresh: <span id="next-refresh" class="font-bold text-gray-700">60s</span></span>
+        </div>
+        <span class="text-gray-400">5-Minute Candles • MCX India</span>
+      </div>
+    </div>
+
   </div>
 
 <script src="/static/crude-chart.js"></script>
