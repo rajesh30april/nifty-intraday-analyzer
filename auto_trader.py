@@ -111,7 +111,7 @@ class TraderState:
     sl_points:          float = SL_POINTS           # Nifty SL in points
     trailing_sl_points: float = TRAILING_SL_POINTS  # trailing SL step (fixed mode)
     trail_mode:         str   = "fixed"             # "fixed" | "atr" | "supertrend" | "manual"
-    trail_atr_mult:     float = 1.5                 # ATR multiplier for atr mode
+    trail_atr_mult:     float = 0.7                 # ATR multiplier for atr mode (0.5-0.8 optimal for intraday per research)
     cached_trail_sl:    float | None = None         # pre-computed SL for atr/supertrend (candle loop)
     rr_ratio:           float = 2.0                 # risk:reward
     capital:            float = DEFAULT_CAPITAL      # ₹ available for qty calc
@@ -340,7 +340,7 @@ def _recover_state(snapshot_file: Path | None = None):
     state.sl_points          = snap.get("sl_points",          SL_POINTS)
     state.trailing_sl_points = snap.get("trailing_sl_points", TRAILING_SL_POINTS)
     state.trail_mode         = snap.get("trail_mode",         "fixed")
-    state.trail_atr_mult     = snap.get("trail_atr_mult",     1.5)
+    state.trail_atr_mult     = snap.get("trail_atr_mult",     0.7)
     state.rr_ratio           = snap.get("rr_ratio",           2.0)
     state.qty_mode           = snap.get("qty_mode",           "capital")  # NEW default: capital mode
     state.manual_qty         = snap.get("manual_qty",         DEFAULT_QUANTITY)
