@@ -1633,6 +1633,8 @@ async def patterns(interval: str = "5m"):
                 "start_time": p.start_time,
                 "end_time": p.end_time,
                 "pivot_times": p.pivot_times,
+                "start_idx": p.start_idx,  # ← ADDED: needed for chart generation!
+                "end_idx": p.end_idx,      # ← ADDED: needed for chart generation!
             }
             for p in result["patterns"]
         ]

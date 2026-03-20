@@ -232,7 +232,6 @@ def _format_chart(ax, df: pd.DataFrame, pattern: PatternMatch):
     ax.grid(True, color='#333333', linestyle=':', linewidth=0.5, alpha=0.5)
     
     # X-axis: show times for key candles
-    times = np.arange(len(df))
     time_labels = []
     time_positions = []
     
@@ -242,13 +241,6 @@ def _format_chart(ax, df: pd.DataFrame, pattern: PatternMatch):
         if i < len(df):
             time_labels.append(df.index[i].strftime('%H:%M'))
             time_positions.append(i)
-    
-    # Always show pattern start/end times
-    if pattern.start_idx - df.index[0] < len(df):
-        pattern_start_in_chart = max(0, pattern.start_idx - df.index[0])
-        if pattern_start_in_chart not in time_positions:
-            time_positions.append(pattern_start_in_chart)
-            time_labels.append(df.index[pattern_start_in_chart].strftime('%H:%M'))
     
     ax.set_xticks(time_positions)
     ax.set_xticklabels(time_labels, rotation=45, ha='right', color='#cccccc')
