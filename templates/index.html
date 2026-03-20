@@ -718,6 +718,20 @@
                       </div>
                     </div>
 
+                    <!-- ← NEW: Max Daily Loss Limit -->
+                    <div>
+                      <label class="text-[10px] text-gray-400 block mb-1" for="at-max-loss">
+                        🚫 Max Loss / Day
+                        <span class="ml-1 text-red-400 font-bold">₹<span id="at-max-loss-display">3,000</span></span>
+                      </label>
+                      <input id="at-max-loss" type="range" min="500" max="20000" step="500" value="3000"
+                        class="w-full accent-red-500"
+                        oninput="_atMarkDirty(); document.getElementById('at-max-loss-display').textContent = parseInt(this.value).toLocaleString('en-IN')">
+                      <div class="flex justify-between text-[9px] text-gray-600 mt-0.5">
+                        <span>₹500</span><span>₹5k</span><span>₹10k</span><span>₹20k</span>
+                      </div>
+                    </div>
+
                     <!-- Cooldown pill-selector -->
                     <div class="col-span-2 md:col-span-2">
                       <label class="text-[10px] text-gray-400 block mb-1">

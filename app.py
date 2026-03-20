@@ -2809,6 +2809,7 @@ async def auto_trader_configure(
     strike_offset:      str   | None = Query(None),
     max_trades_per_day: int   | None = Query(None),
     cooldown_minutes:   int   | None = Query(None),
+    max_daily_loss:     float | None = Query(None),  # ← NEW: Configurable max loss
 ):
     """Update runtime trade settings without restarting."""
     parsed_offset: int | None = None
@@ -2825,6 +2826,7 @@ async def auto_trader_configure(
         strike_offset=parsed_offset,
         max_trades_per_day=max_trades_per_day,
         cooldown_minutes=cooldown_minutes,
+        max_daily_loss=max_daily_loss,  # ← NEW: Pass max loss to configure
     )
     return {"success": True, **result}
 

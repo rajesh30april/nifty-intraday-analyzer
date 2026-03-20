@@ -99,6 +99,9 @@ function syncAtSettingsFromStatus(data) {
         _atCooldownMinutes = data.cooldown_minutes;
         _applyCooldownUI(data.cooldown_minutes);
     }
+    if (data.max_daily_loss !== undefined) {  // ← NEW: Sync max loss from server
+        set('at-max-loss', data.max_daily_loss);
+    }
     _updateLotsHint();
     _updateCapitalEstimate();
 }
@@ -394,6 +397,7 @@ async function applyAtSettings() {
     }
 
     const maxTrades = parseInt(document.getElementById('at-max-trades')?.value || '3', 10);
+    const maxDailyLoss = parseFloat(document.getElementById('at-max-loss')?.value || '3000');  // ← NEW: Read max loss
     const params = new URLSearchParams({
         sl_points: sl, trailing_sl_points: trail, rr_ratio: rr,
         trail_mode: _atTrailMode, trail_atr_mult: _atTrailAtrMult,
@@ -401,6 +405,7 @@ async function applyAtSettings() {
         strike_offset: _atStrikeOffset,
         max_trades_per_day: maxTrades,
         cooldown_minutes: _atCooldownMinutes,
+        max_daily_loss: maxDailyLoss,  // ← NEW: Send max loss to backend
     });
 
     try {

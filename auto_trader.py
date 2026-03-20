@@ -117,6 +117,7 @@ class TraderState:
     capital:            float = DEFAULT_CAPITAL      # ₹ available for qty calc
     qty_mode:           str   = "capital"           # 'manual' | 'capital' — DEFAULT: capital (auto-size from Zerodha)
     manual_qty:         int   = DEFAULT_QUANTITY    # used when qty_mode=manual
+    max_daily_loss:     float = MAX_LOSS_PER_DAY    # Max loss per day (₹) - CONFIGURABLE!
     strike_offset:      int   = 0                   # -3=ITM3,-2=ITM2,-1=ITM1,0=ATM,1=OTM1,2=OTM2,3=OTM3
     max_trades_per_day: int   = MAX_ORDERS_PER_DAY  # runtime-overridable (1-50)
     cooldown_minutes:   int   = int(os.getenv("COOLDOWN_MINUTES", "5"))  # post-exit wait
@@ -224,6 +225,7 @@ def _save_state_snapshot():
         "strike_offset":      state.strike_offset,
         "max_trades_per_day": state.max_trades_per_day,
         "cooldown_minutes":   state.cooldown_minutes,
+        "max_daily_loss":     state.max_daily_loss,  # ← NEW: Configurable max loss,
         # cooldown — survive restarts so re-entry filter stays intact
         "last_exit_time":      state.last_exit_time.isoformat() if state.last_exit_time else None,
         "last_exit_direction": state.last_exit_direction,
@@ -348,6 +350,7 @@ def _recover_state(snapshot_file: Path | None = None):
     state.capital            = snap.get("capital",            DEFAULT_CAPITAL)
     state.strike_offset      = snap.get("strike_offset",      0)   # default ATM
     state.max_trades_per_day = snap.get("max_trades_per_day", MAX_ORDERS_PER_DAY)
+    state.max_daily_loss     = snap.get("max_daily_loss",     MAX_LOSS_PER_DAY)  # ← NEW: Restore configurable max loss
     # ── Restore running flag (auto-resume after server restart) ──
     state.is_running         = snap.get("is_running",         False)
 
@@ -543,8 +546,8 @@ def _check_safety() -> tuple[bool, str]:
     if state.orders_placed >= state.max_trades_per_day:
         return False, f"Max trades/day reached ({state.orders_placed}/{state.max_trades_per_day})"
 
-    if state.total_pnl <= -MAX_LOSS_PER_DAY:
-        return False, f"Max daily loss hit (₹{MAX_LOSS_PER_DAY})"
+    if state.total_pnl <= -state.max_daily_loss:
+        return False, f"Max daily loss hit (₹{state.max_daily_loss:.0f})"
 
     now = _now_time()
     if now >= EXIT_TIME:
@@ -1817,8 +1820,8 @@ def get_trader_status() -> dict:
         } if active else None,
         "total_pnl": round(state.total_pnl, 2),
         "orders_placed": state.orders_placed,
-        "max_orders": MAX_ORDERS_PER_DAY,
-        "max_loss": MAX_LOSS_PER_DAY,
+        "max_orders": state.max_trades_per_day,  # ← Use configurable value
+        "max_loss": state.max_daily_loss,  # ← Use configurable value instead of constant,
         "trades_today": len(state.trades_today),
         "last_evaluation": state.last_evaluation,
         "last_signal": state.last_signal_reason,
@@ -1866,6 +1869,7 @@ def configure_auto_trader(
     strike_offset:      int   | None = None,
     max_trades_per_day: int   | None = None,
     cooldown_minutes:   int   | None = None,
+    max_daily_loss:     float | None = None,  # ← NEW: Configurable max loss limit
 ) -> dict:
     """Update runtime trade settings without restarting."""
     if sl_points          is not None: state.sl_points          = sl_points
@@ -1879,6 +1883,7 @@ def configure_auto_trader(
     if strike_offset      is not None: state.strike_offset      = max(-3, min(3, strike_offset))
     if max_trades_per_day is not None: state.max_trades_per_day = max(1, min(50, max_trades_per_day))
     if cooldown_minutes   is not None: state.cooldown_minutes   = max(0, min(60, cooldown_minutes))
+    if max_daily_loss     is not None: state.max_daily_loss     = max(500, min(50000, max_daily_loss))  # ← NEW: ₹500 min, ₹50k max
     _save_state_snapshot()
     return {
         "sl_points":          state.sl_points,
@@ -1892,6 +1897,7 @@ def configure_auto_trader(
         "strike_offset":      state.strike_offset,
         "max_trades_per_day": state.max_trades_per_day,
         "cooldown_minutes":   state.cooldown_minutes,
+        "max_daily_loss":     state.max_daily_loss,  # ← NEW: Return updated value
     }
 
 
