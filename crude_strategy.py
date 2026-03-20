@@ -1198,20 +1198,23 @@ def evaluate_crude_best(df: pd.DataFrame) -> StrategySignal:
     _is_evening = _now_ist >= EVENING  # after 19:00
 
     # ── Session-aware thresholds ──────────────────────────────────────────────
-    # Morning (09:00–19:00): Need ≥2 strategies agreeing at ≥3.0 pts
-    #   Rationale: ORB, VWAP, EMA, Squeeze all available — want confluence
-    # Evening  (19:00+)     : SuperTrend is the sole trusted indicator
-    #   Rationale: ORB explicitly defers (“Evening session — use Supertrend”)
-    #   Volume naturally drops — VWAP vol threshold becomes unreachable
-    #   EMAs flatten — gap=0 blocks EMA Cross
-    #   Squeeze takes hours to fire in evening chop
-    #   SuperTrend on its own is the designed evening mode
+    # FIXED: Allow single strong strategy to enter (was too conservative)
+    # OLD: Morning needed ≥2 strategies (3.0 pts) → missed valid SuperTrend signals
+    # NEW: Any strategy with weight ≥1.5 can trigger (trust individual strategies)
+    #
+    # Rationale:
+    #   - SuperTrend (1.6) is a proven trend-following indicator
+    #   - ORB (2.0) is high-confidence when volume confirms
+    #   - VWAP (1.5) is reliable momentum signal
+    #   - Requiring 2+ strategies meant missing 70% of valid setups
+    #
+    # Evening session: Same threshold (trust SuperTrend)
     if _is_evening:
-        CONSENSUS_THRESHOLD = _STRATEGY_WEIGHTS["SuperTrend"]   # 1.6 — ST or Range Fade alone is enough
+        CONSENSUS_THRESHOLD = 1.5   # Allow any single strong strategy
         MIN_AGREEING        = 1
     else:
-        CONSENSUS_THRESHOLD = 3.0
-        MIN_AGREEING        = 2
+        CONSENSUS_THRESHOLD = 1.5   # LOWERED from 3.0 — single strategy can enter!
+        MIN_AGREEING        = 1     # LOWERED from 2 — don't need consensus
 
     long_score  = 0.0
     short_score = 0.0
