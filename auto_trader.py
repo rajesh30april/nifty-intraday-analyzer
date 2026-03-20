@@ -978,6 +978,11 @@ def _exit_position(reason: str, current_price: float):
     state.last_exit_time      = datetime.now() # cooldown starts now
     state.last_exit_direction = trade.direction
 
+    # ── Sync capital after exit to reflect P&L immediately ───────────
+    free, net, used = _fetch_available_margin()
+    if free is not None:
+        state.capital = free   # updated balance includes realized P&L
+
     mode  = "📝 PAPER" if trade.paper else "🟢 LIVE"
     emoji = "🟢" if pnl >= 0 else "🔴"
     print(
@@ -1176,6 +1181,61 @@ def _resolve_quantity(nifty_price: float, real_premium: float | None = None) -> 
     return qty
 
 
+def _fetch_available_margin() -> tuple[float, float, float] | tuple[None, None, None]:
+    """Return (free_margin, total_net, utilised) from Zerodha.
+
+    WHY NOT equity.net?
+    ─────────────────────────────────────────────────────────────────
+    equity.net = opening_balance + intraday_payin + credited P&L
+                 BUT it does NOT subtract margin already locked in
+                 open positions (option premiums paid upfront).
+
+    Zerodha stores the LOCKED amount in utilised.debits (negative).
+    Free margin = sum of equity.available sub-fields, which excludes
+    anything already committed.
+
+    Verified against live data:
+      net=38329   available={opening=12591, intraday_payin=18000}  → 30591 free
+      utilised.debits = -7738  →  38329 + (-7738) = 30591  ✓
+
+    We use the sum-of-available approach as primary (most explicit)
+    and cross-check with net+debits. Returns the LOWER of the two
+    as the safest value so we never oversize.
+    ─────────────────────────────────────────────────────────────────
+    Returns (free_margin, total_net, utilised_amount).
+    Returns (None, None, None) on API failure.
+    """
+    if not kite_manager.is_authenticated:
+        return None, None, None
+    
+    try:
+        m         = kite_manager.kite.margins()
+        equity    = m.get('equity', {})
+
+        # ── NFO trades use equity segment ────────────────────────────
+        e_avail   = equity.get('available', {})
+        e_free    = sum([
+            float(e_avail.get('cash', 0)             or 0),
+            float(e_avail.get('opening_balance', 0)  or 0),
+            float(e_avail.get('intraday_payin', 0)   or 0),
+            float(e_avail.get('adhoc_margin', 0)     or 0),
+            float(e_avail.get('collateral', 0)       or 0),
+        ])
+        e_net    = float(equity.get('net', 0) or 0)
+        e_debits = float(equity.get('utilised', {}).get('debits', 0) or 0)
+        e_free2  = e_net + e_debits           # debits is negative → subtracts utilized
+        free     = min(e_free, e_free2) if e_free > 0 else e_free2
+        used     = abs(e_debits)
+
+        print(f"💰 Margin [EQUITY]  free=₹{free:,.0f}  net=₹{e_net:,.0f}  used=₹{used:,.0f}  "
+              f"(opening=₹{e_avail.get('opening_balance',0):,.0f}  "
+              f"intraday=₹{e_avail.get('intraday_payin',0):,.0f})")
+        return (free, e_net, used) if free > 0 else (None, None, None)
+    except Exception as e:
+        print(f"⚠️  Margin fetch failed: {e}")
+        return None, None, None
+
+
 def _enter_trade(direction: Direction, price: float):
     """Open a new trade."""
     try:
@@ -1184,6 +1244,14 @@ def _enter_trade(direction: Direction, price: float):
         print(f"❌ Cannot enter trade: {e}")
         state.last_signal_reason = f"❌ Instrument lookup failed: {e}"
         return
+
+    # ── Sync capital from Zerodha before every trade ─────────────
+    free, net, used = _fetch_available_margin()
+    if free is not None:
+        if abs(free - state.capital) > 100:
+            print(f"💰 Capital synced: ₹{state.capital:,.0f} → ₹{free:,.0f} "
+                  f"(net=₹{net:,.0f}, utilised=₹{used:,.0f})")
+        state.capital = free   # always use FREE margin, not net
 
     # ── Fetch real option LTP for accurate capital-mode lot sizing ──
     # We know the exact symbol now — get its actual live price.
