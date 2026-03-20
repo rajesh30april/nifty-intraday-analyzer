@@ -478,6 +478,15 @@ function renderAutoTrader(data) {
         if (noPos)  noPos.classList.add('hidden');
 
         const t      = data.active_trade;
+        
+        // DEBUG: Log full trade data to see what backend is sending
+        console.log('[Auto-Trader] Full trade data from backend:', {
+            trailing_sl: t.trailing_sl,
+            original_sl: t.original_sl,
+            stop_loss: t.stop_loss,
+            full_trade: t
+        });
+        
         const isLong = t.direction === 'long';
 
         // Direction badge
@@ -561,7 +570,17 @@ function renderAutoTrader(data) {
         if (trailEl) {
             const tsl     = t.trailing_sl ?? t.stop_loss;
             const origSl  = t.original_sl  ?? tsl;
-            if (tsl) {
+            
+            // DEBUG: Log the values to see what we're getting
+            console.log('[Trail SL Debug]', {
+                trailing_sl: t.trailing_sl,
+                stop_loss: t.stop_loss,
+                original_sl: t.original_sl,
+                computed_tsl: tsl,
+                computed_origSl: origSl
+            });
+            
+            if (tsl && !isNaN(tsl)) {
                 // Trail has fired if current SL has moved >0.5 pts from original SL
                 const moved = Math.abs(tsl - origSl) > 0.5;
                 trailEl.textContent = `₹${tsl.toFixed(0)}`;
@@ -572,6 +591,7 @@ function renderAutoTrader(data) {
                     ? `🔒 Trail fired! Original SL ₹${origSl.toFixed(0)} → Now ₹${tsl.toFixed(0)}`
                     : `Stop-loss @ Nifty ₹${tsl.toFixed(0)} (original — trail not fired yet)`;
             } else {
+                console.warn('[Trail SL] No valid SL value:', tsl);
                 trailEl.textContent = '--';
             }
         }
