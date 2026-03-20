@@ -125,12 +125,12 @@ async function runBacktest() {
     resultsEl.classList.add('hidden');
 
     // Collect form values
-    const period    = document.getElementById('bt-period').value;
-    const slPoints  = document.getElementById('bt-sl').value;
-    const trailingSl = document.getElementById('bt-trail').value;
-    const rrRatio   = document.getElementById('bt-rr').value;
-    const maxTrades = document.getElementById('bt-max-trades').value;
-    const strategy  = document.getElementById('bt-strategy').value;
+    const period    = document.getElementById('bt-period')?.value || '60d';
+    const slPoints  = document.getElementById('bt-sl')?.value || '30';
+    const trailingSl = document.getElementById('bt-trail')?.value || '15';
+    const rrRatio   = document.getElementById('bt-rr')?.value || '2';
+    const maxTrades = document.getElementById('bt-max-trades')?.value || '3';
+    const strategy  = document.getElementById('bt-strategy')?.value || 'smart_router';
     const quantity  = document.getElementById('bt-qty')?.value || '780';
     const dataSource = _currentDataSource;
 
@@ -142,11 +142,21 @@ async function runBacktest() {
 
     // ── Store params for replay sync ────────────────────────────
     window._lastBacktestParams = {
-        period, sl_points: slPoints, trailing_sl: trailingSl,
-        rr_ratio: rrRatio, max_trades: maxTrades, strategy,
-        quantity, data_source: dataSource,
+        period, 
+        sl_points: slPoints, 
+        trailing_sl: trailingSl,
+        rr_ratio: rrRatio, 
+        max_trades: maxTrades, 
+        strategy: strategy || 'smart_router',  // Ensure never empty
+        quantity, 
+        data_source: dataSource,
     };
     console.log('📦 Stored backtest params:', window._lastBacktestParams);  // Debug log
+    
+    // Validate critical params
+    if (!strategy) {
+        console.error('⚠️ Strategy is empty! Defaulting to smart_router');
+    }
 
     _setBtProgress(0, '📡 Connecting…');
 

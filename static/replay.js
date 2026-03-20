@@ -76,6 +76,12 @@ async function _fetchAndStartReplay(date, instant) {
         return;
     }
 
+    // Ensure strategy is never empty (fallback to smart_router)
+    const strategy = _backtestParams.strategy || 'smart_router';
+    if (!_backtestParams.strategy) {
+        console.warn('⚠️ Strategy was empty in stored params! Using smart_router as fallback.');
+    }
+
     const params = new URLSearchParams({
         date,
         period:      _backtestParams.period,
@@ -83,7 +89,7 @@ async function _fetchAndStartReplay(date, instant) {
         trailing_sl: _backtestParams.trailing_sl,
         rr_ratio:    _backtestParams.rr_ratio,
         max_trades:  _backtestParams.max_trades,
-        strategy:    _backtestParams.strategy,
+        strategy:    strategy,  // Use validated strategy
         quantity:    _backtestParams.quantity,
         data_source: _backtestParams.data_source,
     });
