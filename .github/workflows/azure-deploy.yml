@@ -12,10 +12,10 @@ on:
   workflow_dispatch:  # Manual trigger
 
 env:
-  AZURE_CONTAINER_REGISTRY: <YOUR_ACR_NAME>  # e.g., inevitable
-  RESOURCE_GROUP: <YOUR_RESOURCE_GROUP>       # e.g., rg-inevitable
-  CONTAINER_APP_NAME: inevitable-trader       # Your app name
-  IMAGE_NAME: inevitable
+  AZURE_CONTAINER_REGISTRY: niftytrader  # ACR name (no hyphens)
+  RESOURCE_GROUP: rg-nifty-trader         # Resource group name
+  CONTAINER_APP_NAME: nifty-trader-app    # Container app name
+  IMAGE_NAME: nifty-analyzer              # Docker image name
 
 jobs:
   build-and-deploy:
