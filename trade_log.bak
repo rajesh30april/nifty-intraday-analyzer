@@ -1,7 +1,7 @@
 {
   "date": "2026-03-20",
-  "total_pnl": -9184.5,
-  "orders_placed": 15,
+  "total_pnl": -10920.0,
+  "orders_placed": 16,
   "paper_mode": false,
   "trades": [
     {
@@ -278,14 +278,14 @@
       "entry_price": 23220.599609375,
       "entry_premium": 190.5,
       "quantity": 130,
-      "stop_loss": 23250.599609375,
+      "stop_loss": 23217.6,
       "target": 23130.599609375,
-      "exit_price": null,
-      "exit_premium": null,
-      "exit_time": null,
-      "exit_reason": null,
-      "pnl": 0.0,
-      "status": "filled",
+      "exit_price": 23218.0,
+      "exit_premium": 192.6,
+      "exit_time": "2026-03-20T13:01:15.636439",
+      "exit_reason": "\u26a1 tick \u2014 SL hit \u20b923217.6 @ \u20b923218",
+      "pnl": 273.0,
+      "status": "exited",
       "order_id": "2034895159355170816",
       "paper": false
     }

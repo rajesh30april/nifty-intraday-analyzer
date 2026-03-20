@@ -1150,59 +1150,60 @@ def evaluate_and_act(df, current_price: float):
         _log("⏸", "No entry", signal.reason[:150])  # ← outcome: conditions not fully met
         return
 
-    # ── REGIME FILTER: Block trades against the trend! ─────────────────
-    # This is THE most important safety check to prevent over-trading in
-    # the wrong direction. If market is trending DOWN, we BLOCK all LONG
-    # signals. If trending UP, we BLOCK all SHORT signals.
+    # ── REGIME FILTER: Informational warnings (non-blocking) ─────────────
+    # Detects market regime and WARNS when trading against the trend.
+    # User requested: "dont block..just give it as info"
     #
-    # Why: Today you lost ₹6,500 taking 10 LONG signals in a DOWN market!
-    #      This filter alone would have blocked 8+ losing trades.
+    # Instead of blocking, we:
+    #   1. Log clear warnings in terminal
+    #   2. Add warning to UI
+    #   3. But ALLOW the trade to proceed
+    #
+    # User maintains control but gets informed!
     from market_regime import detect_regime, MarketRegime  # noqa: PLC0415
     
     regime = detect_regime(df)
     state.last_meta_regime = regime.regime.value  # Update UI
     
-    # HARD BLOCK: No longs in downtrend
+    # WARNING: Trading LONG in downtrend
     if regime.regime == MarketRegime.TRENDING_DOWN and signal.direction == Direction.LONG:
-        block_msg = (
-            f"🚫 BLOCKED LONG in downtrend! "
+        warn_msg = (
+            f"⚠️ WARNING: LONG in downtrend! "
             f"ADX={regime.adx:.1f}, trend={regime.trend_direction}, "
             f"confidence={regime.confidence:.0f}% — "
-            f"Market is trending DOWN, only SHORT signals allowed!"
+            f"Market trending DOWN, consider waiting or trading SHORT instead."
         )
-        state.last_block_reason = block_msg
-        state.last_signal_reason = f"{signal.reason} | {block_msg}"
-        _log("🚫", "Regime Block", block_msg)
-        return
+        state.last_signal_reason = f"{signal.reason} | {warn_msg}"
+        _log("⚠️", "Regime Warning", warn_msg)
+        # NO RETURN - trade proceeds with warning!
     
-    # HARD BLOCK: No shorts in uptrend
-    if regime.regime == MarketRegime.TRENDING_UP and signal.direction == Direction.SHORT:
-        block_msg = (
-            f"🚫 BLOCKED SHORT in uptrend! "
+    # WARNING: Trading SHORT in uptrend
+    elif regime.regime == MarketRegime.TRENDING_UP and signal.direction == Direction.SHORT:
+        warn_msg = (
+            f"⚠️ WARNING: SHORT in uptrend! "
             f"ADX={regime.adx:.1f}, trend={regime.trend_direction}, "
             f"confidence={regime.confidence:.0f}% — "
-            f"Market is trending UP, only LONG signals allowed!"
+            f"Market trending UP, consider waiting or trading LONG instead."
         )
-        state.last_block_reason = block_msg
-        state.last_signal_reason = f"{signal.reason} | {block_msg}"
-        _log("🚫", "Regime Block", block_msg)
-        return
+        state.last_signal_reason = f"{signal.reason} | {warn_msg}"
+        _log("⚠️", "Regime Warning", warn_msg)
+        # NO RETURN - trade proceeds with warning!
     
-    # HARD BLOCK: No trading in high volatility (whipsaw city!)
-    if regime.regime == MarketRegime.VOLATILE:
-        block_msg = (
-            f"🚫 BLOCKED entry in volatile market! "
+    # WARNING: High volatility (whipsaw risk)
+    elif regime.regime == MarketRegime.VOLATILE:
+        warn_msg = (
+            f"⚠️ WARNING: Volatile market! "
             f"ATR={regime.atr_pct:.2f}% (threshold: 0.8%), "
             f"ADX={regime.adx:.1f} — "
-            f"Too much whipsaw risk, waiting for market to settle."
+            f"High whipsaw risk, tighter stops recommended."
         )
-        state.last_block_reason = block_msg
-        state.last_signal_reason = f"{signal.reason} | {block_msg}"
-        _log("🚫", "Volatility Block", block_msg)
-        return
+        state.last_signal_reason = f"{signal.reason} | {warn_msg}"
+        _log("⚠️", "Volatility Warning", warn_msg)
+        # NO RETURN - trade proceeds with warning!
     
-    # If we get here, regime is favorable or sideways (neutral)
-    _log("✅", "Regime OK", f"{regime.regime.value} (ADX={regime.adx:.1f}, ATR={regime.atr_pct:.2f}%)")
+    # Regime favorable - no warnings
+    else:
+        _log("✅", "Regime OK", f"{regime.regime.value} (ADX={regime.adx:.1f}, ATR={regime.atr_pct:.2f}%)")
     # ───────────────────────────────────────────────────
 
     # All conditions met — enter trade!
