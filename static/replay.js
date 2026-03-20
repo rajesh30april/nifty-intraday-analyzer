@@ -88,6 +88,9 @@ async function _fetchAndStartReplay(date, instant) {
         data_source: _backtestParams.data_source,
     });
 
+    // Debug log: show what params we're sending
+    console.log('🔍 Replay params:', Object.fromEntries(params));
+
     const loadingEl = document.getElementById('replay-loading');
     const resultsEl = document.getElementById('replay-results');
     loadingEl.classList.remove('hidden');
@@ -326,6 +329,7 @@ function _renderFrame(idx) {
 
 // ── Summary Cards ─────────────────────────────────────────────
 function _renderSummary(summary) {
+    console.log('📊 Replay summary:', summary);  // Debug log
     const el = document.getElementById('replay-summary');
     const pnlColor = summary.total_pnl_pts >= 0 ? 'text-green-600' : 'text-red-600';
     el.innerHTML = `

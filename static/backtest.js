@@ -146,6 +146,7 @@ async function runBacktest() {
         rr_ratio: rrRatio, max_trades: maxTrades, strategy,
         quantity, data_source: dataSource,
     };
+    console.log('📦 Stored backtest params:', window._lastBacktestParams);  // Debug log
 
     _setBtProgress(0, '📡 Connecting…');
 
@@ -282,6 +283,7 @@ function renderBacktestResults(data) {
         replayStoreParams(window._lastBacktestParams);
     }
     if (typeof replayPopulateDates === 'function') {
+        console.log('📅 Daily P&L data:', data.daily_pnl);  // Debug log
         replayPopulateDates(data.daily_pnl);
     }
 
