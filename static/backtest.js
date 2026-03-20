@@ -9,9 +9,9 @@ let _currentDataSource = 'yahoo';
 
 // Period options per data source
 const PERIOD_OPTIONS = {
-    yahoo:    [['5d','5 Days'],['30d','30 Days'],['60d','60 Days (max)']],
-    zerodha:  [['5d','5 Days'],['30d','30 Days'],['60d','60 Days (max)']],
-    truedata: [['5d','5 Days'],['30d','30 Days'],['60d','60 Days'],['90d','90 Days'],
+    yahoo:    [['1d','1 Day'],['2d','2 Days'],['5d','5 Days'],['30d','30 Days'],['60d','60 Days (max)']],
+    zerodha:  [['1d','1 Day'],['2d','2 Days'],['5d','5 Days'],['30d','30 Days'],['60d','60 Days (max)']],
+    truedata: [['1d','1 Day'],['2d','2 Days'],['5d','5 Days'],['30d','30 Days'],['60d','60 Days'],['90d','90 Days'],
                ['6mo','6 Months'],['1y','1 Year'],['2y','2 Years'],['5y','5 Years']],
 };
 
