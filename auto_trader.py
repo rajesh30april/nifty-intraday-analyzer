@@ -547,7 +547,11 @@ def _check_safety() -> tuple[bool, str]:
         return False, f"Max trades/day reached ({state.orders_placed}/{state.max_trades_per_day})"
 
     if state.total_pnl <= -state.max_daily_loss:
-        return False, f"Max daily loss hit (₹{state.max_daily_loss:.0f})"
+        print(f"🚫 Max loss check FAILED:")
+        print(f"   Current P&L: ₹{state.total_pnl:.0f}")
+        print(f"   Max Loss Limit: ₹{state.max_daily_loss:.0f}")
+        print(f"   → Trading BLOCKED until limit is raised or P&L improves!")
+        return False, f"Max daily loss hit (₹{state.max_daily_loss:.0f}) | Current P&L: ₹{state.total_pnl:.0f}"
 
     now = _now_time()
     if now >= EXIT_TIME:
@@ -1852,6 +1856,7 @@ def get_trader_status() -> dict:
         "capital":            state.capital,
         "strike_offset":      state.strike_offset,
         "max_trades_per_day": state.max_trades_per_day,
+        "max_daily_loss":     state.max_daily_loss,  # ← CRITICAL: Return current configurable max loss!
         # ── Server-side event log (last 40 events, newest first) ──
         "event_log": list(reversed(list(_event_log)))[:40],
     }
@@ -1883,7 +1888,9 @@ def configure_auto_trader(
     if strike_offset      is not None: state.strike_offset      = max(-3, min(3, strike_offset))
     if max_trades_per_day is not None: state.max_trades_per_day = max(1, min(50, max_trades_per_day))
     if cooldown_minutes   is not None: state.cooldown_minutes   = max(0, min(60, cooldown_minutes))
-    if max_daily_loss     is not None: state.max_daily_loss     = max(500, min(50000, max_daily_loss))  # ← NEW: ₹500 min, ₹50k max
+    if max_daily_loss     is not None: 
+        state.max_daily_loss     = max(500, min(50000, max_daily_loss))  # ← NEW: ₹500 min, ₹50k max
+        print(f"✅ Max daily loss updated: ₹{state.max_daily_loss:.0f} (was checking against P&L: ₹{state.total_pnl:.0f})")
     _save_state_snapshot()
     return {
         "sl_points":          state.sl_points,

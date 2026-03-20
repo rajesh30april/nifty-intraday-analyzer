@@ -398,6 +398,7 @@ async function applyAtSettings() {
 
     const maxTrades = parseInt(document.getElementById('at-max-trades')?.value || '3', 10);
     const maxDailyLoss = parseFloat(document.getElementById('at-max-loss')?.value || '3000');  // ← NEW: Read max loss
+    console.log(`🔧 Saving max daily loss: ₹${maxDailyLoss}`);
     const params = new URLSearchParams({
         sl_points: sl, trailing_sl_points: trail, rr_ratio: rr,
         trail_mode: _atTrailMode, trail_atr_mult: _atTrailAtrMult,
@@ -411,6 +412,7 @@ async function applyAtSettings() {
     try {
         const resp = await fetch(`/api/auto-trader/configure?${params}`, { method: 'POST' });
         const data = await resp.json();
+        console.log('✅ Settings saved:', data);
         if (data.success) {
             // After successful save: unlock poll sync and clear dirty flag
             _strikeUserPicked = false;
