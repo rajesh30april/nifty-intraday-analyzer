@@ -3,18 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nifty 50 Intraday Analyzer</title>
+    <title>Inevitable | Algorithmic Trading Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
     <style>
+        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
         @keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 10px rgba(0,83,226,0.3); } 50% { box-shadow: 0 0 25px rgba(0,83,226,0.6); } }
         .glow-blue { animation: pulse-glow 2s ease-in-out infinite; }
         @keyframes slide-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .slide-in { animation: slide-in 0.4s ease-out; }
         @keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .live-dot { animation: live-pulse 1.5s ease-in-out infinite; }
+        .logo-gradient { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         .tf-btn { color: #6b7280; cursor: pointer; }
         .tf-btn-active { background: #0053e2; color: white; }
 .learn-cat-active { background: #0053e2 !important; color: white !important; }
@@ -24,22 +29,27 @@
 .difficulty-intermediate { background: #fef3c7; color: #92400e; }
 .difficulty-advanced { background: #fce7f3; color: #9d174d; }
         /* Sidebar */
-        .sidebar { width: 220px; min-height: calc(100vh - 56px); transition: width 0.2s; }
-        .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; cursor: pointer;
-                        border-left: 3px solid transparent; color: #6b7280; font-weight: 600; font-size: 14px; transition: all 0.15s; }
-        .sidebar-item:hover { background: #f3f4f6; color: #111827; }
-        .sidebar-item.active { background: #eff6ff; color: #0053e2; border-left-color: #0053e2; font-weight: 700; }
-        .sidebar-item .badge { font-size: 10px; padding: 1px 6px; border-radius: 9999px; font-weight: 700; }
+        .sidebar { width: 240px; min-height: calc(100vh - 120px); transition: width 0.2s; background: white; }
+        .sidebar-item { display: flex; align-items: center; gap: 12px; padding: 12px 20px; cursor: pointer;
+                        border-left: 3px solid transparent; color: #6b7280; font-weight: 600; font-size: 14px; 
+                        transition: all 0.2s ease; margin: 2px 8px; border-radius: 8px; }
+        .sidebar-item:hover { background: linear-gradient(to right, #f0f4ff, #f9fafb); color: #4f46e5; }
+        .sidebar-item.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; 
+                              border-left-color: transparent; font-weight: 700; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); }
+        .sidebar-item .badge { font-size: 10px; padding: 2px 7px; border-radius: 9999px; font-weight: 700; }
         .page-section { display: none; }
         .page-section.active { display: block; animation: slide-in 0.3s ease-out; }
-        .ph-filter { cursor:pointer;border:1px solid #d1d5db;padding:3px 10px;border-radius:9999px;
-                     font-size:11px;font-weight:600;background:white;color:#374151;transition:all .15s; }
-        .ph-filter.active { background:#0053e2;color:#fff;border-color:#0053e2; }
-        .ph-day-btn { cursor:pointer;border:1px solid #e2e8f0;padding:5px 10px;border-radius:8px;
+        .ph-filter { cursor:pointer;border:1px solid #e5e7eb;padding:4px 12px;border-radius:9999px;
+                     font-size:11px;font-weight:600;background:white;color:#374151;transition:all .2s;
+                     box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .ph-filter.active { background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:#fff;border-color:transparent;
+                           box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3); }
+        .ph-day-btn { cursor:pointer;border:1px solid #e5e7eb;padding:6px 12px;border-radius:10px;
                       font-size:11px;font-weight:600;background:white;color:#374151;
-                      white-space:nowrap;transition:all .15s; }
-        .ph-day-btn:hover { border-color:#93c5fd;background:#eff6ff; }
-        .ph-day-btn.active { background:#0053e2;color:#fff;border-color:#0053e2; }
+                      white-space:nowrap;transition:all .2s;box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .ph-day-btn:hover { border-color:#c7d2fe;background:#f0f4ff; }
+        .ph-day-btn.active { background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:#fff;border-color:transparent;
+                            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3); }
         .conf-bar { height:5px;border-radius:3px;background:#e2e8f0;overflow:hidden; }
         .conf-fill { height:100%;border-radius:3px; }
         .chip { display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:700; }
@@ -49,86 +59,184 @@
         @keyframes slideOutRight { from{opacity:1;transform:translateX(0)} to{opacity:0;transform:translateX(60px)} }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
 
-    <!-- Header -->
-    <header class="bg-[#0053e2] text-white shadow-lg sticky top-0 z-50">
-        <div class="px-4 py-2.5 flex items-center justify-between">
-            <div class="flex items-center gap-4">
-                <h1 class="text-lg font-bold">📈 Nifty 50 Analyzer</h1>
-                <span id="header-price" class="text-xl font-black">--</span>
-                <span id="header-change" class="text-sm font-semibold text-blue-200">--</span>
-                <span id="live-price-time" class="text-xs text-blue-300"></span>
+    <!-- Professional Header with Status Bar -->
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <!-- Top Status Bar -->
+        <div class="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 text-white px-6 py-1.5 flex items-center justify-between text-xs font-medium">
+            <div class="flex items-center gap-6">
+                <div class="flex items-center gap-2">
+                    <div id="market-status-dot" class="w-2 h-2 rounded-full bg-green-400 live-dot"></div>
+                    <span id="market-status-text">Market Open</span>
+                </div>
+                <span id="live-price-time" class="opacity-75"></span>
             </div>
+            <div class="flex items-center gap-4">
+                <div id="data-source-badge" class="opacity-90"></div>
+                <span id="live-badge" class="opacity-75"></span>
+            </div>
+        </div>
+        
+        <!-- Main Header -->
+        <div class="px-6 py-4 flex items-center justify-between">
+            <!-- Brand -->
+            <div class="flex items-center gap-8">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-black tracking-tight text-gray-900">Inevitable</h1>
+                        <p class="text-xs text-gray-500 font-medium -mt-0.5">Algorithmic Trading Platform</p>
+                    </div>
+                </div>
+                
+                <!-- Live Price Display -->
+                <div class="hidden lg:flex items-baseline gap-3 pl-8 border-l border-gray-200">
+                    <div>
+                        <div class="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-0.5">Nifty 50</div>
+                        <div class="flex items-baseline gap-2">
+                            <span id="header-price" class="text-3xl font-black text-gray-900">--</span>
+                            <span id="header-change" class="text-base font-bold">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Button -->
             <div class="flex items-center gap-3">
-                <div id="data-source-badge"></div>
-                <span id="live-badge" class="text-xs text-blue-200"></span>
-                <button onclick="loadAnalysis()" class="bg-[#ffc220] text-gray-900 px-3 py-1.5 rounded-lg font-bold text-sm hover:bg-yellow-400 transition" aria-label="Refresh">⚡ Refresh All</button>
+                <button onclick="loadAnalysis()" 
+                    class="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-200" 
+                    aria-label="Refresh">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    <span>Refresh</span>
+                </button>
             </div>
         </div>
     </header>
 
     <!-- Login Banner -->
-    <div id="login-banner" class="hidden bg-gradient-to-r from-orange-500 to-red-500 text-white p-4 flex items-center justify-between">
-        <div><h3 class="font-bold">🔑 Login Required</h3><p class="text-orange-100 text-sm">Connect Zerodha for live data.</p></div>
-        <a href="/login" class="bg-white text-orange-600 px-5 py-2 rounded-lg font-bold hover:bg-orange-50 transition">🔑 Login</a>
+    <div id="login-banner" class="hidden bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-4 flex items-center justify-between shadow-lg">
+        <div>
+            <h3 class="font-bold text-lg">🔑 Login Required</h3>
+            <p class="text-indigo-100 text-sm">Connect Zerodha for live data and trading.</p>
+        </div>
+        <a href="/login" class="bg-white text-indigo-600 px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-50 transition shadow-md hover:shadow-lg">🔑 Login</a>
     </div>
     <div id="login-required-overlay" class="hidden text-center py-20">
-        <p class="text-6xl mb-4">🔒</p><h2 class="text-2xl font-bold text-gray-800 mb-2">Connect Zerodha to Start</h2>
-        <a href="/login" class="bg-[#0053e2] text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 transition text-lg">🔑 Login</a>
+        <div class="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-2xl flex items-center justify-center">
+            <svg class="w-10 h-10 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+            </svg>
+        </div>
+        <h2 class="text-2xl font-bold text-gray-900 mb-2">Connect Zerodha to Start</h2>
+        <p class="text-gray-600 mb-6">Securely authenticate to access live trading features</p>
+        <a href="/login" class="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all text-lg">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+            </svg>
+            <span>Login</span>
+        </a>
     </div>
 
     <!-- Loading -->
     <div id="loading" class="hidden text-center py-20">
-        <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[#0053e2] border-t-transparent"></div>
-        <p class="mt-4 text-gray-600 text-lg">Loading... 🐶</p>
+        <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent"></div>
+        <p class="mt-4 text-gray-600 text-lg font-semibold">Loading...</p>
     </div>
     <div id="error-state" class="hidden text-center py-20">
         <p class="text-red-600 text-xl font-bold">⚠️ Something went wrong</p>
         <p id="error-msg" class="text-gray-600 mt-2"></p>
-        <button onclick="loadAnalysis()" class="mt-4 bg-[#0053e2] text-white px-6 py-2 rounded-lg">Try Again</button>
+        <button onclick="loadAnalysis()" class="mt-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-6 py-2 rounded-lg shadow-lg transition-all">Try Again</button>
     </div>
 
     <!-- ==================== MAIN LAYOUT: Sidebar + Content ==================== -->
     <div id="dashboard" class="hidden flex">
 
         <!-- Sidebar -->
-        <nav class="sidebar bg-white border-r border-gray-200 shadow-sm flex-shrink-0 sticky top-[56px] self-start" aria-label="Main navigation">
-            <div class="py-3">
+        <nav class="sidebar border-r border-gray-200 shadow-sm flex-shrink-0 sticky top-[120px] self-start" aria-label="Main navigation">
+            <div class="py-4">
+                <div class="px-5 mb-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Navigation</p>
+                </div>
                 <div class="sidebar-item active" data-page="overview" onclick="switchPage('overview')">
-                    <span>🎯</span><span>Overview</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    <span>Overview</span>
                 </div>
                 <div class="sidebar-item" data-page="trend-health" onclick="switchPage('trend-health')">
-                    <span>🦠</span><span>Trend Health</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                    </svg>
+                    <span>Trend Health</span>
                     <span id="sidebar-trend-badge" class="badge bg-gray-200 text-gray-500">--</span>
                 </div>
                 <div class="sidebar-item" data-page="charts" onclick="switchPage('charts')">
-                    <span>📈</span><span>Charts</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
+                    </svg>
+                    <span>Charts</span>
                 </div>
                 <div class="sidebar-item" data-page="trade-signal" onclick="switchPage('trade-signal')">
-                    <span>🚦</span><span>Trade Signal</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
+                    <span>Trade Signal</span>
                     <span id="sidebar-signal-badge" class="badge bg-gray-200 text-gray-500">--</span>
                 </div>
+                
+                <div class="px-5 mt-6 mb-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Automation</p>
+                </div>
                 <div class="sidebar-item" data-page="auto-trader" onclick="switchPage('auto-trader')">
-                    <span>🤖</span><span>Auto-Trader</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                    </svg>
+                    <span>Auto-Trader</span>
                     <span id="sidebar-at-badge" class="badge bg-gray-200 text-gray-500">⏸</span>
                 </div>
                 <div class="sidebar-item" data-page="crude-trader" onclick="switchPage('crude-trader')">
-                    <span>🛢️</span><span>Crude Oil AT</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
+                    </svg>
+                    <span>Crude Oil AT</span>
                     <span id="sidebar-crude-badge" class="badge bg-gray-200 text-gray-500">⏸</span>
                 </div>
                 <div class="sidebar-item" data-page="crude-chart" onclick="switchPage('crude-chart'); initCrudeChart()">
-                    <span>📈</span><span>Crude Live Chart</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                    </svg>
+                    <span>Crude Live Chart</span>
                 </div>
                 <div class="sidebar-item" data-page="live-monitor" onclick="switchPage('live-monitor')">
-                    <span>📡</span><span>Live Monitor</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                    </svg>
+                    <span>Live Monitor</span>
                     <span id="lm-sidebar-dot" class="ml-auto w-2 h-2 rounded-full bg-gray-300"></span>
                 </div>
+                
+                <div class="px-5 mt-6 mb-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Tools</p>
+                </div>
                 <div class="sidebar-item" data-page="backtester" onclick="switchPage('backtester')">
-                    <span>🔬</span><span>Backtester</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                    </svg>
+                    <span>Backtester</span>
                 </div>
                 <div class="sidebar-item" data-page="learn" onclick="switchPage('learn')">
-                    <span>📚</span><span>Learn</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                    </svg>
+                    <span>Learn</span>
                 </div>
                 <div class="sidebar-item" data-page="patterns" onclick="switchPage('patterns')">
                     <span>📊</span><span>Pattern Finder</span>
