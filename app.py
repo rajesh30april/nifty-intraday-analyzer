@@ -1642,6 +1642,71 @@ async def patterns(interval: str = "5m"):
         return {"success": False, "error": str(e)}
 
 
+@app.get("/api/pattern-chart/{pattern_index}")
+async def pattern_chart(pattern_index: int, interval: str = "5m", lookback: int = 50):
+    """Generate a visual chart for a detected pattern.
+    
+    Args:
+        pattern_index: Index of the pattern in the deerns list
+        interval: Timeframe ('5m', '15m', etc.)
+        lookback: Number of candles to show before pattern start
+    
+    Returns:
+        JSON with base64-encoded PNG image
+    """
+    try:
+        from pattern_chart import generate_pattern_chart, MATPLOTLIB_AVAILABLE
+        
+        if not MATPLOTLIB_AVAILABLE:
+            return {
+                "success": False,
+                "error": "matplotlib not installed - pattern charts unavailable"
+            }
+        
+        # Fetch data and detect patterns
+        df = await asyncio.to_thread(fetch_intraday_data, interval=interval, period="5d")
+        result = await asyncio.to_thread(detect_all_patterns, df, timeframe=interval)
+        
+        patterns = result["patterns"]
+        
+        if pattern_index < 0 or pattern_index >= len(patterns):
+            return {
+                "success": False,
+                "error": f"Pattern index {pattern_index} out of range (0-{len(patterns)-1})"
+            }
+        
+        pattern = patterns[pattern_index]
+        
+        # Generate chart
+        img_base64 = await asyncio.to_thread(
+            generate_pattern_chart,
+            df,
+            pattern,
+            lookback=lookback
+        )
+        
+        if img_base64 is None:
+            return {
+                "success": False,
+                "error": "Failed to generate pattern chart"
+            }
+        
+        return {
+            "success": True,
+            "image": img_base64,
+            "pattern": {
+                "name": pattern.name,
+                "bias": pattern.bias,
+                "confidence": pattern.confidence,
+                "description": pattern.description,
+            }
+        }
+        
+    except Exception as e:
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
 # ── Multi-Timeframe Analysis ─────────────────────────────────
 
 @app.get("/api/mtf-analyze")

@@ -1,7 +1,7 @@
 {
   "date": "2026-03-20",
-  "total_pnl": -11943.1,
-  "orders_placed": 17,
+  "total_pnl": -13356.2,
+  "orders_placed": 18,
   "is_paper_mode": false,
   "is_running": true,
   "selected_strategy": "smart_router",
@@ -16,12 +16,12 @@
   "strike_offset": 2,
   "max_trades_per_day": 30,
   "cooldown_minutes": 1,
-  "last_exit_time": "2026-03-20T13:23:12.668866",
+  "last_exit_time": "2026-03-20T13:28:31.709486",
   "last_exit_direction": "short",
   "active_trade": null,
-  "entry_nifty_sl": 23286.05,
-  "lowest_price_since_entry": 23255.95,
-  "highest_price_since_entry": 23256.05,
+  "entry_nifty_sl": 23295.55,
+  "lowest_price_since_entry": 23265.55,
+  "highest_price_since_entry": 23265.55,
   "active_option_token": null,
   "trades_today": [
     {
@@ -339,5 +339,6 @@
       "paper": false,
       "app_managed": true
     }
-  ]
+  ],
+  "max_daily_loss": 20000
 }
