@@ -31,6 +31,7 @@ from crude_data import (
     get_crude_option_ltp,
     fetch_crude_intraday_data,
     estimate_crude_premium,
+    get_crude_futures_token,   # ← for auto-switch to futures
 )
 from crude_strategy import evaluate_crude_best
 from strategy import Direction
@@ -38,6 +39,7 @@ from strategy import Direction
 load_dotenv()
 
 # ── Config ────────────────────────────────────────────────────────
+HV_RANK_FUTURES_THRESHOLD = 85  # When HV rank > this, auto-switch to futures
 CRUDE_LIVE          = os.getenv("CRUDE_LIVE", "false").lower() == "true"
 CRUDE_SL_POINTS     = float(os.getenv("CRUDE_SL_POINTS",     "50"))   # ₹50/bbl SL
 CRUDE_TRAIL_POINTS  = float(os.getenv("CRUDE_TRAIL_POINTS",  "25"))   # ₹25 trail
@@ -547,9 +549,57 @@ def _resolve_qty(spot: float, real_premium: float | None = None,
     return lots
 
 
-# ── Enter / Exit ──────────────────────────────────────────────────
+# ── Helper: quick HV rank calculator (lighter than full option evaluator) ──
+
+def _get_hv_rank(df: pd.DataFrame) -> float:
+    """Calculate HV rank (0-100) without running full option evaluator.
+    
+    HV rank = where is current HV vs last 90 days?
+      0   = current HV is the lowest in 90d
+      100 = current HV is the highest in 90d
+    
+    Returns 0.0 if insufficient data.
+    """
+    try:
+        close = df['close']
+        if len(close) < 91:
+            return 0.0
+        
+        returns = close.pct_change().dropna()
+        hv_90d  = returns.rolling(90).std() * (252 ** 0.5) * 100  # annualised %
+        hv_90d  = hv_90d.dropna()
+        
+        if len(hv_90d) < 2:
+            return 0.0
+        
+        current = float(hv_90d.iloc[-1])
+        hv_min  = float(hv_90d.min())
+        hv_max  = float(hv_90d.max())
+        
+        if hv_max == hv_min:
+            return 50.0
+        
+        rank = ((current - hv_min) / (hv_max - hv_min)) * 100
+        return round(rank, 1)
+    except Exception:
+        return 0.0
+
+
+# ── Enter / Exit ──────────────────────────────────────────────────────
 
 def _enter_trade(direction: Direction, price: float):
+    # ── Auto-switch: check HV rank, use futures if IV too high ───────
+    df = fetch_crude_intraday_data('5minute', 5)  # 5 days for 90+ candles
+    hv_rank = _get_hv_rank(df) if df is not None else 0.0
+    use_futures = hv_rank > HV_RANK_FUTURES_THRESHOLD
+    
+    if use_futures:
+        print(f"🛢️  HV rank {hv_rank:.0f}% > {HV_RANK_FUTURES_THRESHOLD}% — "
+              f"switching to FUTURES (no IV crush risk)")
+        _enter_trade_futures(direction, price, hv_rank)
+        return
+    
+    # ── Normal options flow (HV rank ≤ 85) ────────────────────────
     try:
         symbol, _token, lot_size = get_crude_atm_option(
             price, direction.value, state.strike_offset, capital=state.capital
@@ -664,13 +714,112 @@ def _enter_trade(direction: Direction, price: float):
     print(f"🛢️  Trade opened: {direction.value.upper()} {symbol} @ ₹{price:.0f} | SL ₹{sl:.0f} | Tgt ₹{target:.0f}")
 
 
+def _enter_trade_futures(direction: Direction, price: float, hv_rank: float):
+    """Enter a CRUDEOIL FUTURES trade (when HV rank > 85, options too expensive).
+    
+    Simpler than options:
+      - No premium tracking (P&L = price move × lot_size)
+      - No theta decay, no vega risk
+      - Lower margin requirement (~₹5k vs ₹45k option premium)
+      - Pure directional bet
+    """
+    try:
+        token, symbol_raw = get_crude_futures_token()
+        symbol = f"MCX:{symbol_raw}"
+        lot_size = MCX_CRUDE_LOT_SIZE  # 100 barrels
+    except RuntimeError as e:
+        print(f"❌ Crude futures lookup failed: {e}")
+        state.last_block_reason = str(e)
+        return
+    
+    # ── Sync capital ──────────────────────────────────────────────
+    free, net, used = _fetch_available_margin()
+    if free is not None:
+        state.capital = free
+    
+    # ── Lot sizing: start with 1 lot, check margin ─────────────────────
+    qty, required_margin = _validate_and_size(symbol, 1, state.capital, ltp=None)
+    
+    if qty == 0:
+        one_lot_margin = _query_zerodha_margin(symbol, 1) or 5000  # fallback estimate
+        state.last_block_reason = (
+            f"⛔ Insufficient margin for FUTURES. "
+            f"1 lot ({symbol_raw}) requires ~₹{one_lot_margin:,.0f} margin "
+            f"but available is ₹{state.capital:,.0f}"
+        )
+        print(f"🚫 {state.last_block_reason}")
+        return
+    
+    sl_pts = state.sl_points
+    rr     = state.rr_ratio
+    
+    sl     = price - sl_pts if direction == Direction.LONG else price + sl_pts
+    target = price + sl_pts * rr if direction == Direction.LONG else price - sl_pts * rr
+    
+    order_id = _place_order(symbol, direction, qty, price)
+    if not order_id:
+        return
+    
+    print(f"🔹 Futures entry: {direction.value.upper()} {symbol} @ ₹{price:.0f} "
+          f"| SL ₹{sl:.0f} | Tgt ₹{target:.0f} | {qty} lot ({lot_size} bbl) "
+          f"| HV rank {hv_rank:.0f}%")
+    
+    # ── Trade object (mark as futures with entry_premium=0) ──────────────
+    trade = CrudeTrade(
+        id=f"CRUDE-FUT-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+        timestamp=datetime.now().isoformat(),
+        direction=direction.value,
+        instrument=symbol,
+        entry_price=price,
+        entry_premium=0.0,      # ← marker: 0 = futures, >0 = options
+        quantity=qty,
+        lot_size=lot_size,
+        stop_loss=sl,
+        sl_premium=None,        # futures don't use premium SL
+        tgt_premium=None,
+        peak_ltp=0.0,
+        target=target,
+        status=CrudeOrderStatus.FILLED,
+        order_id=order_id,
+        paper=state.is_paper_mode,
+    )
+    
+    state.active_trade          = trade
+    state.orders_placed        += 1
+    state.highest_since_entry   = price
+    state.lowest_since_entry    = price
+    state.last_option_ltp       = 0.0   # not applicable for futures
+    state.entry_crude_sl        = sl
+    state.last_signal_reason    = f"Entered {direction.value.upper()} FUTURES {symbol} (HV{hv_rank:.0f}%)"
+    
+    # ── Subscribe futures to WebSocket ──────────────────────────────
+    if kite_manager.subscribe_crude_option(token):  # reuses same subscription
+        print(f"📡 Real-time tick active for {symbol}")
+    
+    _save_snapshot()
+    print(f"🛢️  Futures trade opened: {direction.value.upper()} {qty} lot @ ₹{price:.0f}")
+
+
 def _exit_position(reason: str, price: float):
     trade = state.active_trade
     if not trade:
         return
-
-    exit_ltp  = get_crude_option_ltp(trade.instrument)
-    exit_prem = exit_ltp if isinstance(exit_ltp, (int, float)) and exit_ltp > 0 else trade.entry_premium
+    
+    # ── Detect instrument type: futures vs options ────────────────────
+    is_futures = trade.entry_premium == 0.0  # marker: 0 = futures, >0 = options
+    
+    if is_futures:
+        # Futures exit: P&L = (exit - entry) × lot_size × direction
+        exit_prem = 0.0  # not applicable
+        price_move = price - trade.entry_price
+        if trade.direction == "short":
+            price_move = -price_move
+        pnl = price_move * trade.lot_size * trade.quantity
+    else:
+        # Options exit: P&L = (exit_prem - entry_prem) × lot_size × qty
+        exit_ltp  = get_crude_option_ltp(trade.instrument)
+        exit_prem = exit_ltp if isinstance(exit_ltp, (int, float)) and exit_ltp > 0 else trade.entry_premium
+        pnl = (exit_prem - trade.entry_premium) * trade.lot_size * trade.quantity
 
     if not state.is_paper_mode:
         clean    = trade.instrument.replace("MCX:", "")
@@ -902,16 +1051,22 @@ def evaluate_and_act_crude(df: pd.DataFrame, price: float):
             _exit_position(f"⏰ Time exit {CRUDE_EXIT_TIME}", price)
         return
 
-    # ── Manage existing trade ─────────────────────────────────────
+    # ── Manage existing trade ─────────────────────────────────────────
     if state.active_trade:
-        # Refresh option LTP first so premium checks are current
-        ltp = get_crude_option_ltp(state.active_trade.instrument)
-        if isinstance(ltp, (int, float)) and ltp > 0:
-            state.last_option_ltp = ltp
-            _manage_trade_by_premium(ltp, source="candle")
-        # Belt-and-suspenders: spot price safety exit
-        if state.active_trade:  # may have been exited above
+        is_futures = state.active_trade.entry_premium == 0.0
+        
+        if is_futures:
+            # Futures: only price-based SL/target (no premium tracking)
             _manage_trade(price, source="candle")
+        else:
+            # Options: premium-based exits first, then price safety net
+            ltp = get_crude_option_ltp(state.active_trade.instrument)
+            if isinstance(ltp, (int, float)) and ltp > 0:
+                state.last_option_ltp = ltp
+                _manage_trade_by_premium(ltp, source="candle")
+            # Belt-and-suspenders: spot price safety exit
+            if state.active_trade:  # may have been exited above
+                _manage_trade(price, source="candle")
         return
 
     # ── Safety limits ─────────────────────────────────────────────
