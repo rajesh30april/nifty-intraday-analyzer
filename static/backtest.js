@@ -140,6 +140,13 @@ async function runBacktest() {
         quantity, data_source: dataSource,
     });
 
+    // ── Store params for replay sync ────────────────────────────
+    window._lastBacktestParams = {
+        period, sl_points: slPoints, trailing_sl: trailingSl,
+        rr_ratio: rrRatio, max_trades: maxTrades, strategy,
+        quantity, data_source: dataSource,
+    };
+
     _setBtProgress(0, '📡 Connecting…');
 
     // Close any previous stream
@@ -271,6 +278,9 @@ function renderBacktestResults(data) {
     renderDailyPnl(data.daily_pnl);
 
     // ── Populate Day Replay date picker ──
+    if (typeof replayStoreParams === 'function') {
+        replayStoreParams(window._lastBacktestParams);
+    }
     if (typeof replayPopulateDates === 'function') {
         replayPopulateDates(data.daily_pnl);
     }

@@ -9,6 +9,7 @@ let _replayTimer    = null;
 let _replayPaused   = false;
 let _replayChart    = null;
 let _replayDates    = [];
+let _backtestParams = null;  // ← Store parameters from last backtest run
 
 // ── Public: called after a backtest completes ──────────────────
 /**
@@ -26,6 +27,20 @@ function replayPopulateDates(dailyPnl) {
         const flag = pnl >= 0 ? '✅' : '❌';
         return `<option value="${d}">${flag} ${d}  (${sign}${pnl.toFixed(1)} pts)</option>`;
     }).join('');
+}
+
+/**
+ * Store backtest parameters when backtest completes.
+ * Call this BEFORE replayPopulateDates() in renderBacktestResults().
+ */
+function replayStoreParams(params) {
+    _backtestParams = params;
+    // Show indicator that replay is synced with last backtest
+    const indicator = document.getElementById('replay-params-indicator');
+    if (indicator) {
+        indicator.textContent = `✅ Synced with backtest (SL: ${params.sl_points}pts, Trail: ${params.trailing_sl}pts, ${params.strategy})`;
+        indicator.className = 'text-xs text-green-600 font-semibold mt-1';
+    }
 }
 
 // ── Public: auto-select date (called from daily P&L chart click)
@@ -54,16 +69,23 @@ async function replayInstantFull() {
 async function _fetchAndStartReplay(date, instant) {
     _stopTimer();
 
+    // ── USE STORED PARAMS FROM LAST BACKTEST (not current form values) ──
+    // This ensures replay matches the original backtest that generated these dates.
+    if (!_backtestParams) {
+        alert('⚠️ Please run a backtest first! Replay needs to match backtest parameters.');
+        return;
+    }
+
     const params = new URLSearchParams({
         date,
-        period:      document.getElementById('bt-period')?.value     || '60d',
-        sl_points:   document.getElementById('bt-sl')?.value         || '30',
-        trailing_sl: document.getElementById('bt-trail')?.value      || '15',
-        rr_ratio:    document.getElementById('bt-rr')?.value         || '2',
-        max_trades:  document.getElementById('bt-max-trades')?.value || '3',
-        strategy:    document.getElementById('bt-strategy')?.value   || 'smart_router',
-        quantity:    document.getElementById('bt-qty')?.value        || '750',
-        data_source: window._currentDataSource || 'yahoo',
+        period:      _backtestParams.period,
+        sl_points:   _backtestParams.sl_points,
+        trailing_sl: _backtestParams.trailing_sl,
+        rr_ratio:    _backtestParams.rr_ratio,
+        max_trades:  _backtestParams.max_trades,
+        strategy:    _backtestParams.strategy,
+        quantity:    _backtestParams.quantity,
+        data_source: _backtestParams.data_source,
     });
 
     const loadingEl = document.getElementById('replay-loading');
