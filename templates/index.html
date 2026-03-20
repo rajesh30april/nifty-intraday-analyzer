@@ -1050,6 +1050,12 @@
                   </div>
 
                   <div id="at-manual-msg" class="text-[10px] text-gray-500 text-center hidden"></div>
+                  
+                  <!-- Pattern Charts (shown after Evaluate) -->
+                  <div id="at-pattern-charts" class="hidden mt-4 space-y-4">
+                    <div class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">📊 Detected Patterns</div>
+                    <div id="at-pattern-cards"></div>
+                  </div>
                 </div>
 
                 <!-- Signal / conditions -->
@@ -2336,9 +2342,14 @@ function _atRefreshManualControls(hasActiveTrade) {
 async function atManualEvaluate() {
     const btn = document.getElementById('at-btn-evaluate');
     const msg = document.getElementById('at-manual-msg');
+    const patternContainer = document.getElementById('at-pattern-charts');
+    const patternCards = document.getElementById('at-pattern-cards');
+    
     btn.disabled = true; btn.innerHTML = '⏳ Evaluating…';
     msg.classList.remove('hidden');
     msg.textContent = 'Running signal check…';
+    patternContainer.classList.add('hidden');
+    
     try {
         const r = await fetch('/api/auto-trader/evaluate', { method: 'POST' });
         const d = await r.json();
@@ -2346,12 +2357,99 @@ async function atManualEvaluate() {
             const sig = d.last_signal || d.conditions || 'Check complete';
             msg.textContent = '🔍 ' + (typeof sig === 'string' ? sig : JSON.stringify(sig));
             _atShowToast('🔍 Evaluation done — check event log', 'info');
+            
+            // ✨ NEW: Fetch and display pattern charts inline!
+            msg.textContent += ' | Fetching pattern charts...';
+            await loadInlinePatternCharts(patternContainer, patternCards);
         } else {
             msg.textContent = '❌ ' + d.error;
             _atShowToast('❌ ' + d.error, 'error');
         }
-    } catch(e) { msg.textContent = '❌ ' + e.message; }
+    } catch(e) { 
+        msg.textContent = '❌ ' + e.message; 
+    }
     btn.disabled = false; btn.innerHTML = '🔍 Evaluate Now';
+}
+
+// ✨ NEW: Load pattern charts inline after evaluation
+async function loadInlinePatternCharts(container, cardsDiv) {
+    try {
+        // Fetch patterns
+        const patternsResp = await fetch('/api/patterns?interval=5m');
+        const patternsData = await patternsResp.json();
+        
+        if (!patternsData.success || !patternsData.patterns || patternsData.patterns.length === 0) {
+            container.classList.add('hidden');
+            return;
+        }
+        
+        const patterns = patternsData.patterns;
+        container.classList.remove('hidden');
+        cardsDiv.innerHTML = '<div class="text-center text-gray-500 text-xs">📊 Loading charts...</div>';
+        
+        // Render pattern cards with charts
+        let html = '';
+        for (let i = 0; i < Math.min(patterns.length, 3); i++) {  // Show max 3 patterns
+            const p = patterns[i];
+            const biasColor = p.bias === 'bullish' ? 'green' : p.bias === 'bearish' ? 'red' : 'yellow';
+            const biasEmoji = p.bias === 'bullish' ? '📈' : p.bias === 'bearish' ? '📉' : '↔️';
+            
+            html += `
+                <div class="bg-gray-800 border border-gray-700 rounded-lg p-3 mb-3">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-lg">${biasEmoji}</span>
+                            <div>
+                                <div class="text-sm font-bold text-white">${p.name}</div>
+                                <div class="text-[10px] text-gray-400">${p.description?.substring(0, 60) || ''}...</div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs font-black text-${biasColor}-400">${Math.round(p.confidence * 100)}%</div>
+                            <div class="text-[9px] text-gray-500">confidence</div>
+                        </div>
+                    </div>
+                    <div id="pattern-chart-${i}" class="bg-black rounded-lg p-2 flex items-center justify-center" style="min-height: 200px;">
+                        <div class="text-gray-500 text-xs">⏳ Loading chart...</div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        cardsDiv.innerHTML = html;
+        
+        // Load each chart image
+        for (let i = 0; i < Math.min(patterns.length, 3); i++) {
+            loadPatternChartImage(i);
+        }
+        
+    } catch (error) {
+        console.error('Failed to load pattern charts:', error);
+        container.classList.add('hidden');
+    }
+}
+
+// Load individual pattern chart image
+async function loadPatternChartImage(index) {
+    const chartDiv = document.getElementById(`pattern-chart-${index}`);
+    if (!chartDiv) return;
+    
+    try {
+        const chartResp = await fetch(`/api/pattern-chart/${index}?interval=5m&lookback=40`);
+        const chartData = await chartResp.json();
+        
+        if (chartData.success && chartData.image) {
+            chartDiv.innerHTML = `
+                <img src="data:image/png;base64,${chartData.image}" 
+                     alt="Pattern Chart" 
+                     class="w-full h-auto rounded" />
+            `;
+        } else {
+            chartDiv.innerHTML = `<div class="text-red-400 text-xs">⚠️ Chart failed: ${chartData.error || 'Unknown error'}</div>`;
+        }
+    } catch (error) {
+        chartDiv.innerHTML = `<div class="text-red-400 text-xs">⚠️ ${error.message}</div>`;
+    }
 }
 
 async function atForceEntry(direction) {
