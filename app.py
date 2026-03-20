@@ -2491,6 +2491,83 @@ async def crude_margin():
     """
     from crude_trader import _fetch_available_margin, _query_zerodha_margin
     from crude_data import get_crude_spot, get_crude_atm_option, get_crude_option_ltp
+    
+    # Check authentication first
+    if not kite_manager.is_authenticated:
+        return {"success": False, "error": "Not authenticated with Zerodha. Please login to Kite."}
+    
+    try:
+        # Fetch available margin
+        margin_result = _fetch_available_margin()
+        
+        if not margin_result or margin_result[0] is None:
+            return {"success": False, "error": "Failed to fetch margin data from Zerodha. Please ensure you're logged into Kite."}
+        
+        free, total, utilised = margin_result
+        
+        # Get crude spot price and ATM option
+        spot = get_crude_spot()
+        if not spot:
+            return {
+                "success": True,
+                "free": free,
+                "total": total,
+                "utilised": utilised,
+                "net": free - (utilised or 0) if free and utilised else free,
+                "margin_1lot": None,
+                "margin_2lot": None,
+                "max_lots": 0,
+                "shortfall": 0,
+            }
+        
+        # Get ATM option symbol (default to LONG for margin calculation)
+        from strategy import Direction
+        atm_result = get_crude_atm_option(spot, Direction.LONG.value, strike_offset=0)
+        if not atm_result:
+            return {
+                "success": True,
+                "free": free,
+                "total": total,
+                "utilised": utilised,
+                "net": free - (utilised or 0) if free and utilised else free,
+                "margin_1lot": None,
+                "margin_2lot": None,
+                "max_lots": 0,
+                "shortfall": 0,
+            }
+        
+        atm_symbol, atm_token, lot_size = atm_result
+        
+        # Query Zerodha for exact margin for 1 lot and 2 lots
+        margin_1lot = _query_zerodha_margin(atm_symbol, lots=1)
+        margin_2lot = _query_zerodha_margin(atm_symbol, lots=2)
+        
+        # Calculate max affordable lots
+        if margin_1lot and margin_1lot > 0:
+            max_lots = int(free * 0.95 / margin_1lot)  # Use 95% of free margin for safety
+        else:
+            max_lots = 0
+        
+        # Calculate shortfall if can't afford even 1 lot
+        shortfall = max(0, (margin_1lot or 0) - free) if margin_1lot else 0
+        
+        return {
+            "success": True,
+            "free": free,
+            "total": total,
+            "utilised": utilised,
+            "net": free - (utilised or 0) if free and utilised else free,
+            "margin_1lot": margin_1lot,
+            "margin_2lot": margin_2lot,
+            "max_lots": max_lots,
+            "shortfall": shortfall,
+            "spot": spot,
+            "symbol": atm_symbol,
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": f"Error fetching crude margin: {str(e)}"}
 
 
 # ── Crude Pattern Detection ─────────────────────────────
