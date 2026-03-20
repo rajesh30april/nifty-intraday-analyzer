@@ -1,7 +1,44 @@
-# ✅ BOTH BUGS FIXED!
+# ✅ BUGS FIXED + REGIME FILTER NOW INFORMATIONAL!
 
 **Date:** March 20, 2026
-**Issues:** max_daily_loss not returned + stops too tight
+**Issues:** max_daily_loss not returned + stops too tight + regime filter changed
+
+---
+
+## 🔄 UPDATE: Regime Filter Changed (User Request)
+
+**User request:** "dont block..just give it as info"
+
+**Changed:** Regime filter from **HARD BLOCK** → **INFORMATIONAL WARNING**
+
+### Before (Blocking):
+```
+Market DOWN + LONG signal:
+  → 🚫 BLOCKED LONG in downtrend!
+  → NO TRADE PLACED ❌
+  → User frustrated!
+```
+
+### After (Informational):
+```
+Market DOWN + LONG signal:
+  → ⚠️ WARNING: LONG in downtrend!
+  → "Market trending DOWN, consider waiting or trading SHORT instead."
+  → TRADE PROCEEDS! ✅
+  → User maintains control!
+```
+
+### What You'll See:
+```bash
+# Terminal output:
+⚠️ Regime Warning: WARNING: LONG in downtrend! ADX=32.1, trend=down, 
+   confidence=82% — Market trending DOWN, consider waiting or trading SHORT instead.
+✅ Entering LONG 📈 @ Nifty 23250
+
+# Trade still enters, but you're INFORMED!
+```
+
+**Philosophy:** Inform, don't restrict. You're the boss! 🐶
 
 ---
 
