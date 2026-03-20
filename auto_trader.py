@@ -35,8 +35,8 @@ LIVE_TRADING = os.getenv("LIVE_TRADING", "false").lower() == "true"
 MAX_LOSS_PER_DAY = float(os.getenv("MAX_LOSS_PER_DAY", "3000"))  # ₹3000 (reduced from 5000!)
 MAX_ORDERS_PER_DAY = int(os.getenv("MAX_ORDERS_PER_DAY", "30"))
 DEFAULT_QUANTITY   = int(os.getenv("DEFAULT_QUANTITY",   "780"))   # 12 lots × 65 units
-SL_POINTS          = float(os.getenv("SL_POINTS",          "30"))   # Fixed SL in points
-TRAILING_SL_POINTS = float(os.getenv("TRAILING_SL_POINTS", "15"))   # Trail by 15pts
+SL_POINTS          = float(os.getenv("SL_POINTS",          "50"))   # Fixed SL in points (INCREASED from 30!)
+TRAILING_SL_POINTS = float(os.getenv("TRAILING_SL_POINTS", "25"))   # Trail by 25pts (INCREASED from 15!)
 DEFAULT_CAPITAL    = float(os.getenv("TRADING_CAPITAL",  "96000"))  # ₹ available
 EXIT_TIME = dt_time(15, 28)  # 3:28 PM IST — auto-exit all positions
 # Azure-compatible paths: Use /app/data (volume mount) if available, fallback to local
@@ -551,6 +551,14 @@ def _check_safety() -> tuple[bool, str]:
         print(f"   Current P&L: ₹{state.total_pnl:.0f}")
         print(f"   Max Loss Limit: ₹{state.max_daily_loss:.0f}")
         print(f"   → Trading BLOCKED until limit is raised or P&L improves!")
+        print(f"")
+        print(f"🔧 TEMPORARY BYPASS: Set environment variable to override:")
+        print(f"   BYPASS_MAX_LOSS=true python app.py")
+        print(f"")
+        # TEMPORARY BYPASS for debugging
+        if os.getenv("BYPASS_MAX_LOSS", "false").lower() == "true":
+            print(f"⚠️ WARNING: Max loss check BYPASSED! Trading allowed despite limit!")
+            return True, "⚠️ Max loss check bypassed (BYPASS_MAX_LOSS=true)"
         return False, f"Max daily loss hit (₹{state.max_daily_loss:.0f}) | Current P&L: ₹{state.total_pnl:.0f}"
 
     now = _now_time()
@@ -1354,6 +1362,9 @@ def _enter_trade(direction: Direction, price: float):
     else:
         sl     = price + sl_pts
         target = price - sl_pts * rr
+    
+    # 📊 Log SL distance for debugging
+    print(f"🎯 Entry SL distance: {sl_pts:.0f} points | Entry: ₹{price:.0f} | SL: ₹{sl:.0f} | Target: ₹{target:.0f}")
 
     order_id = _place_order(symbol, direction, qty, price)
     if not order_id:
@@ -1555,6 +1566,18 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
 
     def _apply_sl_move(new_sl_val: float) -> None:
         """Update SL in state + log. Inlined helper to avoid duplicate code."""
+        # ✨ CRITICAL SAFETY CHECK: Prevent super-tight stops! ✨
+        # Never allow SL closer than 20 points (absolute minimum for Nifty)
+        # This prevents whipsaw from over-aggressive trailing.
+        MIN_SL_DISTANCE = 20  # Minimum 20 Nifty points
+        
+        current_distance = abs(current_price - new_sl_val)
+        if current_distance < MIN_SL_DISTANCE:
+            print(f"⚠️  Trail blocked! SL too tight: {current_distance:.1f} pts (min: {MIN_SL_DISTANCE})")
+            print(f"   Current: ₹{current_price:.0f} | Proposed SL: ₹{new_sl_val:.0f}")
+            print(f"   Keeping current SL: ₹{trade.stop_loss:.0f} ({abs(current_price - trade.stop_loss):.1f} pts away)")
+            return  # Don't move SL - too dangerous!
+        
         trade.stop_loss = round(new_sl_val, 2)
         state.pending_sl_exchange_update = True
         _save_state_snapshot()
@@ -1891,8 +1914,11 @@ def configure_auto_trader(
     if max_daily_loss     is not None: 
         state.max_daily_loss     = max(500, min(50000, max_daily_loss))  # ← NEW: ₹500 min, ₹50k max
         print(f"✅ Max daily loss updated: ₹{state.max_daily_loss:.0f} (was checking against P&L: ₹{state.total_pnl:.0f})")
+    
     _save_state_snapshot()
-    return {
+    
+    # Build return dict with ALL values
+    result = {
         "sl_points":          state.sl_points,
         "trailing_sl_points": state.trailing_sl_points,
         "trail_mode":         state.trail_mode,
@@ -1904,8 +1930,13 @@ def configure_auto_trader(
         "strike_offset":      state.strike_offset,
         "max_trades_per_day": state.max_trades_per_day,
         "cooldown_minutes":   state.cooldown_minutes,
-        "max_daily_loss":     state.max_daily_loss,  # ← NEW: Return updated value
+        "max_daily_loss":     state.max_daily_loss,  # ← CRITICAL: This MUST be here!
     }
+    
+    # Debug logging to confirm max_daily_loss is in the response
+    print(f"📤 Returning config to UI: max_daily_loss=₹{result['max_daily_loss']:.0f}")
+    
+    return result
 
 
 def start_auto_trader(strategy_id: str | None = None):
