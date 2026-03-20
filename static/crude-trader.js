@@ -257,8 +257,13 @@ async function loadCrudePatternCharts(container, cardsDiv) {
                             <div class="text-[9px] text-gray-500">confidence</div>
                         </div>
                     </div>
-                    <div id="crude-pattern-chart-${i}" class="bg-black rounded-lg p-2 flex items-center justify-center" style="min-height: 200px;">
-                        <div class="text-gray-500 text-xs">⏳ Loading chart...</div>
+                    <div class="crude-pattern-chart-wrapper-${i}">
+                        <div id="crude-pattern-chart-${i}" class="bg-black rounded-lg p-2 flex items-center justify-center overflow-hidden transition-all" style="min-height: 120px; max-height: 120px; cursor: pointer;" onclick="toggleCrudePatternChart(${i})">
+                            <div class="text-gray-500 text-xs">⏳ Loading chart...</div>
+                        </div>
+                        <button onclick="toggleCrudePatternChart(${i})" class="w-full mt-1 text-[10px] text-gray-500 hover:text-white transition-colors">
+                            <span id="crude-pattern-expand-btn-${i}">▼ Expand</span>
+                        </button>
                     </div>
                 </div>
             `;
@@ -297,6 +302,25 @@ async function loadCrudePatternChartImage(index) {
         }
     } catch (error) {
         chartDiv.innerHTML = `<div class="text-red-400 text-xs">⚠️ ${error.message}</div>`;
+    }
+}
+
+// Toggle crude pattern chart expansion
+function toggleCrudePatternChart(index) {
+    const chartDiv = document.getElementById(`crude-pattern-chart-${index}`);
+    const btn = document.getElementById(`crude-pattern-expand-btn-${index}`);
+    if (!chartDiv || !btn) return;
+    
+    const isCollapsed = chartDiv.style.maxHeight === '120px';
+    
+    if (isCollapsed) {
+        chartDiv.style.maxHeight = '500px';
+        chartDiv.style.cursor = 'zoom-out';
+        btn.innerHTML = '▲ Collapse';
+    } else {
+        chartDiv.style.maxHeight = '120px';
+        chartDiv.style.cursor = 'pointer';
+        btn.innerHTML = '▼ Expand';
     }
 }
 

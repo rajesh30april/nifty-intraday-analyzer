@@ -2415,8 +2415,13 @@ async function loadInlinePatternCharts(container, cardsDiv) {
                             <div class="text-[9px] text-gray-500">confidence</div>
                         </div>
                     </div>
-                    <div id="pattern-chart-${i}" class="bg-black rounded-lg p-2 flex items-center justify-center" style="min-height: 200px;">
-                        <div class="text-gray-500 text-xs">⏳ Loading chart...</div>
+                    <div class="pattern-chart-wrapper-${i}">
+                        <div id="pattern-chart-${i}" class="bg-black rounded-lg p-2 flex items-center justify-center overflow-hidden transition-all" style="min-height: 120px; max-height: 120px; cursor: pointer;" onclick="togglePatternChart(${i})">
+                            <div class="text-gray-500 text-xs">⏳ Loading chart...</div>
+                        </div>
+                        <button onclick="togglePatternChart(${i})" class="w-full mt-1 text-[10px] text-gray-500 hover:text-white transition-colors">
+                            <span id="pattern-expand-btn-${i}">▼ Expand</span>
+                        </button>
                     </div>
                 </div>
             `;
@@ -2455,6 +2460,25 @@ async function loadPatternChartImage(index) {
         }
     } catch (error) {
         chartDiv.innerHTML = `<div class="text-red-400 text-xs">⚠️ ${error.message}</div>`;
+    }
+}
+
+// Toggle pattern chart expansion
+function togglePatternChart(index) {
+    const chartDiv = document.getElementById(`pattern-chart-${index}`);
+    const btn = document.getElementById(`pattern-expand-btn-${index}`);
+    if (!chartDiv || !btn) return;
+    
+    const isCollapsed = chartDiv.style.maxHeight === '120px';
+    
+    if (isCollapsed) {
+        chartDiv.style.maxHeight = '500px';
+        chartDiv.style.cursor = 'zoom-out';
+        btn.innerHTML = '▲ Collapse';
+    } else {
+        chartDiv.style.maxHeight = '120px';
+        chartDiv.style.cursor = 'pointer';
+        btn.innerHTML = '▼ Expand';
     }
 }
 

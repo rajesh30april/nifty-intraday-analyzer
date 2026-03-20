@@ -590,18 +590,17 @@ def _get_hv_rank(df: pd.DataFrame) -> float:
 # ── Enter / Exit ──────────────────────────────────────────────────────
 
 def _enter_trade(direction: Direction, price: float):
-    # ── Auto-switch: check HV rank, use futures if IV too high ───────
+    # ── Options-only flow (futures auto-switch DISABLED by user request) ───────
+    # We used to auto-switch to futures when HV rank > 85, but user prefers
+    # options only. Now we show HV info as warning but still trade options.
     df = fetch_crude_intraday_data('5minute', 5)  # 5 days for 90+ candles
     hv_rank = _get_hv_rank(df) if df is not None else 0.0
-    use_futures = hv_rank > HV_RANK_FUTURES_THRESHOLD
     
-    if use_futures:
-        print(f"🛢️  HV rank {hv_rank:.0f}% > {HV_RANK_FUTURES_THRESHOLD}% — "
-              f"switching to FUTURES (no IV crush risk)")
-        _enter_trade_futures(direction, price, hv_rank)
-        return
+    if hv_rank > HV_RANK_FUTURES_THRESHOLD:
+        print(f"⚠️  HV rank {hv_rank:.0f}% > {HV_RANK_FUTURES_THRESHOLD}% — "
+              f"options may be expensive (IV crush risk)")
     
-    # ── Normal options flow (HV rank ≤ 85) ────────────────────────
+    # ── Proceed with options flow ────────────────────────
     try:
         symbol, _token, lot_size = get_crude_atm_option(
             price, direction.value, state.strike_offset, capital=state.capital
@@ -1087,27 +1086,23 @@ def evaluate_and_act_crude(df: pd.DataFrame, price: float):
     if not (signal.should_enter and signal.direction):
         return
 
-    # ── Layer 2: options quality gate ────────────────────────────
-    # Directional signal is necessary but not sufficient.
-    # Options buyers also need: right DTE, manageable IV, real trend (ADX),
-    # squeeze release timing, and OI chain support for the direction.
+    # ── Layer 2: options quality info (informational only, NOT blocking) ───────────
+    # Shows option quality score and warnings but doesn't prevent trades.
+    # User requested: remove gate blocks, show as information only.
     try:
         from crude_option_evaluator import evaluate_option_quality
         opt_eval = evaluate_option_quality(df, signal.direction, price)
         state.last_option_eval = opt_eval.summary   # expose for UI
         print(f"  📊 Option quality: {opt_eval.summary}")
+        
         if opt_eval.verdict == "SKIP":
-            state.last_block_reason = f"Option gate SKIP ({opt_eval.summary})"
-            return
-        if opt_eval.verdict == "WAIT":
-            # Allow WAIT only if directional consensus is strong (both ORB + ST or Squeeze)
-            strong_consensus = (
-                any(n in signal.reason for n in ("Squeeze", "ORB"))
-                and any(n in signal.reason for n in ("SuperTrend", "VWAP"))
-            )
-            if not strong_consensus:
-                state.last_block_reason = f"Option gate WAIT ({opt_eval.summary})"
-                return
+            print(f"  ⚠️  WARNING: Option quality suggests SKIP ({opt_eval.summary})")
+            print(f"      Proceeding anyway as per user preference (info only, not blocking)")
+        elif opt_eval.verdict == "WAIT":
+            print(f"  ⚠️  WARNING: Option quality suggests WAIT ({opt_eval.summary})")
+            print(f"      Proceeding anyway as per user preference (info only, not blocking)")
+        else:
+            print(f"  ✅ Option quality: {opt_eval.verdict}")
     except Exception as e:
         print(f"  ⚠️  Option evaluator error (proceeding): {e}")
 
