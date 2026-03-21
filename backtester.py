@@ -157,6 +157,9 @@ def run_backtest(
     if df is None or df.empty:
         raise ValueError("No data fetched for backtesting")
 
+    # Save full historical data for lookback
+    full_historical_df = df.copy()
+    
     # Filter to yesterday only
     if period == "1d":
         from datetime import date, timedelta
@@ -173,6 +176,7 @@ def run_backtest(
         print(f"✅ Filtered to yesterday: {yesterday} — {len(df)} candles")
         if len(df) > 0:
             print(f"🔍 [DEBUG] After filter: first={df.index[0].strftime('%H:%M')}, last={df.index[-1].strftime('%H:%M')}")
+            print(f"🔍 [DEBUG] Full historical data: {len(full_historical_df)} candles for lookback")
     else:
         print(f"✅ Got {len(df)} candles from {df.index[0]} to {df.index[-1]}")
 
@@ -194,7 +198,7 @@ def run_backtest(
     for idx, (day, day_df) in enumerate(trading_days):
         _backtest_day(
             day_df, str(day), result,
-            full_df=df,
+            full_df=full_historical_df,  # Use full historical data for lookback!
             sl_points=sl_points,
             trailing_sl=effective_trail,
             rr_ratio=rr_ratio,
@@ -245,9 +249,9 @@ def _backtest_day(
     signals_evaluated = 0
     signals_fired = 0
 
-    # Walk through each candle — start from 1 (skip the open candle itself)
+    # Walk through each candle — start from 0 (same as replay)
     # Signal evaluation uses full_df lookback so no warmup skip needed here
-    for i in range(1, len(df)):
+    for i in range(len(df)):
         candle_time = df.index[i].time()
         candle = df.iloc[i]
         price = float(candle["close"])
@@ -356,20 +360,22 @@ def _backtest_day(
 
         # Not in trade — evaluate strategy for entry
         if trades_today >= max_trades:
-            continue
+            continue  # Max trades hit, skip evaluation
 
         # Cooldown check — 5-min candles, 1 candle = 5 min
         current_ts = df.index[i]
         if last_exit_ts is not None:
             elapsed_candles = i - last_exit_ts
             if elapsed_candles < 1:   # minimum 1 candle gap (= 5 min)
+                if i < 5:  # Only log early skips
+                    print(f"⏭️  [SKIP] {df.index[i].strftime('%H:%M')} - Cooldown ({elapsed_candles} candles since last exit)")
                 continue
         lookback_df = full_df[full_df.index <= current_ts]
 
         # Use specified strategy from registry
         strat_info = get_strategy(strategy_id)
-        if strategy_id == "meta_router":
-            # ── Consensus system (new) ──────────────────────────
+        if strategy_id == "smart_router" or strategy_id == "meta_router":
+            # ── Smart router / Meta router (evaluate all strategies) ────
             from strategy_meta_router import evaluate_all  # noqa: PLC0415
             meta_result = evaluate_all(lookback_df)
             signal = meta_result.signal
