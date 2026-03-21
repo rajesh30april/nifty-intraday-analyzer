@@ -1660,25 +1660,9 @@
                   <button onclick="refreshCrudeMargin()" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg font-bold text-xs transition">
                     💰 Margin
                   </button>
-                  <button onclick="crudeSyncPositions()" id="crude-btn-sync"
-                    class="bg-cyan-700 hover:bg-cyan-600 text-white px-4 py-2 rounded-lg font-bold text-xs transition">
-                    🔄 Sync Zerodha
-                  </button>
                   <button onclick="crudeManualEvaluate()" id="crude-btn-evaluate"
                     class="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-xs transition">
                     🔍 Evaluate
-                  </button>
-                  <button onclick="crudeForceEntry('long')" id="crude-btn-force-long"
-                    class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs transition">
-                    📈 Force Long
-                  </button>
-                  <button onclick="crudeForceEntry('short')" id="crude-btn-force-short"
-                    class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-bold text-xs transition">
-                    📉 Force Short
-                  </button>
-                  <button onclick="crudeForceExit()" id="crude-btn-force-exit"
-                    class="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-lg font-bold text-xs transition hidden">
-                    🚪 Force Exit
                   </button>
                 </div>
                 
@@ -1753,7 +1737,7 @@
                     </select>
                   </div>
                   <div class="col-span-2">
-                    <button id="crude-apply-settings-btn" onclick="applyCrudeSettings()" class="w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 rounded-lg transition">
+                    <button onclick="applyCrudeSettings()" class="w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 rounded-lg transition">
                       ✅ Apply Settings
                     </button>
                   </div>
@@ -1852,6 +1836,112 @@
               </div>
 
               <!-- No position placeholder -->
+              <div id="ct-no-pos" class="bg-gray-900 border border-dashed border-gray-700 rounded-xl p-4 mb-3 text-center text-gray-500 text-sm">
+                🛢️ No open crude position
+              </div>
+
+              <!-- ═══ MANUAL CONTROLS ══════════════════════════════════════════════ -->
+              <div class="bg-gray-900 border border-gray-700 rounded-xl p-3 mb-3">
+                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">🕹️ Manual Controls</p>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <button onclick="crudeTrade('start')" id="crude-start-btn"
+                    class="bg-green-700 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-xs transition flex items-center gap-1.5">
+                    ▶ Start
+                  </button>
+                  <button onclick="crudeTrade('stop')" id="crude-stop-btn"
+                    class="bg-gray-700 text-gray-400 cursor-not-allowed px-4 py-2 rounded-lg font-bold text-xs" disabled>
+                    ⏹ Stop
+                  </button>
+                  <button onclick="crudeTrade('kill')" id="crude-kill-btn"
+                    class="bg-gray-700 text-gray-400 cursor-not-allowed px-4 py-2 rounded-lg font-bold text-xs" disabled>
+                    🚨 Kill
+                  </button>
+                  <button onclick="refreshCrudeMargin()" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg font-bold text-xs transition">
+                    💰 Margin
+                  </button>
+                  <button onclick="crudeManualEvaluate()" id="crude-btn-evaluate"
+                    class="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-xs transition">
+                    🔍 Evaluate
+                  </button>
+                </div>
+                
+                <!-- Compact Margin (shown after click) -->
+                <div id="crude-margin-compact" class="hidden grid grid-cols-3 gap-2 text-[10px] mt-3">
+                  <div class="bg-gray-800 rounded p-1.5 text-center">
+                    <div class="text-gray-500">Free</div>
+                    <div id="crude-margin-free" class="font-bold text-green-400">—</div>
+                  </div>
+                  <div class="bg-gray-800 rounded p-1.5 text-center">
+                    <div class="text-gray-500">Used</div>
+                    <div id="crude-margin-used" class="font-bold text-orange-400">—</div>
+                  </div>
+                  <div class="bg-gray-800 rounded p-1.5 text-center">
+                    <div class="text-gray-500">Net</div>
+                    <div id="crude-margin-net" class="font-bold text-blue-400">—</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ═══ SETTINGS (collapsible) ═══════════════════════════════════════ -->
+              <div class="bg-gray-900 border border-gray-700 rounded-xl p-3 mb-3">
+                <div class="flex items-center justify-between mb-3">
+                  <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">⚙️ Trade Parameters</p>
+                  <button onclick="toggleCrudeSettings()" id="crude-settings-toggle-btn"
+                    class="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1">
+                    <span id="crude-settings-toggle-icon">▼</span> <span id="crude-settings-toggle-text">Collapse</span>
+                  </button>
+                </div>
+                <div id="crude-settings-body" class="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+                  <div>
+                    <label class="text-gray-400 block mb-1">SL Points</label>
+                    <input id="crude-sl" type="number" value="50" class="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white w-full" />
+                  </div>
+                  <div>
+                    <label class="text-gray-400 block mb-1">R:R Ratio</label>
+                    <input id="crude-rr" type="number" value="2" step="0.5" class="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white w-full" />
+                  </div>
+                  <div>
+                    <label class="text-gray-400 block mb-1">Capital</label>
+                    <input id="crude-capital" type="number" value="100000" class="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white w-full" />
+                  </div>
+                  <div>
+                    <label class="text-gray-400 block mb-1">Max Trades</label>
+                    <div class="flex items-center gap-1">
+                      <input id="crude-max-trades" type="number" value="4" class="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white w-full" />
+                      <span id="crude-max-trades-used" class="text-[10px] text-gray-500">0/4</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="text-gray-400 block mb-1">Max Loss</label>
+                    <input id="crude-max-loss" type="number" value="5000" class="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white w-full" />
+                  </div>
+                  <div>
+                    <label class="text-gray-400 block mb-1">Trail Mode</label>
+                    <select id="crude-trail-mode" class="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white w-full">
+                      <option value="off">Off</option>
+                      <option value="atr">ATR</option>
+                      <option value="premium">Premium %</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="text-gray-400 block mb-1">Trail Points</label>
+                    <input id="crude-trail-points" type="number" value="25" class="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white w-full" />
+                  </div>
+                  <div>
+                    <label class="text-gray-400 block mb-1">Strike Offset</label>
+                    <select id="crude-strike-offset" class="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white w-full">
+                      <option value="0">ATM</option>
+                      <option value="1">ATM+1</option>
+                      <option value="-1">ATM-1</option>
+                    </select>
+                  </div>
+                  <div class="col-span-2">
+                    <button onclick="applyCrudeSettings()" class="w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 rounded-lg transition">
+                      ✅ Apply Settings
+                    </button>
+                  </div>
+                </div>
+              </div>
 
               <!-- ═══ EVENT LOG ════════════════════════════════════════════════════ -->
               <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 mb-3">
@@ -2165,7 +2255,7 @@
     <script src="/static/auto-trader.js?v=16"></script>
     <script src="/static/at-settings.js?v=3"></script>
     <script src="/static/at-health.js?v=1"></script>
-    <script src="/static/crude-trader.js?v=24"></script>
+    <script src="/static/crude-trader.js?v=13"></script>
     <script src="/static/crude-chart.js?v=1"></script>
     <script>/* bt-qty v1 — quantity field wired to backtest + live monitor */</script>
     <script src="/static/live-monitor.js?v=2"></script>

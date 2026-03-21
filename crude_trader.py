@@ -1269,14 +1269,26 @@ def _estimate_target_premium(trade: CrudeTrade) -> float | None:
 
 def get_crude_status() -> dict:
     """Return full status dict — consumed by /api/crude/status endpoint."""
+    # ✅ FIX: If state is empty but snapshot exists, recover it!
+    if state.active_trade is None and CRUDE_SNAP_FILE.exists():
+        print("⚠️  [API] State was empty, recovering from snapshot...")
+        _recover_snapshot()
+    
     at = state.active_trade
     trade_dict = None
     if at:
         ltp      = state.last_option_ltp
         ep       = at.entry_premium or 0
         lot_sz   = getattr(at, 'lot_size', get_crude_lot_size(at.instrument))
-        # P&L = premium Δ × lots × barrels_per_lot
-        pnl = round((ltp - ep) * at.quantity * lot_sz, 2) if ltp > 0 else None
+        # ✅ FIX: P&L calculation must account for direction!
+        # SHORT: profit when premium goes DOWN (ep - ltp)
+        # LONG:  profit when premium goes UP (ltp - ep)
+        is_short = at.direction.lower() == 'short'
+        if ltp > 0:
+            delta = (ep - ltp) if is_short else (ltp - ep)
+            pnl = round(delta * at.quantity * lot_sz, 2)
+        else:
+            pnl = None
         trade_dict = {
             'id': at.id, 'timestamp': at.timestamp,
             'direction': at.direction, 'instrument': at.instrument,

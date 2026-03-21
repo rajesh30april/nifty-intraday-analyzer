@@ -7,12 +7,14 @@
 
 'use strict';
 
-// ── State ─────────────────────────────────────────────────────────
+// ── State ────────────────────────────────────────────────────────────────────
 let _crudePoller      = null;
 let _crudeRunning     = false;
+let _crudeKilled      = false;  // track kill switch state
 let _crudeLastSignal  = null;   // dedup signal logs
 let _crudeLastBlock   = null;   // dedup block_reason logs
 let _crudeLastTrade   = null;   // dedup active trade logs
+let _crudeLastSL      = null;   // track trailing SL changes
 
 // ── Toast ─────────────────────────────────────────────────────────
 function _crudeToast(msg, type = 'info') {
@@ -56,6 +58,24 @@ function _crudeLog(msg, type = 'info') {
     while (log.children.length > 50) log.lastChild.remove();
 }
 
+// ── Summarize block reason (make it concise for event log) ──────────────
+function _summarizeBlockReason(blk) {
+    if (!blk) return 'No valid setup';
+    
+    // Extract strategy names that blocked (lines starting with strategy name)
+    const strategies = [];
+    const lines = blk.split('║');
+    for (const line of lines) {
+        const match = line.trim().match(/^([^:]+)\([\d.]+\):/);
+        if (match) strategies.push(match[1].trim());
+    }
+    
+    if (strategies.length === 0) return 'No valid setup';
+    if (strategies.length === 1) return `${strategies[0]} — no setup`;
+    if (strategies.length === 2) return `${strategies[0]} & ${strategies[1]} — no setup`;
+    return `${strategies.length} strategies evaluated — no valid setup`;
+}
+
 // ── Button state management (mirrors auto-trader.js _setAtStatus) ──
 function _setCrudeStatus(s) {
     const startBtn  = document.getElementById('crude-start-btn');
@@ -97,11 +117,16 @@ function _setCrudeStatus(s) {
 }
 
 // ── Controls ──────────────────────────────────────────────────────
-// ── Trail Mode UI ───────────────────────────────────────────────
+// ── Trail Mode UI ───────────────────────────────────────────
 function onCrudeTrailModeChange(mode) {
-    document.getElementById('crude-trail-fixed-row').classList.toggle('hidden', mode !== 'fixed');
-    document.getElementById('crude-trail-atr-row').classList.toggle('hidden',   mode !== 'atr');
-    document.getElementById('crude-trail-st-row').classList.toggle('hidden',    mode !== 'supertrend');
+    const fixedRow = document.getElementById('crude-trail-fixed-row');
+    const atrRow = document.getElementById('crude-trail-atr-row');
+    const stRow = document.getElementById('crude-trail-st-row');
+    
+    // Null checks to prevent crash if elements don't exist
+    if (fixedRow) fixedRow.classList.toggle('hidden', mode !== 'fixed');
+    if (atrRow) atrRow.classList.toggle('hidden', mode !== 'atr');
+    if (stRow) stRow.classList.toggle('hidden', mode !== 'supertrend');
 }
 
 function _applyCrudeTrailMode(mode) {
@@ -218,7 +243,106 @@ async function crudeManualEvaluate() {
     btn.innerHTML = '🔍 Evaluate Signal Now';
 }
 
-// ✨ NEW: Load crude oil pattern charts inline after evaluation
+// ──────────────────────────────────────────────────────────────────────
+// Force Entry (Long or Short) - Manual position entry
+// ──────────────────────────────────────────────────────────────────────
+async function crudeForceEntry(direction) {
+    console.log(`🔨 [Force Entry] ${direction.toUpperCase()} clicked`);
+    
+    const btnLong = document.getElementById('crude-btn-force-long');
+    const btnShort = document.getElementById('crude-btn-force-short');
+    const isLong = direction.toLowerCase() === 'long';
+    const btn = isLong ? btnLong : btnShort;
+    
+    if (!btn) return;
+    
+    // Confirm action
+    const msg = `Force ${direction.toUpperCase()} entry?\n\nThis will:\n• Enter a ${direction.toUpperCase()} position immediately\n• Use current crude price as entry\n• Calculate SL/Target based on settings\n• Override all strategy checks\n\nContinue?`;
+    if (!confirm(msg)) {
+        console.log('❌ [Force Entry] User cancelled');
+        return;
+    }
+    
+    // Disable buttons
+    btn.disabled = true;
+    btn.textContent = '⏳ Entering...';
+    if (btnLong) btnLong.disabled = true;
+    if (btnShort) btnShort.disabled = true;
+    
+    try {
+        console.log(`🌐 [Force Entry] Sending ${direction} request to API...`);
+        const resp = await fetch(`/api/crude/force-entry?direction=${direction}`, { method: 'POST' });
+        const data = await resp.json();
+        
+        console.log('📡 [Force Entry] API Response:', data);
+        
+        if (data.success) {
+            _crudeToast(`✅ Force ${direction.toUpperCase()} entry executed!`, 'ok');
+            _crudeLog(`🔨 Force ${direction.toUpperCase()} @ ₹${data.entry_price || '???'} | SL ₹${data.stop_loss || '???'} | Tgt ₹${data.target || '???'}`, 'trade');
+            await pollCrudeStatus();  // Refresh immediately
+        } else {
+            const err = data.error || 'Unknown error';
+            _crudeToast(`❌ Force entry failed: ${err}`, 'error');
+            _crudeLog(`❌ Force ${direction} failed: ${err}`, 'error');
+            console.error('❌ [Force Entry] Failed:', err);
+        }
+    } catch (e) {
+        _crudeToast(`❌ ${e.message}`, 'error');
+        console.error('❌ [Force Entry] Exception:', e);
+    } finally {
+        // Re-enable buttons
+        btn.disabled = false;
+        btn.textContent = isLong ? '📈 Force Long' : '📉 Force Short';
+        if (btnLong) btnLong.disabled = false;
+        if (btnShort) btnShort.disabled = false;
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Force Exit - Manually close active position
+// ──────────────────────────────────────────────────────────────────────
+async function crudeForceExit() {
+    console.log('🚪 [Force Exit] Clicked');
+    
+    const btn = document.getElementById('crude-btn-force-exit');
+    if (!btn) return;
+    
+    // Confirm action
+    if (!confirm('Force exit active position?\n\nThis will close your position at market price.\n\nContinue?')) {
+        console.log('❌ [Force Exit] User cancelled');
+        return;
+    }
+    
+    btn.disabled = true;
+    btn.textContent = '⏳ Exiting...';
+    
+    try {
+        console.log('🌐 [Force Exit] Sending request to API...');
+        const resp = await fetch('/api/crude/force-exit', { method: 'POST' });
+        const data = await resp.json();
+        
+        console.log('📡 [Force Exit] API Response:', data);
+        
+        if (data.success) {
+            _crudeToast('✅ Position closed manually', 'ok');
+            _crudeLog(`🚪 Force EXIT @ ₹${data.exit_price || '???'} | P&L ₹${data.pnl || '???'}`, 'ok');
+            await pollCrudeStatus();  // Refresh immediately
+        } else {
+            const err = data.error || 'Unknown error';
+            _crudeToast(`❌ Force exit failed: ${err}`, 'error');
+            _crudeLog(`❌ Force exit failed: ${err}`, 'error');
+            console.error('❌ [Force Exit] Failed:', err);
+        }
+    } catch (e) {
+        _crudeToast(`❌ ${e.message}`, 'error');
+        console.error('❌ [Force Exit] Exception:', e);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🚪 Force Exit';
+    }
+}
+
+// ── ✨ NEW: Load crude oil pattern charts inline after evaluation
 async function loadCrudePatternCharts(container, cardsDiv) {
     try {
         // For crude, we'll use the same pattern detection API but with crude data
@@ -394,50 +518,90 @@ function toggleCrudeSettings() {
 // Apply Crude Settings (validates + saves)
 // ──────────────────────────────────────────────────────────────────────
 async function applyCrudeSettings() {
-    // Just call saveCrudeConfig which does all the validation + save
-    await saveCrudeConfig();
+    console.log('🔧 [Settings] Apply Settings clicked!');
+    const btn = document.getElementById('crude-apply-settings-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Applying...';
+        btn.className = 'w-full bg-gray-600 text-white font-bold py-2 rounded-lg transition cursor-wait';
+    }
+    
+    try {
+        await saveCrudeConfig();
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.className = 'w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 rounded-lg transition';
+            btn.textContent = '✅ Applied!';
+            setTimeout(() => {
+                btn.textContent = '✅ Apply Settings';
+            }, 2000);
+        }
+    }
 }
 
 async function saveCrudeConfig() {
+    console.log('💾 [Settings] Starting save...');
+    
     const sl        = parseFloat(document.getElementById('crude-sl')?.value);
-    const trail     = parseFloat(document.getElementById('crude-trail')?.value);
+    const trail     = parseFloat(document.getElementById('crude-trail-points')?.value);  // ✅ FIX: was 'crude-trail'
     const rr        = parseFloat(document.getElementById('crude-rr')?.value);
     const capital   = parseFloat(document.getElementById('crude-capital')?.value);
     const maxTrades = parseInt(document.getElementById('crude-max-trades')?.value || '4', 10);
-    const trailMode = document.querySelector('input[name="crude-trail-mode"]:checked')?.value || 'fixed';
-    const atrMult   = parseFloat(document.getElementById('crude-atr-mult')?.value || '1.5');
+    const maxLoss   = parseFloat(document.getElementById('crude-max-loss')?.value || '5000');
+    const trailMode = document.getElementById('crude-trail-mode')?.value || 'off';  // ✅ FIX: was querySelector for radio
+    const strikeOffset = parseInt(document.getElementById('crude-strike-offset')?.value || '0', 10);
+    const atrMult   = 1.5;  // ✅ FIX: hardcoded since input doesn't exist in UI
+
+    console.log('📊 [Settings] Values:', { sl, trail, rr, capital, maxTrades, maxLoss, trailMode, strikeOffset, atrMult });
 
     if ([sl, rr, capital].some(isNaN)) {
         _crudeToast('⚠️ Invalid settings — check all fields', 'warn');
+        console.error('❌ [Settings] Validation failed: NaN values');
         return;
     }
     if (isNaN(maxTrades) || maxTrades < 1 || maxTrades > 20) {
         _crudeToast('⚠️ Max Trades must be between 1 and 20', 'warn');
+        console.error('❌ [Settings] Validation failed: maxTrades out of range');
         return;
     }
     if (trailMode === 'fixed' && (isNaN(trail) || trail >= sl)) {
         _crudeToast('⚠️ Fixed trail must be a number smaller than SL', 'warn');
+        console.error('❌ [Settings] Validation failed: trail >= sl');
         return;
     }
 
     const params = new URLSearchParams({
-        sl_points: sl, trail_points: trail || 25, rr_ratio: rr, capital,
-        trail_mode: trailMode, atr_multiplier: atrMult, max_trades: maxTrades,
+        sl_points: sl, 
+        trail_points: trail || 25, 
+        rr_ratio: rr, 
+        capital,
+        trail_mode: trailMode, 
+        atr_multiplier: atrMult, 
+        max_trades: maxTrades,
+        max_daily_loss: maxLoss,
+        strike_offset: strikeOffset,
     });
+    
+    console.log('🌐 [Settings] Sending to API:', params.toString());
+    
     try {
         const resp = await fetch(`/api/crude/config?${params}`, { method: 'POST' });
+        console.log('📡 [Settings] API Response:', resp.status, resp.statusText);
         const data = await resp.json();
+        console.log('📊 [Settings] Response data:', data);
         if (data.success) {
-            const modeLabel = { fixed: `Fixed ₹${trail}`, atr: `ATR×${atrMult}`, supertrend: 'Supertrend' };
-            _crudeToast(
-                `✅ Saved — SL:₹${sl}  Trail:${modeLabel[trailMode]}  R:R 1:${rr}  Max:${maxTrades}/day`,
-                'ok'
-            );
+            const modeLabel = { fixed: `Fixed ₹${trail}`, atr: `ATR×${atrMult}`, supertrend: 'Supertrend', off: 'Off' };
+            const msg = `✅ Saved — SL:₹${sl}  Trail:${modeLabel[trailMode] || trailMode}  R:R 1:${rr}  Max:${maxTrades}/day`;
+            _crudeToast(msg, 'ok');
+            console.log('✅ [Settings] Settings saved successfully!');
         } else {
             _crudeToast('❌ Save failed', 'error');
+            console.error('❌ [Settings] API returned success=false:', data);
         }
     } catch (e) {
         _crudeToast(`❌ ${e.message}`, 'error');
+        console.error('❌ [Settings] Exception:', e);
     }
 }
 
@@ -477,11 +641,30 @@ function renderCrudeStatus(d) {
 
     // ── State-change event log entries ────────────────────────────
     const wasRunning = _crudeRunning;
+    const wasKilled  = _crudeKilled;  // Track kill switch state too
+    
+    // Debug state changes
     if (d.is_running !== wasRunning) {
-        if (d.is_running)  _crudeLog('▶ Crude trader STARTED', 'ok');
-        else               _crudeLog('⏹ Crude trader STOPPED', 'warn');
+        console.log(`[State Change] Running: ${wasRunning} → ${d.is_running}`);
     }
-    if (d.kill_switch && wasRunning) _crudeLog('🚨 Kill switch activated — position exited', 'error');
+    
+    // Only log state changes, not every poll!
+    if (d.is_running !== wasRunning) {
+        if (d.is_running && !wasRunning) {
+            _crudeLog('▶ Crude trader STARTED', 'ok');
+        } else if (!d.is_running && wasRunning) {
+            _crudeLog('⏹ Crude trader STOPPED', 'warn');
+        }
+    }
+    
+    // Log kill switch activation (only once)
+    if (d.kill_switch && !wasKilled) {
+        _crudeLog('🚨 Kill switch activated — position exited', 'error');
+    }
+    
+    // Update tracked states (do this at start of function, not end!)
+    _crudeRunning = d.is_running;
+    _crudeKilled  = d.kill_switch;
 
     // ── Block reason card ──────────────────────────────────────────
     const blockCard = document.getElementById('crude-block-card');
@@ -497,25 +680,52 @@ function renderCrudeStatus(d) {
     // ── Signal / block reason changes ────────────────────────────
     const sig = d.last_signal || '';
     const blk = d.block_reason || '';
+    
+    // Log signals (strategy triggers)
     if (sig && sig !== _crudeLastSignal) {
-        _crudeLog(`📡 Signal: ${sig}`, sig.startsWith('[ST]') || sig.startsWith('[ORB]') ? 'trade' : 'info');
+        const isTradeSignal = sig.startsWith('[ST]') || sig.startsWith('[ORB]') || sig.toLowerCase().includes('entered');
+        _crudeLog(`📡 Signal: ${sig}`, isTradeSignal ? 'trade' : 'info');
         _crudeLastSignal = sig;
     }
+    
+    // Log block reasons ONLY when they change (not every poll!)
     if (blk && blk !== _crudeLastBlock) {
-        _crudeLog(`⛔ Blocked: ${blk}`, 'warn');
+        // Make block reason more concise - just show summary, not full details
+        const blockSummary = _summarizeBlockReason(blk);
+        _crudeLog(`⚠️ ${blockSummary}`, 'warn');
         _crudeLastBlock = blk;
     }
 
-    // ── Active trade change ───────────────────────────────────────
+    // ── Active trade change ───────────────────────────────────────────────────────
     const tradeId = d.active_trade?.id ?? null;
     if (tradeId !== _crudeLastTrade) {
         if (tradeId) {
             const at = d.active_trade;
             _crudeLog(`🛢️ Trade OPEN: ${at.direction?.toUpperCase()} @ ₹${at.entry_price} | SL ₹${at.stop_loss} | Tgt ₹${at.target}`, 'trade');
+            // Initialize SL tracking for new trade
+            _crudeLastSL = at.stop_loss;
         } else if (_crudeLastTrade) {
             _crudeLog('🏁 Trade CLOSED', 'ok');
+            // Clear SL tracking when trade closes
+            _crudeLastSL = null;
         }
         _crudeLastTrade = tradeId;
+    }
+
+    // ── Trailing SL change detection ─────────────────────────────────────────────
+    if (tradeId && d.active_trade?.sl_premium != null) {
+        const currentSL = d.active_trade.sl_premium;
+        const entrySL = d.active_trade.entry_premium;  // for reference
+        // Only log if SL has actually changed (and not first poll)
+        if (_crudeLastSL != null && Math.abs(currentSL - _crudeLastSL) > 0.1) {
+            const dir = d.active_trade.direction?.toUpperCase() || 'UNKNOWN';
+            // For option buyers (we ALWAYS buy options): SL moving UP = tightening (profitable)
+            const slMoved = currentSL > _crudeLastSL ? '💚 tightened' : '🟡 adjusted';
+            const delta = (currentSL - _crudeLastSL).toFixed(1);
+            const sign = currentSL > _crudeLastSL ? '+' : '';
+            _crudeLog(`📏 SL Premium ${slMoved}: ₹${_crudeLastSL.toFixed(1)} → ₹${currentSL.toFixed(1)} (${sign}${delta})`, 'ok');
+        }
+        _crudeLastSL = currentSL;
     }
 
     // ── Mode badge ────────────────────────────────────────────────
@@ -556,10 +766,22 @@ function renderCrudeStatus(d) {
     }
     if (tokEl) tokEl.textContent = d.futures_token ? `token: ${d.futures_token}` : 'token: --';
 
-    // ── Live price strip ───────────────────────────────────────────────
+    // ── Live price strip ───────────────────────────────────────────
     _setText('crude-spot',       d.crude_price ? `₹${d.crude_price}` : '--');
     _setText('crude-option-ltp', _fmt(d.last_option_ltp));
     _setText('crude-signal',     d.block_reason || d.last_signal || '--');
+    
+    // Orders count
+    const ordersEl = document.getElementById('crude-orders-count');
+    if (ordersEl) {
+        const used = d.orders_placed ?? 0;
+        const limit = d.max_trades ?? 4;
+        ordersEl.textContent = `${used}/${limit}`;
+        ordersEl.className = used >= limit ? 'text-xs font-bold text-red-400' : 'text-xs font-bold text-gray-300';
+    }
+    
+    // Exit time display
+    _setText('crude-exit-time-display', d.exit_time ?? '23:25');
 
     // ── Sync trail mode UI + live indicator values ────────────────────
     if (d.trail_mode) _applyCrudeTrailMode(d.trail_mode);
@@ -598,6 +820,7 @@ function renderCrudeStatus(d) {
     // ── P&L ───────────────────────────────────────────────────────
     const pnlEl = document.getElementById('crude-pnl');
     const at    = d.active_trade;
+    
     if (pnlEl) {
         const pnl = at?.pnl_unrealized;
         pnlEl.textContent = pnl != null ? `₹${pnl > 0 ? '+' : ''}${pnl.toFixed(0)}` : '--';
@@ -610,10 +833,25 @@ function renderCrudeStatus(d) {
         tpnlEl.className   = _pnlClass(tp);
     }
 
+    // ── Show/Hide Force Exit button based on position ───────────────────
+    const btnForceExit = document.getElementById('crude-btn-force-exit');
+    const btnForceLong = document.getElementById('crude-btn-force-long');
+    const btnForceShort = document.getElementById('crude-btn-force-short');
+    
+    if (at) {
+        // Position open: show Force Exit, hide Force Long/Short
+        if (btnForceExit) btnForceExit.classList.remove('hidden');
+        if (btnForceLong) btnForceLong.classList.add('hidden');
+        if (btnForceShort) btnForceShort.classList.add('hidden');
+    } else {
+        // No position: hide Force Exit, show Force Long/Short
+        if (btnForceExit) btnForceExit.classList.add('hidden');
+        if (btnForceLong) btnForceLong.classList.remove('hidden');
+        if (btnForceShort) btnForceShort.classList.remove('hidden');
+    }
+
     // ── Active trade card (Nifty-style full banner) ──────────────
     _renderCrudePositionBanner(at, d);
-
-    _crudeRunning = d.is_running;
 }
 
 /** Extract strike from CRUDEOILM26APR8950PE → "8950 PE" */
@@ -631,6 +869,7 @@ function _renderCrudePositionBanner(at, d) {
     const card   = document.getElementById('crude-trade-card');
     const noPos  = document.getElementById('ct-no-pos');
     const wrap   = document.getElementById('ct-banner-wrap');
+    
     if (!card) return;
 
     if (!at) {
@@ -662,7 +901,7 @@ function _renderCrudePositionBanner(at, d) {
     // Banner border colour — green for long, red for short
     if (wrap) {
         wrap.classList.remove('border-green-500', 'border-red-500',
-                             'shadow-green-900\/20', 'shadow-red-900\/20');
+                             'shadow-green-900/20', 'shadow-red-900/20');
         wrap.classList.add(
             isLong ? 'border-green-500' : 'border-red-500',
             isLong ? 'shadow-green-900/20' : 'shadow-red-900/20'
@@ -680,12 +919,11 @@ function _renderCrudePositionBanner(at, d) {
         instrEl.title       = at.instrument ?? '';
     }
 
-    // ── Row 1: Option premiums + P&L ──────────────────────────────
+    // ── Row 1: Option premiums + P&L ────────────────────────────
+    const pnl = at.pnl_unrealized;
     _setText('ct-entry-prem', ep != null ? `₹${ep.toFixed(1)}` : '--');
     _setText('ct-sl-prem',    at.sl_premium   != null ? `₹${at.sl_premium.toFixed(1)}`  : '--');
     _setText('ct-tgt-prem',   at.target_premium != null ? `₹${at.target_premium.toFixed(1)}` : '--');
-
-    const pnl = at.pnl_unrealized;
     const pnlEl = document.getElementById('ct-upnl');
     if (pnlEl) {
         pnlEl.textContent = pnl != null ? `₹${pnl > 0 ? '+' : ''}${pnl.toFixed(0)}` : '--';
@@ -718,14 +956,17 @@ function _renderCrudePositionBanner(at, d) {
 
     const trailEl = document.getElementById('ct-trail-sl');
     if (trailEl) {
-        const tsl = at.trailing_sl ?? at.stop_loss;
-        const orig = at.original_sl;
-        const moved = orig && Math.abs(tsl - orig) > 0.5;
-        trailEl.textContent = tsl != null ? `₹${tsl}` : '--';
+        // ✅ FIX: Show PREMIUM-based trailing SL, not crude spot price!
+        const tslPrem = at.sl_premium;           // premium-based trail SL
+        const origPrem = at.entry_premium;       // original entry premium (for comparison)
+        const moved = origPrem && tslPrem && Math.abs(tslPrem - origPrem) > 0.5;
+        trailEl.textContent = tslPrem != null ? `₹${tslPrem.toFixed(1)}` : '--';
         trailEl.className   = moved
-            ? 'text-sm font-bold text-orange-300'
-            : 'text-sm font-bold text-orange-400';
-        trailEl.title = moved ? `Moved from original ₹${orig}` : 'At original SL';
+            ? 'text-sm font-bold text-orange-300'  // tightened!
+            : 'text-sm font-bold text-orange-400'; // at original
+        trailEl.title = moved 
+            ? `Trail SL premium (moved from entry ₹${origPrem.toFixed(1)})` 
+            : 'Trail SL premium (at entry level)';
     }
 
     // ── Row 3: Entry crude + SL + Target + Qty + Auto-exit ────────
@@ -800,15 +1041,22 @@ async function pollCrudeStatus() {
 
 // ── Margin Health Card ─────────────────────────────────────────────
 async function refreshCrudeMargin() {
+    const compact = document.getElementById('crude-margin-compact');
     const elFree  = document.getElementById('crude-margin-free');
     const elUsed  = document.getElementById('crude-margin-used');
     const elNet   = document.getElementById('crude-margin-net');
-    const lot1    = document.getElementById('crude-margin-1lot');
-    const lot2    = document.getElementById('crude-margin-2lot');
-    const badge   = document.getElementById('crude-margin-badge');
-    const icon    = document.getElementById('crude-margin-icon');
-    const sfEl    = document.getElementById('crude-margin-shortfall');
+    
     if (!elFree) return;
+    
+    // Toggle display
+    if (compact) {
+        if (compact.classList.contains('hidden')) {
+            compact.classList.remove('hidden');
+        } else {
+            compact.classList.add('hidden');
+            return; // Just hide, don't fetch again
+        }
+    }
 
     elFree.textContent = '…';
     try {
@@ -823,30 +1071,6 @@ async function refreshCrudeMargin() {
         elFree.textContent = fmt(d.free);
         elUsed.textContent = fmt(d.utilised);
         elNet.textContent  = fmt(d.net);
-        lot1.textContent   = fmt(d.margin_1lot);
-        lot2.textContent   = fmt(d.margin_2lot);
-
-        // Shortfall warning
-        if (d.shortfall > 0 && sfEl) {
-            sfEl.textContent = `⛔ Top-up ₹${Number(d.shortfall).toLocaleString('en-IN')} needed`;
-            sfEl.classList.remove('hidden');
-        } else if (sfEl) sfEl.classList.add('hidden');
-
-        // Badge + icon
-        const ml = d.max_lots || 0;
-        if (ml >= 2) {
-            badge.textContent = `✅ ${ml} lots OK`;
-            badge.className = 'font-bold px-2 py-0.5 rounded-full bg-green-900 text-green-300 text-[10px]';
-            icon.textContent = '✅';
-        } else if (ml === 1) {
-            badge.textContent = '⚠️ 1 lot only';
-            badge.className = 'font-bold px-2 py-0.5 rounded-full bg-yellow-900 text-yellow-300 text-[10px]';
-            icon.textContent = '⚠️';
-        } else {
-            badge.textContent = '⛔ Can\'t trade';
-            badge.className = 'font-bold px-2 py-0.5 rounded-full bg-red-900 text-red-300 text-[10px]';
-            icon.textContent = '⛔';
-        }
     } catch (e) {
         if (elFree) elFree.textContent = '❌ Network error';
     }
@@ -857,7 +1081,124 @@ setInterval(() => {
     if (document.getElementById('crude-margin-avail')) refreshCrudeMargin();
 }, 60_000);
 
-// ── Trade history ─────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────
+// Load settings from API and populate UI inputs
+// ──────────────────────────────────────────────────────────────────────
+async function loadCrudeSettings() {
+    console.log('💾 [Settings] Loading from API...');
+    try {
+        const resp = await fetch('/api/crude/status');
+        const data = await resp.json();
+        
+        console.log('📊 [Settings] API data:', {
+            sl: data.sl_points,
+            trail: data.trail_points,
+            rr: data.rr_ratio,
+            capital: data.capital,
+            max_trades: data.max_trades,
+            max_loss: data.max_daily_loss,
+            trail_mode: data.trail_mode,
+            strike_offset: data.strike_offset
+        });
+        
+        // Populate input fields (only if not currently being edited)
+        const slInput = document.getElementById('crude-sl');
+        if (slInput && document.activeElement !== slInput && data.sl_points != null) {
+            slInput.value = data.sl_points;
+        }
+        
+        const trailInput = document.getElementById('crude-trail-points');
+        if (trailInput && document.activeElement !== trailInput && data.trail_points != null) {
+            trailInput.value = data.trail_points;
+        }
+        
+        const rrInput = document.getElementById('crude-rr');
+        if (rrInput && document.activeElement !== rrInput && data.rr_ratio != null) {
+            rrInput.value = data.rr_ratio;
+        }
+        
+        const capInput = document.getElementById('crude-capital');
+        if (capInput && document.activeElement !== capInput && data.capital != null) {
+            capInput.value = Math.round(data.capital);
+        }
+        
+        const maxTradesInput = document.getElementById('crude-max-trades');
+        if (maxTradesInput && document.activeElement !== maxTradesInput && data.max_trades != null) {
+            maxTradesInput.value = data.max_trades;
+        }
+        
+        const maxLossInput = document.getElementById('crude-max-loss');
+        if (maxLossInput && document.activeElement !== maxLossInput && data.max_daily_loss != null) {
+            maxLossInput.value = data.max_daily_loss;
+        }
+        
+        const trailModeSelect = document.getElementById('crude-trail-mode');
+        if (trailModeSelect && data.trail_mode) {
+            trailModeSelect.value = data.trail_mode;
+        }
+        
+        const strikeOffsetSelect = document.getElementById('crude-strike-offset');
+        if (strikeOffsetSelect && data.strike_offset != null) {
+            strikeOffsetSelect.value = data.strike_offset;
+        }
+        
+        console.log('✅ [Settings] Loaded successfully');
+    } catch (e) {
+        console.error('❌ [Settings] Failed to load:', e);
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Sync positions from Zerodha (pull any existing crude options)
+// ──────────────────────────────────────────────────────────────────────
+async function crudeSyncPositions() {
+    console.log('🔄 [Sync] Syncing positions from Zerodha...');
+    const btn = document.getElementById('crude-btn-sync');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Syncing...';
+    }
+    
+    try {
+        const resp = await fetch('/api/crude/sync-positions', { method: 'POST' });
+        const data = await resp.json();
+        
+        console.log('📡 [Sync] API Response:', data);
+        
+        if (data.success) {
+            if (data.found) {
+                _crudeToast(`✅ Synced! Found ${data.direction?.toUpperCase()} position`, 'ok');
+                _crudeLog(`🔄 Synced from Zerodha: ${data.direction?.toUpperCase()} ${data.instrument}`, 'ok');
+            } else {
+                _crudeToast('🔍 No crude options found in Zerodha', 'info');
+                _crudeLog('🔄 Sync: No crude options in Zerodha positions', 'info');
+            }
+            console.log('🔄 [Sync] About to refresh status...');
+            await pollCrudeStatus();  // Refresh immediately
+            console.log('🔄 [Sync] Status refreshed, checking banner render...');
+            
+            // Force another status check after 1 second to ensure banner updates
+            setTimeout(async () => {
+                console.log('🔄 [Sync] Secondary refresh...');
+                await pollCrudeStatus();
+            }, 1000);
+        } else {
+            const err = data.error || 'Unknown error';
+            _crudeToast(`❌ Sync failed: ${err}`, 'error');
+            console.error('❌ [Sync] Failed:', err);
+        }
+    } catch (e) {
+        _crudeToast(`❌ ${e.message}`, 'error');
+        console.error('❌ [Sync] Exception:', e);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '🔄 Sync Zerodha';
+        }
+    }
+}
+
+// ── Trade history ─────────────────────────────────────────
 async function loadCrudeHistory() {
     const el = document.getElementById('crude-history');
     if (!el) return;
@@ -886,10 +1227,11 @@ async function loadCrudeHistory() {
     }
 }
 
-// ── Lifecycle (called by dashboard.js switchPage) ─────────────────
+// ── Lifecycle (called by dashboard.js switchPage) ─────────────
 function onCrudeTraderTabOpen() {
     _crudeLog('👁 Crude trader tab opened', 'info');
-    pollCrudeStatus();
+    pollCrudeStatus();        // This loads settings via renderCrudeStatus
+    loadCrudeSettings();      // ✅ NEW: Explicitly load settings into UI inputs
     loadCrudeHistory();
     syncCrudeCapital();       // auto-sync Zerodha balance on tab open
     refreshCrudeMargin();     // show margin + lot affordability immediately

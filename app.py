@@ -2786,6 +2786,121 @@ async def crude_force_exit():
         return JSONResponse({"success": False, "error": str(e)})
 
 
+@app.post("/api/crude/sync-positions")
+async def crude_sync_positions():
+    """Sync existing crude option positions from Zerodha into the trader.
+    
+    This pulls any open MCX crude oil option positions from Zerodha and
+    loads them into the auto-trader so it can manage them.
+    """
+    from crude_trader import state as crude_state, CrudeTrade, CrudeOrderStatus, _save_snapshot
+    from crude_data import get_crude_spot
+    import traceback as _tb
+    
+    if not kite_manager.is_authenticated:
+        return JSONResponse({"success": False, "error": "Not authenticated with Zerodha"})
+    
+    try:
+        # Get positions from Zerodha
+        positions = kite_manager.kite.positions().get('net', [])
+        
+        # Filter for crude oil options (MCX)
+        crude_positions = [
+            p for p in positions 
+            if p.get('exchange') == 'MCX' 
+            and 'CRUDEOIL' in (p.get('tradingsymbol') or '')
+            and (p.get('tradingsymbol') or '').endswith(('CE', 'PE'))
+            and p.get('quantity', 0) != 0
+        ]
+        
+        print(f"🔍 [Sync] Found {len(crude_positions)} crude option positions")
+        
+        if not crude_positions:
+            return JSONResponse({"success": True, "found": False, "message": "No crude options found"})
+        
+        # Take the first position (if multiple, warn user)
+        pos = crude_positions[0]
+        qty = pos.get('quantity', 0)
+        symbol = pos.get('tradingsymbol', '')
+        avg_price = pos.get('average_price', 0)
+        
+        print(f"🔄 [Sync] Syncing position: {symbol} qty={qty} avg={avg_price}")
+        
+        # Determine direction
+        direction = 'long' if qty > 0 else 'short'
+        qty = abs(qty)
+        
+        # Crude options on Zerodha are traded in LOTS already!
+        # qty=3 means 3 lots, NOT 3 barrels
+        # Each lot = 10 barrels for MINI, 100 for full
+        lot_size = 10 if 'M' in symbol or 'MINI' in symbol.upper() else 100
+        lots = qty  # Zerodha already gives us lots!
+        
+        print(f"🔄 [Sync] Position: {lots} lots ({lots * lot_size} barrels) of {symbol}")
+        crude_spot = get_crude_spot() or 9000.0
+        
+        # Calculate SL and Target based on current settings
+        sl_points = crude_state.sl_points
+        target_points = sl_points * crude_state.rr_ratio
+        
+        if direction == 'long':
+            stop_loss = crude_spot - sl_points
+            target = crude_spot + target_points
+        else:
+            stop_loss = crude_spot + sl_points
+            target = crude_spot - target_points
+        
+        # Calculate premium-based SL
+        sl_prem = round(avg_price - sl_points, 1) if direction == 'long' else round(avg_price + sl_points, 1)
+        tgt_prem = round(avg_price + target_points, 1) if direction == 'long' else round(avg_price - target_points, 1)
+        
+        # Create CrudeTrade object
+        trade = CrudeTrade(
+            id=f"CRUDE-SYNC-{int(_time.time())}",
+            timestamp=datetime.now().isoformat(),
+            direction=direction,
+            instrument=f"MCX:{symbol}",
+            entry_price=crude_spot,
+            entry_premium=avg_price,
+            quantity=lots,
+            lot_size=lot_size,
+            stop_loss=stop_loss,
+            target=target,
+            sl_premium=sl_prem,
+            tgt_premium=tgt_prem,
+            peak_ltp=avg_price,
+            status=CrudeOrderStatus.FILLED,
+            order_id="ZERODHA-SYNC",
+            paper=False,
+        )
+        
+        # Update state
+        crude_state.active_trade = trade
+        crude_state.last_option_ltp = avg_price
+        crude_state.entry_crude_sl = stop_loss
+        
+        # Save snapshot
+        _save_snapshot()
+        
+        print(f"✅ [Sync] Position synced: {direction.upper()} {lots} lots @ ₹{avg_price}")
+        
+        return JSONResponse({
+            "success": True,
+            "found": True,
+            "direction": direction,
+            "instrument": symbol,
+            "lots": lots,
+            "entry_premium": avg_price,
+            "entry_price": crude_spot,
+            "stop_loss": stop_loss,
+            "target": target,
+        })
+        
+    except Exception as e:
+        _tb.print_exc()
+        return JSONResponse({"success": False, "error": str(e)})
+
+
 @app.post("/api/crude/add-lots")
 async def crude_add_lots(request: Request):
     """Add extra lots to the current active crude trade (scale-in).

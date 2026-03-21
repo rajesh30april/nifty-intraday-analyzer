@@ -48,15 +48,27 @@ function _$cc(id) { return document.getElementById(id); }
 function _setcc(id, v) { const e = _$cc(id); if (e) e.textContent = v; }
 
 function _makeCC(elId, height, extra = {}) {
+  console.log(`[Crude Chart] Creating chart for element: ${elId}`);
   const el = _$cc(elId);
-  if (!el) return null;
+  if (!el) {
+    console.error(`[Crude Chart] Element not found: ${elId}`);
+    return null;
+  }
+  console.log(`[Crude Chart] Element found, creating chart with height: ${height}px`);
   el.style.height = height + 'px';
-  return LightweightCharts.createChart(el, { ..._CC_OPTS, height, ...extra });
+  try {
+    const chart = LightweightCharts.createChart(el, { ..._CC_OPTS, height, ...extra });
+    console.log(`[Crude Chart] Chart created successfully for ${elId}`);
+    return chart;
+  } catch (e) {
+    console.error(`[Crude Chart] Error creating chart for ${elId}:`, e);
+    return null;
+  }
 }
 
 // ── Resize: keep charts filling their container ───────────────────
 function _bindCCResize() {
-  const wrap = _$cc('chart')?.parentElement;
+  const wrap = _$cc('cc-chart')?.parentElement;
   if (!wrap) return;
   new ResizeObserver(() => {
     const w = wrap.clientWidth;
@@ -65,47 +77,38 @@ function _bindCCResize() {
   }).observe(wrap);
 }
 
-// ── Crosshair OHLCV tooltip ──────────────────────────────────
+// ── Crosshair OHLCV tooltip (removed - simplified chart) ───────────
 function _bindCCCrosshair(candleSeries) {
-  _cc_main.subscribeCrosshairMove(p => {
-    const bar = _$cc('ohlc-bar');
-    if (!bar) return;
-    if (!p?.seriesData?.has(candleSeries)) { return; }
-    const d = p.seriesData.get(candleSeries);
-    if (!d) { return; }
-    _setcc('cv-o', d.open?.toFixed(2) || '--');
-    _setcc('cv-h', d.high?.toFixed(2) || '--');
-    _setcc('cv-l', d.low?.toFixed(2) || '--');
-    _setcc('cv-c', d.close?.toFixed(2) || '--');
-    _setcc('cv-v', d.customValues?.volume?.toLocaleString('en-IN') || '--');
-  });
+  // Crosshair tooltip removed for cleaner UI
+  // Users can see OHLC data in the chart's default tooltip
 }
 
-// ── Strategy pill bar ─────────────────────────────────────────────
-async function _ccStrategyBar() {
-  try {
-    const r = await fetch('/api/crude/evaluate', { method: 'POST' });
-    const d = await r.json();
-    const bar = _$cc('strategy-bar');
-    if (!bar) return;
-    const container = bar.querySelector('.flex.flex-wrap');
-    if (!container) return;
-    container.innerHTML = (d.strategies || []).map(s => {
-      const ok  = s.should_enter;
-      const cls = ok ? 'bg-green-500 text-white' : 'bg-gray-700 text-gray-400';
-      const dir = s.direction ? ' ' + s.direction.toUpperCase() : '';
-      return `<span class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold ${cls}"
-                    title="${s.reason}">
-                ${ok ? '✅' : '⛔'} ${s.name} (${s.weight})${dir}
-              </span>`;
-    }).join('');
-  } catch (_) {}
-}
 
 // ── Core chart builder ─────────────────────────────────────────────
 async function _buildCCChart() {
-  const loading = _$cc('loading-overlay');
-  if (loading) loading.style.display = 'flex';
+  console.log('[Crude Chart] Building chart...');
+  
+  // Check if LightweightCharts is available
+  if (typeof LightweightCharts === 'undefined') {
+    console.error('[Crude Chart] LightweightCharts library not loaded!');
+    const loading = _$cc('cc-loading');
+    if (loading) {
+      loading.style.display = 'flex';
+      loading.innerHTML = `<div class="text-center text-red-600">
+        ❌ LightweightCharts library not loaded<br>
+        <span class="text-sm text-gray-500">Please refresh the page</span>
+      </div>`;
+    }
+    return;
+  }
+  
+  const loading = _$cc('cc-loading');
+  if (loading) {
+    console.log('[Crude Chart] Showing loading overlay');
+    loading.style.display = 'flex';
+  } else {
+    console.warn('[Crude Chart] Loading element not found!');
+  }
 
   if (_cc_main) { _cc_main.remove(); _cc_main = null; }
   if (_cc_vol)  { _cc_vol.remove();  _cc_vol  = null; }
@@ -117,24 +120,59 @@ async function _buildCCChart() {
     data = await r.json();
     if (data.error) throw new Error(data.error);
   } catch (e) {
-    if (loading) loading.innerHTML = `<div class="flex flex-col items-center gap-3">
-      <svg class="w-12 h-12 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-      </svg>
-      <span>❌ ${e.message || 'Load failed'}</span>
-    </div>`;
+    console.error('Crude chart load error:', e);
+    if (loading) {
+      loading.style.display = 'flex';
+      const isAuthError = e.message?.includes('503') || e.message?.includes('auth');
+      const errorTitle = isAuthError ? 'Kite Connection Required' : 'Chart Load Failed';
+      const errorDetail = isAuthError 
+        ? 'Please start the Crude Trader first to authenticate with Kite' 
+        : (e.message || 'Unknown error');
+      
+      loading.innerHTML = `<div class="flex flex-col items-center gap-4 p-8">
+        <svg class="w-20 h-20 ${isAuthError ? 'text-orange-500' : 'text-red-600'}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        <div class="text-center">
+          <div class="${isAuthError ? 'text-orange-600' : 'text-red-600'} font-black text-xl mb-2">${isAuthError ? '⚠️' : '❌'} ${errorTitle}</div>
+          <div class="text-gray-700 text-sm font-medium mb-1">${errorDetail}</div>
+          <div class="text-gray-500 text-xs mt-3">
+            ${isAuthError 
+              ? 'Go to <b>Crude Oil Auto-Trader</b> tab and click <b>Start Trading</b>' 
+              : 'Check browser console (F12) for details'}
+          </div>
+          <button onclick="reloadCrudeChart()" class="mt-5 px-6 py-2.5 bg-[#0053e2] text-white rounded-lg hover:bg-blue-700 transition font-bold shadow-md">
+            ⟳ Retry
+          </button>
+        </div>
+      </div>`;
+    }
     return;
   }
 
+  console.log('[Crude Chart] Data fetched successfully:', {
+    candles: data.candles?.length,
+    st_long: data.st_long?.length,
+    st_short: data.st_short?.length,
+    vwap: data.vwap?.length,
+    ema9: data.ema9?.length,
+    ema21: data.ema21?.length,
+    meta: data.meta
+  });
+
   // Header meta
   const m = data.meta || {};
-  _setcc('hdr-symbol', m.symbol || '--');
-  _setcc('hdr-expiry', m.days_to_expiry != null ? `Exp: ${m.days_to_expiry}d` : '--');
-  if (m.price) _setcc('hdr-price', '₹' + Number(m.price).toLocaleString('en-IN'));
+  _setcc('cc-symbol', m.symbol || '--');
+  if (m.price) _setcc('cc-price', '₹' + Number(m.price).toLocaleString('en-IN'));
 
+  console.log('[Crude Chart] Creating main chart...');
   // ─ Main chart
-  _cc_main = _makeCC('chart', 560);
-  if (!_cc_main) return;
+  _cc_main = _makeCC('cc-chart', 560);
+  if (!_cc_main) {
+    console.error('[Crude Chart] Failed to create main chart!');
+    return;
+  }
+  console.log('[Crude Chart] Main chart created successfully');
 
   // Candlestick
   const cs = _cc_main.addCandlestickSeries({
@@ -203,7 +241,7 @@ async function _buildCCChart() {
   _cc_main.timeScale().scrollToRealTime();
 
   // ─ Volume chart
-  _cc_vol = _makeCC('vol-chart', 140, {
+  _cc_vol = _makeCC('cc-vol', 140, {
     rightPriceScale: { visible: false },
     leftPriceScale:  { visible: false },
     timeScale:       { visible: false },
@@ -225,10 +263,12 @@ async function _buildCCChart() {
   }
 
   if (loading) loading.style.display = 'none';
-  _setcc('last-updated', new Date().toLocaleTimeString('en-IN'));
+  _setcc('cc-updated', new Date().toLocaleTimeString('en-IN'));
 
   _bindCCResize();
-  _ccStrategyBar();   // non-blocking
+  // Remove strategy bar loading - we don't show it anymore
+  
+  console.log('[Crude Chart] Chart built successfully!');
 }
 
 // ── Public: called by switchPage('crude-chart') ──────────────────
@@ -256,8 +296,8 @@ function loadChart() {
 function _startCCCountdown() {
   clearInterval(_cc_cdInt);
   _cc_cdInt = setInterval(() => {
-    const autoEl = _$cc('auto-refresh');
-    const nextEl = _$cc('next-refresh');
+    const autoEl = _$cc('cc-auto');
+    const nextEl = _$cc('cc-next');
     if (!autoEl?.checked) { if (nextEl) nextEl.textContent = 'off'; return; }
     _cc_countdown--;
     if (nextEl) nextEl.textContent = _cc_countdown + 's';
@@ -276,8 +316,28 @@ function _startCCPricePoll() {
       const r = await fetch('/api/crude/status');
       const d = await r.json();
       if (d.crude_price) {
-        _setcc('hdr-price', '₹' + Number(d.crude_price).toLocaleString('en-IN'));
+        _setcc('cc-price', '₹' + Number(d.crude_price).toLocaleString('en-IN'));
       }
     } catch (_) {}
   }, 5000);
+}
+
+// ── Public API ────────────────────────────────────────────────────
+// Called by switchPage('crude-chart') in the sidebar
+function initCrudeChart() {
+  console.log('[Crude Chart] Initializing...');
+  if (!_cc_ready) {
+    console.log('[Crude Chart] First time init - starting polls');
+    _cc_ready = true;
+    _startCCPricePoll();
+    _startCCCountdown();
+  }
+  console.log('[Crude Chart] Building chart...');
+  _buildCCChart();
+}
+
+// Called by the Refresh button
+function reloadCrudeChart() {
+  _cc_countdown = 60;
+  _buildCCChart();
 }

@@ -249,14 +249,14 @@ def evaluate_crude_supertrend(df: pd.DataFrame) -> StrategySignal:
         (direction == Direction.SHORT and price < st_val)
     )
     dist_to_st       = abs(price - st_val)
-    pullback_reentry = dist_to_st <= 1.5 * atr_val and on_right_side
+    pullback_reentry = dist_to_st <= 2.5 * atr_val and on_right_side  # 🔥 AGGRESSIVE: 2.5×ATR (was 1.5×)
     triggered = recent_flip or pullback_reentry
 
     trigger_detail = (
         f"Fresh flip (≤5c) ✅" if recent_flip
-        else f"Pullback re-entry: dist {dist_to_st:.0f} ≤ 1.5×ATR {atr_val:.0f} ✅"
+        else f"Pullback re-entry: dist {dist_to_st:.0f} ≤ 2.5×ATR {atr_val:.0f} ✅"
         if pullback_reentry
-        else f"No valid trigger: dist {dist_to_st:.0f} vs 1.5×ATR {atr_val:.0f} — too far from ST line"
+        else f"No valid trigger: dist {dist_to_st:.0f} vs 2.5×ATR {atr_val:.0f} — too far from ST line"
     )
     conditions.append(StrategyCondition(
         name="ST trigger",
@@ -430,11 +430,11 @@ def evaluate_crude_ema_cross(df: pd.DataFrame) -> StrategySignal:
     ema_s = ind.ema(close, CRUDE_EMA_SLOW)
     atr   = ind.atr(high, low, close, 14)
 
-    # Detect a fresh cross in last 3 candles
+    # Detect a fresh cross in last 10 candles (🔥 AGGRESSIVE: was 3)
     diff     = ema_f - ema_s
     crossed  = any(
         (diff.iloc[-i] > 0) != (diff.iloc[-(i + 1)] > 0)
-        for i in range(1, min(4, len(diff) - 1))
+        for i in range(1, min(11, len(diff) - 1))  # 🔥 10 candles lookback
     )
     direction = Direction.LONG if float(diff.iloc[-1]) > 0 else Direction.SHORT
 
@@ -442,9 +442,9 @@ def evaluate_crude_ema_cross(df: pd.DataFrame) -> StrategySignal:
         name="Fresh EMA cross",
         met=crossed,
         detail=(
-            f"Fresh cross (≤3c) ✅ EMA9({ema_f.iloc[-1]:.0f}) {'>' if float(diff.iloc[-1])>0 else '<'} EMA21({ema_s.iloc[-1]:.0f})"
+            f"Fresh cross (≤10c) ✅ EMA9({ema_f.iloc[-1]:.0f}) {'>' if float(diff.iloc[-1])>0 else '<'} EMA21({ema_s.iloc[-1]:.0f})"
             if crossed else
-            f"No cross in last 3c ❌ EMA9({ema_f.iloc[-1]:.0f}) EMA21({ema_s.iloc[-1]:.0f}) gap={abs(float(diff.iloc[-1])):.0f}"
+            f"No cross in last 10c ❌ EMA9({ema_f.iloc[-1]:.0f}) EMA21({ema_s.iloc[-1]:.0f}) gap={abs(float(diff.iloc[-1])):.0f}"
         ),
     ))
 
@@ -579,7 +579,7 @@ def evaluate_crude_squeeze(df: pd.DataFrame) -> StrategySignal:
 # ────────────────────────────────────────────────────────────────
 
 _CP_VOL_RATIO_MIN = 1.15   # breakout candle volume > 1.15× session avg
-_CP_MIN_CANDLES   = 20     # need 20+ session candles before scanning (~100 min)
+_CP_MIN_CANDLES   = 15     # 🔥 AGGRESSIVE: need 15+ candles (~75 min, was 20/100 min)
 
 _PATTERN_META: dict[str, tuple] = {
     "bull_flag":     (Direction.LONG,  "🚩", "Bull Flag"),
@@ -759,15 +759,15 @@ def evaluate_crude_chart_pattern(df: pd.DataFrame) -> StrategySignal:
 
 _TRB_WINDOW_MIN   = 8    # min candles to form a coil (40 min)
 _TRB_WINDOW_MAX   = 20   # max candles to look back for range
-_TRB_TIGHT_MULT   = 1.2  # coil range must be < 1.2×ATR (tight!)
+_TRB_TIGHT_MULT   = 1.8  # 🔥 AGGRESSIVE: coil range < 1.8×ATR (was 1.2×)
 _TRB_VOL_RATIO    = 1.2  # breakout candle volume > 1.2× avg
 
 
 def evaluate_crude_tight_range(df: pd.DataFrame) -> StrategySignal:
-    """Strategy 7: Tight Range (Coil) Breakout.
+    """🔥 Strategy 7: Tight Range (Coil) Breakout (AGGRESSIVE).
 
     Fires when:
-      1. The last 8-20 candles formed a tight range (< 1.2×ATR)
+      1. The last 8-20 candles formed a tight range (< 1.8×ATR) 🔥 was 1.2×
       2. Current candle closes OUTSIDE that range (genuine breakout)
       3. Breakout direction aligns with SuperTrend bias
       4. Volume ≥ 1.2× average (not a fake-out)
