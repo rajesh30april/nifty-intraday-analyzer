@@ -165,10 +165,14 @@ def run_backtest(
         # Walk back to last weekday (skip weekends)
         while yesterday.weekday() >= 5:
             yesterday -= timedelta(days=1)
+        print(f"🔍 [DEBUG] Before filter: {len(df)} candles, first={df.index[0]}, last={df.index[-1]}")
+        print(f"🔍 [DEBUG] Filtering for date: {yesterday}")
         df = df[df.index.date == yesterday]
         if df.empty:
             raise ValueError(f"No data for yesterday ({yesterday}) — market may have been closed")
         print(f"✅ Filtered to yesterday: {yesterday} — {len(df)} candles")
+        if len(df) > 0:
+            print(f"🔍 [DEBUG] After filter: first={df.index[0].strftime('%H:%M')}, last={df.index[-1].strftime('%H:%M')}")
     else:
         print(f"✅ Got {len(df)} candles from {df.index[0]} to {df.index[-1]}")
 
@@ -222,6 +226,11 @@ def _backtest_day(
     quantity: int = QUANTITY,
 ):
     """Backtest a single trading day."""
+    print(f"\n🔍 [DEBUG] _backtest_day for {date_str}")
+    print(f"🔍 [DEBUG] df has {len(df)} candles, full_df has {len(full_df)} candles")
+    if len(df) > 0:
+        print(f"🔍 [DEBUG] Day candles: {df.index[0].strftime('%H:%M')} to {df.index[-1].strftime('%H:%M')}")
+    
     trades_today = 0
     in_trade = False
     entry_price = 0.0
@@ -233,6 +242,8 @@ def _backtest_day(
     lowest = float("inf")
     conditions_met = []
     last_exit_ts = None   # for cooldown simulation
+    signals_evaluated = 0
+    signals_fired = 0
 
     # Walk through each candle — start from 1 (skip the open candle itself)
     # Signal evaluation uses full_df lookback so no warmup skip needed here
@@ -258,6 +269,7 @@ def _backtest_day(
                 quantity=quantity,
             )
             result.trades.append(trade)
+            print(f"🏁 [EXIT] {df.index[i].strftime('%H:%M')} {direction.upper()} @ {price:.2f}, Time Exit, P&L: {pnl_pts:+.2f}pts")
             in_trade = False
             last_exit_ts = i
             continue
@@ -286,6 +298,7 @@ def _backtest_day(
                         quantity=quantity,
                     )
                     result.trades.append(trade)
+                    print(f"🏁 [EXIT] {df.index[i].strftime('%H:%M')} {direction.upper()} @ {exit_price:.2f}, {reason}, P&L: {pnl_pts:+.2f}pts")
                     in_trade = False
                     last_exit_ts = i
                     continue
@@ -300,6 +313,7 @@ def _backtest_day(
                         quantity=quantity,
                     )
                     result.trades.append(trade)
+                    print(f"🏁 [EXIT] {df.index[i].strftime('%H:%M')} {direction.upper()} @ {target:.2f}, Target, P&L: {pnl_pts:+.2f}pts")
                     in_trade = False
                     last_exit_ts = i
                     continue
@@ -320,6 +334,7 @@ def _backtest_day(
                         quantity=quantity,
                     )
                     result.trades.append(trade)
+                    print(f"🏁 [EXIT] {df.index[i].strftime('%H:%M')} {direction.upper()} @ {exit_price:.2f}, {reason}, P&L: {pnl_pts:+.2f}pts")
                     in_trade = False
                     last_exit_ts = i
                     continue
@@ -333,6 +348,7 @@ def _backtest_day(
                         quantity=quantity,
                     )
                     result.trades.append(trade)
+                    print(f"🏁 [EXIT] {df.index[i].strftime('%H:%M')} {direction.upper()} @ {target:.2f}, Target, P&L: {pnl_pts:+.2f}pts")
                     in_trade = False
                     last_exit_ts = i
                     continue
@@ -369,10 +385,13 @@ def _backtest_day(
         else:
             signal = evaluate_vwap_breakout(lookback_df)
 
+        signals_evaluated += 1
+        
         if not signal.should_enter or signal.direction is None:
             continue
 
         # Entry!
+        signals_fired += 1
         in_trade = True
         trades_today += 1
         direction = signal.direction.value
@@ -381,6 +400,7 @@ def _backtest_day(
         highest = high
         lowest = low
         conditions_met = [c.name for c in signal.conditions if c.met]
+        print(f"✅ [ENTRY] {entry_time} {direction.upper()} @ {entry_price:.2f} (trade #{trades_today})")
 
         if direction == "long":
             stop_loss = entry_price - sl_points
@@ -401,6 +421,9 @@ def _backtest_day(
             quantity=quantity,
         )
         result.trades.append(trade)
+        print(f"🏁 [EXIT] Day End @ {last_price:.2f}, P&L: {pnl_pts:+.2f}pts")
+    
+    print(f"📊 [SUMMARY] {date_str}: {trades_today} trades, {signals_evaluated} candles evaluated, {signals_fired} signals fired")
 
 
 def _calc_pnl(direction: str, entry: float, exit_val: float) -> float:
