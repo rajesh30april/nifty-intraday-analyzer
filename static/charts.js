@@ -91,16 +91,73 @@ function renderPriceChart(priceData, patterns, sr) {
     if (patterns && patterns.length) {
         patterns.forEach(p => {
             if (!p.key_levels) return;
+            
+            // 🐶 IMPROVED: Special handling for trend structure patterns
+            const isStructure = p.pattern_type === 'structure' || p.name?.toLowerCase().includes('structure');
+            const isBearish = p.bias === 'bearish';
+            
             Object.entries(p.key_levels).forEach(([name, level]) => {
                 const isNeckline = name.includes('neckline');
-                candleSeries.createPriceLine({
-                    price: level,
-                    color: isNeckline ? '#7c3aed' : '#a855f7',
-                    lineWidth: isNeckline ? 2 : 1,
-                    lineStyle: isNeckline ? LightweightCharts.LineStyle.Solid : LightweightCharts.LineStyle.Dotted,
-                    axisLabelVisible: true,
-                    title: `${p.name}: ${name.replace('_',' ')}`,
-                });
+                const isLatestLH = name.includes('latest_lh');
+                const isLatestLL = name.includes('latest_ll');
+                const isLatestHH = name.includes('latest_hh');
+                const isLatestHL = name.includes('latest_hl');
+                const isLatest = isLatestLH || isLatestLL || isLatestHH || isLatestHL;
+                
+                // Different styling for trend structure vs reversal patterns
+                let lineColor, lineWidth, lineStyle, lineTitle;
+                
+                if (isStructure && isLatest) {
+                    // LATEST swing point in trend - make it SUPER visible!
+                    if (isBearish) {
+                        if (isLatestLH) {
+                            lineColor = '#dc2626';  // Bright red
+                            lineWidth = 3;
+                            lineStyle = LightweightCharts.LineStyle.Solid;
+                            lineTitle = `🔴 LATEST LH ₹${level.toFixed(0)} - SELL ZONE`;
+                        } else if (isLatestLL) {
+                            lineColor = '#f87171';  // Light red
+                            lineWidth = 2;
+                            lineStyle = LightweightCharts.LineStyle.Dashed;
+                            lineTitle = `LL ₹${level.toFixed(0)}`;
+                        }
+                    } else {
+                        if (isLatestHH) {
+                            lineColor = '#22c55e';  // Light green
+                            lineWidth = 2;
+                            lineStyle = LightweightCharts.LineStyle.Dashed;
+                            lineTitle = `HH ₹${level.toFixed(0)}`;
+                        } else if (isLatestHL) {
+                            lineColor = '#16a34a';  // Bright green
+                            lineWidth = 3;
+                            lineStyle = LightweightCharts.LineStyle.Solid;
+                            lineTitle = `🟢 LATEST HL ₹${level.toFixed(0)} - BUY ZONE`;
+                        }
+                    }
+                } else if (isNeckline) {
+                    // Neckline for reversal patterns
+                    lineColor = '#7c3aed';
+                    lineWidth = 2;
+                    lineStyle = LightweightCharts.LineStyle.Solid;
+                    lineTitle = `${p.name}: ${name.replace('_',' ')}`;
+                } else {
+                    // Other key levels
+                    lineColor = '#a855f7';
+                    lineWidth = 1;
+                    lineStyle = LightweightCharts.LineStyle.Dotted;
+                    lineTitle = `${p.name}: ${name.replace('_',' ')}`;
+                }
+                
+                if (lineColor) {
+                    candleSeries.createPriceLine({
+                        price: level,
+                        color: lineColor,
+                        lineWidth: lineWidth,
+                        lineStyle: lineStyle,
+                        axisLabelVisible: true,
+                        title: lineTitle,
+                    });
+                }
             });
         });
 
@@ -127,33 +184,41 @@ function renderPriceChart(priceData, patterns, sr) {
                     
                     if (isStructure) {
                         // TREND STRUCTURE: Mark LH/LL or HH/HL
+                        // 🐶 IMPROVED: Label them sequentially and highlight the LATEST
                         const isPeak = (i % 2 === 0);  // Even indices = peaks, odd = troughs
+                        const isLatest = (i === p.pivot_times.length - 1) || (i === p.pivot_times.length - 2);
+                        const isLastPeak = isPeak && (i >= p.pivot_times.length - 2);
+                        const isLastTrough = !isPeak && (i >= p.pivot_times.length - 2);
                         
                         if (isBearish) {
                             // DOWNTREND (LH/LL)
                             if (isPeak) {
+                                const peakNum = Math.floor((i + 2) / 2);
                                 position = 'aboveBar';
-                                color = '#ea1100';
-                                shape = 'arrowDown';
-                                label = 'LH';  // Lower High
+                                color = isLatest ? '#dc2626' : '#ea1100';  // Brighter red for latest
+                                shape = isLatest ? 'arrowDown' : 'circle';  // Arrow for latest, circle for older
+                                label = isLatest ? `LH${peakNum} 🔴 LATEST` : `LH${peakNum}`;
                             } else {
+                                const troughNum = Math.floor((i + 1) / 2);
                                 position = 'belowBar';
-                                color = '#ef4444';
-                                shape = 'circle';
-                                label = 'LL';  // Lower Low
+                                color = isLatest ? '#dc2626' : '#ef4444';
+                                shape = isLatest ? 'arrowDown' : 'circle';
+                                label = isLatest ? `LL${troughNum} 🔴 LATEST` : `LL${troughNum}`;
                             }
                         } else {
                             // UPTREND (HH/HL)
                             if (isPeak) {
+                                const peakNum = Math.floor((i + 2) / 2);
                                 position = 'aboveBar';
-                                color = '#2a8703';
-                                shape = 'arrowUp';
-                                label = 'HH';  // Higher High
+                                color = isLatest ? '#16a34a' : '#2a8703';
+                                shape = isLatest ? 'arrowUp' : 'circle';
+                                label = isLatest ? `HH${peakNum} 🟢 LATEST` : `HH${peakNum}`;
                             } else {
+                                const troughNum = Math.floor((i + 1) / 2);
                                 position = 'belowBar';
-                                color = '#22c55e';
-                                shape = 'circle';
-                                label = 'HL';  // Higher Low
+                                color = isLatest ? '#16a34a' : '#22c55e';
+                                shape = isLatest ? 'arrowUp' : 'circle';
+                                label = isLatest ? `HL${troughNum} 🟢 LATEST` : `HL${troughNum}`;
                             }
                         }
                     } else {

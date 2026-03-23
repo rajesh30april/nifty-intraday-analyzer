@@ -184,6 +184,11 @@ function phOpenDetail(idx) {
         head: '👑 Head',  left_shoulder: '◀ Left Shoulder', right_shoulder: '▶ Right Shoulder',
         flag_high: '📌 Flag High', flag_low: '📌 Flag Low',
         upper_trend: '📐 Upper Trend', lower_trend: '📐 Lower Trend',
+        // 🐶 NEW: Trend structure labels
+        latest_lh: '🔴 Latest LH (SELL ZONE)',
+        latest_ll: '📍 Latest LL',
+        latest_hh: '📍 Latest HH',
+        latest_hl: '🟢 Latest HL (BUY ZONE)',
     };
 
     if (levels.length) {
@@ -193,15 +198,60 @@ function phOpenDetail(idx) {
             const isTarget   = kl.includes('target');
             const isResist   = kl.includes('resist') || kl.includes('peak');
             const isSupport  = kl.includes('support') || kl.includes('trough');
-            const color = isNeckline ? '#0053e2'
-                        : isTarget   ? '#995213'
-                        : isResist   ? '#ea1100'
-                        : isSupport  ? '#2a8703' : '#6b7280';
+            
+            // 🐶 NEW: Special styling for trend structure LATEST levels
+            const isLatestLH = kl.includes('latest_lh');
+            const isLatestLL = kl.includes('latest_ll');
+            const isLatestHH = kl.includes('latest_hh');
+            const isLatestHL = kl.includes('latest_hl');
+            const isLatest = isLatestLH || isLatestLL || isLatestHH || isLatestHL;
+            
+            let color, bg, border;
+            
+            if (isLatestLH) {
+                // LATEST LH - bright red, this is the SELL ZONE
+                color = '#dc2626';
+                bg = 'bg-red-50';
+                border = 'border-l-4 border-red-500';
+            } else if (isLatestHL) {
+                // LATEST HL - bright green, this is the BUY ZONE
+                color = '#16a34a';
+                bg = 'bg-green-50';
+                border = 'border-l-4 border-green-500';
+            } else if (isLatestLL || isLatestHH) {
+                // Other latest levels
+                color = isLatestLL ? '#ea1100' : '#2a8703';
+                bg = isLatestLL ? 'bg-red-50' : 'bg-green-50';
+                border = '';
+            } else if (isNeckline) {
+                color = '#0053e2';
+                bg = 'bg-blue-50';
+                border = '';
+            } else if (isTarget) {
+                color = '#995213';
+                bg = 'bg-amber-50';
+                border = '';
+            } else if (isResist) {
+                color = '#ea1100';
+                bg = '';
+                border = '';
+            } else if (isSupport) {
+                color = '#2a8703';
+                bg = '';
+                border = '';
+            } else {
+                color = '#6b7280';
+                bg = '';
+                border = '';
+            }
+            
             const label = _labelMap[k] || `📍 ${k.replace(/_/g, ' ')}`;
-            const bg    = isNeckline ? 'bg-blue-50' : isTarget ? 'bg-amber-50' : '';
-            return `<div class="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0 rounded px-1 ${bg}">
-                <span class="text-xs text-gray-600 font-medium">${label}</span>
-                <span class="font-black text-sm" style="color:${color}">₹${Number(v).toLocaleString('en-IN',{maximumFractionDigits:0})}</span>
+            const fontWeight = isLatest ? 'font-black' : 'font-bold';
+            const textSize = isLatest ? 'text-base' : 'text-sm';
+            
+            return `<div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0 rounded px-2 ${bg} ${border}">
+      <span class="text-xs text-gray-700 font-medium">${label}</span>
+                <span class="${fontWeight} ${textSize}" style="color:${color}">₹${Number(v).toLocaleString('en-IN',{maximumFractionDigits:0})}</span>
             </div>`;
         }).join('');
     } else {
@@ -273,7 +323,60 @@ function phOpenDetail(idx) {
     }
 
     // Full description
-    _setEl('ph-detail-desc', p.description || 'No description available.');
+    const descEl = document.getElementById('ph-detail-desc');
+    let descHTML = p.description || 'No description available.';
+    
+    // 🐶 ADD VISUAL DIAGRAM for trend structure patterns
+    if (isStructure) {
+        const kl = p.key_levels || {};
+        if (isBear && kl.latest_lh && kl.latest_ll) {
+            // DOWNTREND diagram
+            const lh = `₹${Number(kl.latest_lh).toLocaleString('en-IN', {maximumFractionDigits:0})}`;
+            const ll = `₹${Number(kl.latest_ll).toLocaleString('en-IN', {maximumFractionDigits:0})}`;
+            descHTML += `
+                <div class="mt-4 p-3 bg-red-50 border-l-4 border-red-500 rounded">
+                    <div class="text-xs font-bold text-red-700 mb-2">📉 DOWNTREND STRUCTURE:</div>
+                    <div class="font-mono text-xs text-gray-700 leading-relaxed">
+                        <div class="flex items-center gap-2">
+                            <span class="text-red-600">●</span>
+                            <span>LH3 → LH2 → <strong class="text-red-600 bg-red-100 px-1 rounded">LH1 ${lh} ⬅ SELL HERE</strong></span>
+                        </div>
+                        <div class="ml-2 text-gray-400">│</div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-red-400">●</span>
+                            <span>LL3 → LL2 → <strong>LL1 ${ll}</strong></span>
+                        </div>
+                    </div>
+                    <div class="text-[10px] text-red-600 mt-2 font-semibold">
+                        ⚠️ Price is making LOWER highs and LOWER lows. Wait for rally to ${lh}, then SHORT!
+                    </div>
+                </div>`;
+        } else if (!isBear && kl.latest_hh && kl.latest_hl) {
+            // UPTREND diagram
+            const hh = `₹${Number(kl.latest_hh).toLocaleString('en-IN', {maximumFractionDigits:0})}`;
+            const hl = `₹${Number(kl.latest_hl).toLocaleString('en-IN', {maximumFractionDigits:0})}`;
+            descHTML += `
+                <div class="mt-4 p-3 bg-green-50 border-l-4 border-green-500 rounded">
+                    <div class="text-xs font-bold text-green-700 mb-2">📈 UPTREND STRUCTURE:</div>
+                    <div class="font-mono text-xs text-gray-700 leading-relaxed">
+                        <div class="flex items-center gap-2">
+                            <span class="text-green-600">●</span>
+                            <span>HH1 → HH2 → <strong>HH3 ${hh}</strong></span>
+                        </div>
+                        <div class="ml-2 text-gray-400">│</div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-green-400">●</span>
+                            <span>HL1 → HL2 → <strong class="text-green-600 bg-green-100 px-1 rounded">HL3 ${hl} ⬅ BUY HERE</strong></span>
+                        </div>
+                    </div>
+                    <div class="text-[10px] text-green-600 mt-2 font-semibold">
+                        ⚠️ Price is making HIGHER highs and HIGHER lows. Wait for dip to ${hl}, then LONG!
+                    </div>
+                </div>`;
+        }
+    }
+    
+    descEl.innerHTML = descHTML;
 
     // Build zoomed chart
     _phBuildDetailChart(p);
