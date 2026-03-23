@@ -40,60 +40,7 @@ os.environ.setdefault("https_proxy", PROXY)
 NIFTY_SYMBOL = "^NSEI"
 
 
-def fetch_intraday_data(
-    interval: str = "5m",
-    period: str = "5d",
-    retries: int = 2,
-) -> pd.DataFrame:
-    """Fetch intraday candle data for Nifty 50.
-
-    Args:
-        interval: Candle interval - '1m', '5m', '15m', '30m', '1h'.
-        period: Lookback period - '1d', '5d', '1mo'.
-        retries: Number of retry attempts on failure.
-
-    Returns:
-        DataFrame with OHLCV columns and DatetimeIndex.
-    """
-    import time
-    last_error = None
-    for attempt in range(retries + 1):
-        try:
-            ticker = yf.Ticker(NIFTY_SYMBOL)
-            df = ticker.history(period=period, interval=interval)
-
-            # Defensive: yfinance can return None or non-DataFrame in some versions
-            if df is None:
-                raise ValueError(f"yfinance returned None for {NIFTY_SYMBOL} ({interval}/{period})")
-            if not hasattr(df, 'columns') or not hasattr(df, 'empty'):
-                raise ValueError(f"yfinance returned unexpected type: {type(df).__name__}")
-            if df.empty:
-                raise ValueError(f"Empty DataFrame for {NIFTY_SYMBOL} ({interval}/{period})")
-
-            # Normalize column names to lowercase
-            df = df.copy()
-            df.columns = [str(c).lower().replace(" ", "_") for c in df.columns]
-
-            # Keep only OHLCV columns that exist
-            required = ["open", "high", "low", "close", "volume"]
-            available = [c for c in required if c in df.columns]
-            if not available:
-                raise ValueError(f"No OHLCV columns found. Got: {list(df.columns)}")
-            df = df[available]
-
-            # Drop rows where close is NaN (can happen on partial candles)
-            df = df.dropna(subset=["close"])
-            if df.empty:
-                raise ValueError("All rows had NaN close — stale/partial data")
-
-            return df
-
-        except Exception as e:
-            last_error = e
-            if attempt < retries:
-                time.sleep(2 ** attempt)  # exponential back-off: 1s, 2s
-
-    raise ValueError(f"Failed after {retries + 1} attempts: {last_error}")
+# REMOVED DUPLICATE - See fetch_intraday_data_with_volume below
 
 
 def _fetch_futures_volume(interval: str, period: str) -> "pd.Series | None":
@@ -189,35 +136,49 @@ def fetch_intraday_data(
             ticker = yf.Ticker(NIFTY_SYMBOL)
             df = ticker.history(period=period, interval=interval)
 
+            # 🐶 IMPROVED ERROR HANDLING
             if df is None:
                 raise ValueError(f"yfinance returned None for {NIFTY_SYMBOL}")
-            if not hasattr(df, "columns") or not hasattr(df, "empty"):
+            
+            # Check if it's actually a DataFrame
+            if not isinstance(df, pd.DataFrame):
                 raise ValueError(f"yfinance returned unexpected type: {type(df).__name__}")
+            
             if df.empty:
                 raise ValueError(f"Empty DataFrame for {NIFTY_SYMBOL} ({interval}/{period})")
 
+            # Safely normalize column names
             df = df.copy()
-            df.columns = [str(c).lower().replace(" ", "_") for c in df.columns]
+            try:
+                df.columns = [str(c).lower().replace(" ", "_") for c in df.columns]
+            except (AttributeError, TypeError) as e:
+                raise ValueError(f"Invalid DataFrame columns: {e}")
+            
             required = ["open", "high", "low", "close", "volume"]
             available = [c for c in required if c in df.columns]
             if not available:
                 raise ValueError(f"No OHLCV columns found. Got: {list(df.columns)}")
+            
             df = df[available].dropna(subset=["close"])
             if df.empty:
                 raise ValueError("All rows had NaN close")
 
-            # ── Volume enrichment from Kite futures ──────────────────
-            if enrich_volume and df["volume"].sum() == 0:
-                fut_vol = _fetch_futures_volume(interval, period)
-                if fut_vol is not None:
-                    # Align on timestamps — reindex futures vol to spot index
-                    aligned = fut_vol.reindex(df.index, method="nearest",
-                                               tolerance=pd.Timedelta("2min"))
-                    if aligned.notna().any():
-                        df["volume"] = aligned.values
-                        df["volume"] = df["volume"].fillna(0).astype(int)
-                        print(f"✅ Volume enriched from Kite futures "
-                              f"({df['volume'].gt(0).sum()}/{len(df)} candles)")
+            # ── Volume enrichment from Kite futures ──────────────────────
+            if enrich_volume and "volume" in df.columns and df["volume"].sum() == 0:
+                try:
+                    fut_vol = _fetch_futures_volume(interval, period)
+                    if fut_vol is not None and not fut_vol.empty:
+                        # Align on timestamps — reindex futures vol to spot index
+                        aligned = fut_vol.reindex(df.index, method="nearest",
+                                                   tolerance=pd.Timedelta("2min"))
+                        if aligned.notna().any():
+                            df["volume"] = aligned.values
+                            df["volume"] = df["volume"].fillna(0).astype(int)
+                            print(f"✅ Volume enriched from Kite futures "
+                                  f"({df['volume'].gt(0).sum()}/{len(df)} candles)")
+                except Exception as vol_err:
+                    # Don't fail the entire fetch if volume enrichment fails
+                    print(f"⚠️ Volume enrichment failed: {vol_err}")
 
             return df
 
