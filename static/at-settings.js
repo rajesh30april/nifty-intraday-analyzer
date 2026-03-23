@@ -18,7 +18,8 @@ let _atTrailAtrMult = 1.5;
 
 const _TRAIL_DESCRIPTIONS = {
     'fixed':      '📌 Fixed: SL moves up/down by a fixed number of Nifty points as price moves in your favour.',
-    'atr0.7':     '📐 ATR×0.7: SL = highest price − (ATR × 0.7). 🎯 OPTIMAL for intraday scalping! Tight yet adaptive.',  // 🐶 NEW!
+    'atr0.4':     '🎯 ATR×0.4: SL = highest price − (ATR × 0.4). 🎯 BEST for preventing whipsaw! Tight but safe.',  // 🐶 RECOMMENDED!
+    'atr0.7':     '📐 ATR×0.7: SL = highest price − (ATR × 0.7). Adaptive but can be too tight in volatile markets.',
     'atr1.5':     '📐 ATR×1.5: SL = highest price − (ATR × 1.5). Wider room in volatile markets, tighter when calm.',
     'atr2':       '📐 ATR×2: SL = highest price − (ATR × 2). Even more breathing room. Good for big trend days.',
     'supertrend': '📈 Supertrend: SL follows the Supertrend indicator line. Tight in sideways, wide in strong trends.',
@@ -27,7 +28,8 @@ const _TRAIL_DESCRIPTIONS = {
 
 function _setTrailMode(mode) {
     _atPanelDirty = true;
-    if (mode === 'atr0.7') { _atTrailMode = 'atr'; _atTrailAtrMult = 0.7; }  // 🐶 NEW: ATR ×0.7 for intraday!
+    if (mode === 'atr0.4') { _atTrailMode = 'atr'; _atTrailAtrMult = 0.4; }  // 🐶 NEW: ATR ×0.4 - prevents whipsaw!
+    else if (mode === 'atr0.7') { _atTrailMode = 'atr'; _atTrailAtrMult = 0.7; }
     else if (mode === 'atr1.5') { _atTrailMode = 'atr'; _atTrailAtrMult = 1.5; }
     else if (mode === 'atr2') { _atTrailMode = 'atr'; _atTrailAtrMult = 2.0; }
     else { _atTrailMode = mode; _atTrailAtrMult = 1.5; }
@@ -38,7 +40,8 @@ function _applyTrailModeUI(mode, mult) {
     // Highlight active pill
     document.querySelectorAll('.at-trail-pill').forEach(btn => {
         const active = btn.dataset.trail === mode
-            || (mode === 'atr' && mult === 0.7 && btn.dataset.trail === 'atr0.7')   // 🐶 NEW: Support ATR ×0.7
+            || (mode === 'atr' && mult === 0.4 && btn.dataset.trail === 'atr0.4')   // 🐶 NEW: Support ATR ×0.4
+            || (mode === 'atr' && mult === 0.7 && btn.dataset.trail === 'atr0.7')
             || (mode === 'atr' && mult === 1.5 && btn.dataset.trail === 'atr1.5')
             || (mode === 'atr' && mult === 2.0 && btn.dataset.trail === 'atr2');
         btn.className = btn.className
