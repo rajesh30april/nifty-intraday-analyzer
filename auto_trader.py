@@ -1578,9 +1578,10 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
     def _apply_sl_move(new_sl_val: float) -> None:
         """Update SL in state + log. Inlined helper to avoid duplicate code."""
         # ✨ CRITICAL SAFETY CHECK: Prevent super-tight stops! ✨
-        # Never allow SL closer than 20 points (absolute minimum for Nifty)
+        # Never allow SL closer than 30 points (absolute minimum for Nifty)
         # This prevents whipsaw from over-aggressive trailing.
-        MIN_SL_DISTANCE = 20  # Minimum 20 Nifty points
+        # INCREASED from 20 → 30 to prevent ATR over-tightening (Mar 23, 2026)
+        MIN_SL_DISTANCE = 30  # Minimum 30 Nifty points
         
         current_distance = abs(current_price - new_sl_val)
         if current_distance < MIN_SL_DISTANCE:
