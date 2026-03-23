@@ -212,11 +212,19 @@ async def _ltp_refresh_loop():
                 from auto_trader import _nifty_to_option_premium
                 sl_prem  = _nifty_to_option_premium(t.stop_loss, t)
                 tgt_prem = _nifty_to_option_premium(t.target, t) if t.target else None
+                
+                # 🐶 NEW: Show Nifty SL, premium, and locked profit!
+                is_long = t.direction == 'long'
+                locked_profit = abs(t.stop_loss - t.entry_price)
+                sl_nifty = t.stop_loss
+                
                 tgt_str  = f" | Tgt ₹{tgt_prem:.1f}" if tgt_prem else ""
                 ltp_str  = f"₹{ltp:.1f}" if ltp else "–"
                 src      = "WS" if ws_delivering else "REST"
+                
+                # 🐶 NEW: Enhanced format with Nifty SL + locked profit
                 _at_log("💓", "Alive",
-                        f"LTP {ltp_str} | SL Prem ₹{sl_prem:.1f}{tgt_str} | Nifty ₹{nifty:.0f} [{src}]")
+                        f"LTP {ltp_str} | SL: ₹{sl_nifty:.0f} (₹{sl_prem:.1f}) Locked:{locked_profit:.0f}pts{tgt_str} | Nifty ₹{nifty:.0f} [{src}]")
         else:
             _hb_tick = 0
         await asyncio.sleep(15)
