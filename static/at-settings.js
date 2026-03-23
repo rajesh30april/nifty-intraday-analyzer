@@ -18,6 +18,7 @@ let _atTrailAtrMult = 1.5;
 
 const _TRAIL_DESCRIPTIONS = {
     'fixed':      '📌 Fixed: SL moves up/down by a fixed number of Nifty points as price moves in your favour.',
+    'atr0.7':     '📐 ATR×0.7: SL = highest price − (ATR × 0.7). 🎯 OPTIMAL for intraday scalping! Tight yet adaptive.',  // 🐶 NEW!
     'atr1.5':     '📐 ATR×1.5: SL = highest price − (ATR × 1.5). Wider room in volatile markets, tighter when calm.',
     'atr2':       '📐 ATR×2: SL = highest price − (ATR × 2). Even more breathing room. Good for big trend days.',
     'supertrend': '📈 Supertrend: SL follows the Supertrend indicator line. Tight in sideways, wide in strong trends.',
@@ -26,7 +27,8 @@ const _TRAIL_DESCRIPTIONS = {
 
 function _setTrailMode(mode) {
     _atPanelDirty = true;
-    if (mode === 'atr1.5') { _atTrailMode = 'atr'; _atTrailAtrMult = 1.5; }
+    if (mode === 'atr0.7') { _atTrailMode = 'atr'; _atTrailAtrMult = 0.7; }  // 🐶 NEW: ATR ×0.7 for intraday!
+    else if (mode === 'atr1.5') { _atTrailMode = 'atr'; _atTrailAtrMult = 1.5; }
     else if (mode === 'atr2') { _atTrailMode = 'atr'; _atTrailAtrMult = 2.0; }
     else { _atTrailMode = mode; _atTrailAtrMult = 1.5; }
     _applyTrailModeUI(mode);
@@ -36,8 +38,9 @@ function _applyTrailModeUI(mode, mult) {
     // Highlight active pill
     document.querySelectorAll('.at-trail-pill').forEach(btn => {
         const active = btn.dataset.trail === mode
-            || (mode === 'atr' && mult === 2.0 && btn.dataset.trail === 'atr2')
-            || (mode === 'atr' && mult !== 2.0 && btn.dataset.trail === 'atr1.5');
+            || (mode === 'atr' && mult === 0.7 && btn.dataset.trail === 'atr0.7')   // 🐶 NEW: Support ATR ×0.7
+            || (mode === 'atr' && mult === 1.5 && btn.dataset.trail === 'atr1.5')
+            || (mode === 'atr' && mult === 2.0 && btn.dataset.trail === 'atr2');
         btn.className = btn.className
             .replace('bg-blue-600 text-white border-blue-500', '')
             .replace('text-gray-400 border-gray-600', 'text-gray-400 border-gray-600');
