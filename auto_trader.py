@@ -1589,18 +1589,30 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
             print(f"   Keeping current SL: ₹{trade.stop_loss:.0f} ({abs(current_price - trade.stop_loss):.1f} pts away)")
             return  # Don't move SL - too dangerous!
         
+        # 🐶 NEW: Capture old SL BEFORE updating for live log
+        old_sl_nifty = trade.stop_loss
+        old_sl_prem = _nifty_to_option_premium(old_sl_nifty, trade)
+        
         trade.stop_loss = round(new_sl_val, 2)
         state.pending_sl_exchange_update = True
         _save_state_snapshot()
-        prem_sl  = _nifty_to_option_premium(trade.stop_loss, trade)
+        
+        # 🐶 NEW: Calculate new premium and show the change!
+        new_sl_prem  = _nifty_to_option_premium(trade.stop_loss, trade)
         prem_tgt = _nifty_to_option_premium(trade.target, trade) if trade.target else None
         ltp_val  = state.last_option_ltp
         tgt_part = (' | Target ₹' + f'{prem_tgt:.1f}') if prem_tgt else ''
         ltp_part = (' | LTP ₹'    + f'{ltp_val:.1f}') if ltp_val else ''
         icon     = '🔼' if is_long else '🔽'
         label    = {'fixed': 'Fixed', 'atr': 'ATR', 'supertrend': 'ST'}.get(mode, mode)
+        
+        # 🐶 NEW: Show old → new for both Nifty and premium!
+        sl_change = f'₹{old_sl_nifty:.0f}→₹{trade.stop_loss:.0f}'
+        prem_change = f'₹{old_sl_prem:.1f}→₹{new_sl_prem:.1f}'
+        locked_profit = abs(trade.stop_loss - trade.entry_price)
+        
         _log(icon, f'Trail [{label}] SL moved',
-             'SL Prem ₹' + f'{prem_sl:.1f}' + tgt_part + ltp_part + ' (Nifty ₹' + f'{current_price:.0f})')
+             f'Nifty SL: {sl_change} | Prem: {prem_change} | Locked: {locked_profit:.0f}pts' + ltp_part)
 
     if new_sl is not None:
         if is_long and new_sl > trade.stop_loss:
