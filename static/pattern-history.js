@@ -213,30 +213,61 @@ function phOpenDetail(idx) {
     const kl      = p.key_levels || {};
     const fmt     = v => `₹${Number(v).toLocaleString('en-IN', {maximumFractionDigits: 0})}`;
 
+    // 🐶 IMPROVED: Different trade ideas based on pattern type
+    const isStructure = p.pattern_type === 'structure' || p.name?.toLowerCase().includes('structure');
+
     if (isBull) {
-        const neckline = kl['neckline'];
-        const sl       = kl['support_zone'] || kl['trough_avg'] || kl['trough1'];
-        const tgt      = kl['measured_target'];
-        tradeEl.innerHTML = `
-            <div class="space-y-2 text-sm">
-                <div class="flex items-center gap-2 text-green-700 font-bold">📈 Look for LONG entry</div>
-                <div class="text-xs text-gray-600">Enter on confirmed breakout above neckline ${neckline ? fmt(neckline) : ''} with strong volume.</div>
-                ${sl  ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🛡 Stop Loss (below support):</span> <b class="text-red-600">${fmt(sl)}</b></div>` : ''}
-                ${tgt ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🎯 Measured Target:</span> <b class="text-green-700">${fmt(tgt)}</b></div>` : ''}
-                <div class="text-[10px] text-gray-400 pt-1">⚠️ Always confirm with volume &amp; market context</div>
-            </div>`;
+        if (isStructure) {
+            // TREND STRUCTURE patterns (HH/HL) - NO neckline!
+            const latest_hl = kl['latest_hl'] || kl['latest_low'];
+            const sl = p.stop_loss || kl['stop_loss'];
+            tradeEl.innerHTML = `
+                <div class="space-y-2 text-sm">
+                    <div class="flex items-center gap-2 text-green-700 font-bold">📈 Trend Following Strategy</div>
+                    <div class="text-xs text-gray-600">The trend is UP. Wait for price to dip toward the latest Higher Low ${latest_hl ? fmt(latest_hl) : ''}, then LONG on bullish confirmation.</div>
+                    ${sl  ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🛡 Stop Loss (below HL):</span> <b class="text-red-600">${fmt(sl)}</b></div>` : ''}
+                    <div class="text-[10px] text-gray-400 pt-1">🐶 This is NOT a breakout setup! It's a trend — buy dips, don't chase highs.</div>
+                </div>`;
+        } else {
+            // REVERSAL/BREAKOUT patterns (Double Bottom, Ascending Triangle, etc.)
+            const neckline = kl['neckline'];
+            const sl       = kl['support_zone'] || kl['trough_avg'] || kl['trough1'];
+            const tgt      = kl['measured_target'] || p.measured_target;
+            tradeEl.innerHTML = `
+                <div class="space-y-2 text-sm">
+                    <div class="flex items-center gap-2 text-green-700 font-bold">📈 Look for LONG entry</div>
+                    <div class="text-xs text-gray-600">Enter on confirmed breakout above ${neckline ? 'neckline ' + fmt(neckline) : 'resistance'} with strong volume.</div>
+                    ${sl  ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🛡 Stop Loss (below support):</span> <b class="text-red-600">${fmt(sl)}</b></div>` : ''}
+                    ${tgt ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🎯 Measured Target:</span> <b class="text-green-700">${fmt(tgt)}</b></div>` : ''}
+                    <div class="text-[10px] text-gray-400 pt-1">⚠️ Always confirm with volume &amp; market context</div>
+                </div>`;
+        }
     } else if (isBear) {
-        const neckline = kl['neckline'];
-        const sl       = kl['resistance_zone'] || kl['peak_avg'] || kl['peak3'];
-        const tgt      = kl['measured_target'];
-        tradeEl.innerHTML = `
-            <div class="space-y-2 text-sm">
-                <div class="flex items-center gap-2 text-red-700 font-bold">📉 Look for SHORT entry</div>
-                <div class="text-xs text-gray-600">Enter on confirmed breakdown below neckline ${neckline ? fmt(neckline) : ''} with strong volume.</div>
-                ${sl  ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🛡 Stop Loss (above resistance):</span> <b class="text-red-600">${fmt(sl)}</b></div>` : ''}
-                ${tgt ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🎯 Measured Target:</span> <b class="text-green-700">${fmt(tgt)}</b></div>` : ''}
-                <div class="text-[10px] text-gray-400 pt-1">⚠️ Always confirm with volume &amp; market context</div>
-            </div>`;
+        if (isStructure) {
+            // TREND STRUCTURE patterns (LH/LL) - NO neckline!
+            const latest_lh = kl['latest_lh'] || kl['latest_high'];
+            const sl = p.stop_loss || kl['stop_loss'];
+            tradeEl.innerHTML = `
+                <div class="space-y-2 text-sm">
+                    <div class="flex items-center gap-2 text-red-700 font-bold">📉 Trend Following Strategy</div>
+                    <div class="text-xs text-gray-600">The trend is DOWN. Wait for price to rally toward the latest Lower High ${latest_lh ? fmt(latest_lh) : ''}, then SHORT on bearish confirmation.</div>
+                    ${sl  ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🛡 Stop Loss (above LH):</span> <b class="text-red-600">${fmt(sl)}</b></div>` : ''}
+                    <div class="text-[10px] text-gray-400 pt-1">🐶 This is NOT a breakout setup! It's a trend — sell rallies, don't chase lows.</div>
+                </div>`;
+        } else {
+            // REVERSAL/BREAKOUT patterns (Double Top, Descending Triangle, etc.)
+            const neckline = kl['neckline'];
+            const sl       = kl['resistance_zone'] || kl['peak_avg'] || kl['peak3'];
+            const tgt      = kl['measured_target'] || p.measured_target;
+            tradeEl.innerHTML = `
+                <div class="space-y-2 text-sm">
+                    <div class="flex items-center gap-2 text-red-700 font-bold">📉 Look for SHORT entry</div>
+                    <div class="text-xs text-gray-600">Enter on confirmed breakdown below ${neckline ? 'neckline ' + fmt(neckline) : 'support'} with strong volume.</div>
+                    ${sl  ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🛡 Stop Loss (above resistance):</span> <b class="text-red-600">${fmt(sl)}</b></div>` : ''}
+                    ${tgt ? `<div class="flex justify-between text-xs"><span class="text-gray-400">🎯 Measured Target:</span> <b class="text-green-700">${fmt(tgt)}</b></div>` : ''}
+                    <div class="text-[10px] text-gray-400 pt-1">⚠️ Always confirm with volume &amp; market context</div>
+                </div>`;
+        }
     } else {
         tradeEl.innerHTML = '<p class="text-xs text-gray-400">No directional bias — wait for confirmation.</p>';
     }

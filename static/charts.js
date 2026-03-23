@@ -108,38 +108,70 @@ function renderPriceChart(priceData, patterns, sr) {
         const markers = [];
         patterns.forEach(p => {
             if (!p.pivot_times) return;
+            
+            // 🐶 NEW: Different marker logic for trend structure patterns
+            const isStructure = p.pattern_type === 'structure' || p.name?.toLowerCase().includes('structure');
+            const isBearish = p.bias === 'bearish';
+            
             p.pivot_times.forEach((ts, i) => {
                 try {
                     const dt = new Date(ts);
-                    // Convert to "fake UTC" matching our candle timestamps
-                    // Extract IST hours/minutes and create UTC timestamp with those values
-                    const istOffset = 5.5 * 3600; // IST is UTC+5:30
+                    const istOffset = 5.5 * 3600;
                     const utcSec = Math.floor(dt.getTime() / 1000);
                     const fakeUtcSec = utcSec + istOffset;
-                    // Find nearest candle time
                     const nearest = candleData.reduce((prev, curr) =>
                         Math.abs(curr.time - fakeUtcSec) < Math.abs(prev.time - fakeUtcSec) ? curr : prev
                     );
-                    // Determine marker style based on pivot role:
-                    // Double Top/Bottom: P1=trough/peak, P2=neckline, P3=trough/peak
-                    // Neckline (middle pivot) gets a circle marker, extremes get arrows
-                    const isNeckline = (p.pivot_times.length === 3 && i === 1);
-                    const isBearish = p.bias === 'bearish';
-
+                    
                     let position, color, shape, label;
-                    if (isNeckline) {
-                        // Neckline: opposite side, purple circle
-                        position = isBearish ? 'belowBar' : 'aboveBar';
-                        color = '#7c3aed';
-                        shape = 'circle';
-                        label = 'Neckline';
+                    
+                    if (isStructure) {
+                        // TREND STRUCTURE: Mark LH/LL or HH/HL
+                        const isPeak = (i % 2 === 0);  // Even indices = peaks, odd = troughs
+                        
+                        if (isBearish) {
+                            // DOWNTREND (LH/LL)
+                            if (isPeak) {
+                                position = 'aboveBar';
+                                color = '#ea1100';
+                                shape = 'arrowDown';
+                                label = 'LH';  // Lower High
+                            } else {
+                                position = 'belowBar';
+                                color = '#ef4444';
+                                shape = 'circle';
+                                label = 'LL';  // Lower Low
+                            }
+                        } else {
+                            // UPTREND (HH/HL)
+                            if (isPeak) {
+                                position = 'aboveBar';
+                                color = '#2a8703';
+                                shape = 'arrowUp';
+                                label = 'HH';  // Higher High
+                            } else {
+                                position = 'belowBar';
+                                color = '#22c55e';
+                                shape = 'circle';
+                                label = 'HL';  // Higher Low
+                            }
+                        }
                     } else {
-                        position = isBearish ? 'aboveBar' : 'belowBar';
-                        color = isBearish ? '#ea1100' : '#2a8703';
-                        shape = isBearish ? 'arrowDown' : 'arrowUp';
-                        // Label as T1/T2 for double bottom, P1/P2 for double top
-                        const pivotNum = i === 0 ? 1 : 2;
-                        label = `${p.name} ${isBearish ? 'P' : 'T'}${pivotNum}`;
+                        // REVERSAL/BREAKOUT PATTERNS (original logic)
+                        const isNeckline = (p.pivot_times.length === 3 && i === 1);
+                        
+                        if (isNeckline) {
+                            position = isBearish ? 'belowBar' : 'aboveBar';
+                            color = '#7c3aed';
+                            shape = 'circle';
+                            label = 'Neckline';
+                        } else {
+                            position = isBearish ? 'aboveBar' : 'belowBar';
+                            color = isBearish ? '#ea1100' : '#2a8703';
+                            shape = isBearish ? 'arrowDown' : 'arrowUp';
+                            const pivotNum = i === 0 ? 1 : 2;
+                            label = `${p.name} ${isBearish ? 'P' : 'T'}${pivotNum}`;
+                        }
                     }
 
                     markers.push({

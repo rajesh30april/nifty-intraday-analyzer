@@ -593,6 +593,92 @@ def detect_descending_triangle(
     )
 
 
+def detect_trend_structure(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    lookback: int = 40
+) -> Optional[PatternMatch]:
+    """Detect price structure: HH/HL (uptrend) or LH/LL (downtrend).
+    
+    This is NOT a breakout pattern — it's trend confirmation.
+    Used to identify when price is making a clean trending structure.
+    """
+    if len(high) < lookback:
+        return None
+    
+    recent = pd.DataFrame({"high": high, "low": low, "close": close}).tail(lookback)
+    
+    # Split into two halves
+    mid = lookback // 2
+    first_half = recent.iloc[:mid]
+    second_half = recent.iloc[mid:]
+    
+    first_high = first_half["high"].max()
+    second_high = second_half["high"].max()
+    first_low = first_half["low"].min()
+    second_low = second_half["low"].min()
+    
+    # Collect swing highs and lows for detailed description
+    peaks, troughs = _find_peaks_troughs(recent["high"], recent["low"], order=3, min_distance=3)
+    
+    recent_highs = [recent["high"].iloc[i] for i in peaks[-3:]] if len(peaks) >= 3 else []
+    recent_lows = [recent["low"].iloc[i] for i in troughs[-3:]] if len(troughs) >= 3 else []
+    
+    # UPTREND: Higher Highs + Higher Lows
+    if second_high > first_high and second_low > first_low:
+        hh_str = ", ".join([f"{h:.1f}" for h in recent_highs]) if recent_highs else f"{second_high:.1f}"
+        hl_str = ", ".join([f"{l:.1f}" for l in recent_lows]) if recent_lows else f"{second_low:.1f}"
+        
+        latest_hh = recent_highs[-1] if recent_highs else second_high
+        latest_hl = recent_lows[-1] if recent_lows else second_low
+        
+        return PatternMatch(
+            name="Uptrend Structure (HH/HL)",
+            pattern_type="structure",
+            bias="bullish",
+            confidence=0.75,
+            description=f"Making Higher Highs ({hh_str}) and Higher Lows ({hl_str}). Trend is up — buy dips near latest higher low.",
+            start_idx=len(high) - lookback,
+            end_idx=len(high) - 1,
+            key_levels={
+                "latest_hh": round(latest_hh, 2),
+                "latest_hl": round(latest_hl, 2),
+            },
+            measured_target=None,  # No target - it's a trend, not a breakout
+            stop_loss=round(latest_hl * 0.998, 2),  # Just below last higher low
+            pivot_times=peaks + troughs,
+        )
+    
+    # DOWNTREND: Lower Highs + Lower Lows
+    elif second_high < first_high and second_low < first_low:
+        lh_str = ", ".join([f"{h:.1f}" for h in recent_highs]) if recent_highs else f"{second_high:.1f}"
+        ll_str = ", ".join([f"{l:.1f}" for l in recent_lows]) if recent_lows else f"{second_low:.1f}"
+        
+        latest_lh = recent_highs[-1] if recent_highs else second_high
+        latest_ll = recent_lows[-1] if recent_lows else second_low
+        
+        return PatternMatch(
+            name="Downtrend Structure (LH/LL)",
+            pattern_type="structure",
+            bias="bearish",
+            confidence=0.75,
+            description=f"Making Lower Highs ({lh_str}) and Lower Lows ({ll_str}). Trend is down — sell rallies near the latest lower high.",
+            start_idx=len(high) - lookback,
+            end_idx=len(high) - 1,
+            key_levels={
+                "latest_lh": round(latest_lh, 2),
+                "latest_ll": round(latest_ll, 2),
+            },
+            measured_target=None,  # No target - it's a trend, not a breakout
+            stop_loss=round(latest_lh * 1.002, 2),  # Just above last lower high
+            pivot_times=peaks + troughs,
+        )
+    
+    # Not a clear trend structure
+    return None
+
+
 def _to_native(val):
     """Convert numpy types to native Python types."""
     if isinstance(val, (np.integer,)):
@@ -633,6 +719,7 @@ def detect_all_patterns(df: pd.DataFrame, timeframe: str = "5m") -> dict:
         lambda: detect_ascending_triangle(high, low, close, volume),
         lambda: detect_descending_triangle(high, low, close, volume),
         lambda: detect_flag(df, volume),
+        lambda: detect_trend_structure(high, low, close),  # 🐶 NEW: Trend structure (HH/HL, LH/LL)
     ]
     
     for detector in detectors:
