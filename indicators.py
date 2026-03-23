@@ -317,3 +317,94 @@ def volume_analysis(volume: pd.Series) -> dict:
         "volume_ratio": round(vol_ratio, 2),
         "volume_trend": vol_trend,
     }
+
+
+def fibonacci_retracement(high: float, low: float, direction: str = "up") -> dict:
+    """Calculate Fibonacci retracement levels from a swing.
+
+    Args:
+        high: Swing high price
+        low: Swing low price
+        direction: 'up' for uptrend (retracing from high), 
+                   'down' for downtrend (retracing from low)
+
+    Returns:
+        Dictionary with retracement levels (23.6%, 38.2%, 50%, 61.8%, 78.6%)
+
+    Usage:
+        # After uptrend from 22600 to 22800:
+        fib = fibonacci_retracement(22800, 22600, 'up')
+        # fib['61.8'] = 22676 (strong support for pullback buy)
+
+        # After downtrend from 22800 to 22600:
+        fib = fibonacci_retracement(22800, 22600, 'down')
+        # fib['61.8'] = 22724 (strong resistance for bounce sell)
+    """
+    range_val = high - low
+    
+    if direction == "up":
+        # Uptrend: retracing DOWN from high
+        return {
+            "0.0":   round(high, 2),                      # 0% = swing high
+            "23.6":  round(high - range_val * 0.236, 2),  # Shallow pullback
+            "38.2":  round(high - range_val * 0.382, 2),  # Healthy pullback
+            "50.0":  round(high - range_val * 0.500, 2),  # Midpoint
+            "61.8":  round(high - range_val * 0.618, 2),  # GOLDEN RATIO - strong support
+            "78.6":  round(high - range_val * 0.786, 2),  # Deep pullback - trend weakening
+            "100.0": round(low, 2),                       # 100% = swing low
+        }
+    else:
+        # Downtrend: retracing UP from low
+        return {
+            "0.0":   round(low, 2),                       # 0% = swing low
+            "23.6":  round(low + range_val * 0.236, 2),   # Shallow bounce
+            "38.2":  round(low + range_val * 0.382, 2),   # Healthy bounce
+            "50.0":  round(low + range_val * 0.500, 2),   # Midpoint
+            "61.8":  round(low + range_val * 0.618, 2),   # GOLDEN RATIO - strong resistance
+            "78.6":  round(low + range_val * 0.786, 2),   # Deep bounce - reversal likely
+            "100.0": round(high, 2),                      # 100% = swing high
+        }
+
+
+def fibonacci_extension(swing_low: float, swing_high: float, 
+                        retrace_low: float, direction: str = "up") -> dict:
+    """Calculate Fibonacci extension targets after a retracement.
+
+    Args:
+        swing_low: Initial swing low
+        swing_high: Initial swing high
+        retrace_low: Retracement low (where price pulled back to)
+        direction: 'up' for bullish extension, 'down' for bearish
+
+    Returns:
+        Dictionary with extension targets (100%, 127.2%, 161.8%, 261.8%)
+
+    Usage:
+        # Uptrend: 22600 → 22800 → pullback to 22676 → where's target?
+        ext = fibonacci_extension(22600, 22800, 22676, 'up')
+        # ext['161.8'] = 22924 (strong target for take profit)
+
+        # Downtrend: 22800 → 22600 → bounce to 22724 → where's target?
+        ext = fibonacci_extension(22800, 22600, 22724, 'down')
+        # ext['161.8'] = 22476 (strong target for take profit)
+    """
+    swing_range = swing_high - swing_low
+    
+    if direction == "up":
+        # Bullish extension: targets above swing high
+        return {
+            "100.0":  round(swing_high, 2),                        # Original high
+            "127.2":  round(swing_high + swing_range * 0.272, 2),  # First extension
+            "161.8":  round(swing_high + swing_range * 0.618, 2),  # GOLDEN TARGET
+            "200.0":  round(swing_high + swing_range * 1.000, 2),  # Double range
+            "261.8":  round(swing_high + swing_range * 1.618, 2),  # Extreme extension
+        }
+    else:
+        # Bearish extension: targets below swing low
+        return {
+            "100.0":  round(swing_low, 2),                         # Original low
+            "127.2":  round(swing_low - swing_range * 0.272, 2),   # First extension
+            "161.8":  round(swing_low - swing_range * 0.618, 2),   # GOLDEN TARGET
+            "200.0":  round(swing_low - swing_range * 1.000, 2),   # Double range
+            "261.8":  round(swing_low - swing_range * 1.618, 2),   # Extreme extension
+        }
