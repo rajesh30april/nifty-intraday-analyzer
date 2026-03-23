@@ -128,8 +128,14 @@ def evaluate_chart_patterns(df: pd.DataFrame) -> StrategySignal:
     if "volume" in df.columns:
         vol_avg = float(today_df["volume"].iloc[:-1].mean())
         vol_now = float(today_df["volume"].iloc[-1])
-        vol_ok  = vol_now >= vol_avg * VOLUME_RATIO_MIN if vol_avg > 0 else True
-        vol_detail = f"Breakout vol {vol_now:,.0f} vs avg {vol_avg:,.0f} ({vol_now/vol_avg:.1f}x)" if vol_avg > 0 else "No vol data"
+        
+        # 🐶 FIX: Skip volume check if data is missing/incomplete
+        if vol_avg == 0 or vol_now == 0:
+            vol_ok = True  # Skip check when no volume data available
+            vol_detail = f"Breakout vol {vol_now:,.0f} vs avg {vol_avg:,.0f} (incomplete data - check skipped ⚠️)"
+        else:
+            vol_ok = vol_now >= vol_avg * VOLUME_RATIO_MIN
+            vol_detail = f"Breakout vol {vol_now:,.0f} vs avg {vol_avg:,.0f} ({vol_now/vol_avg:.1f}x)"
     else:
         vol_ok, vol_detail = True, "No volume data"
 
