@@ -55,6 +55,7 @@ from auto_trader import (
     _log as _at_log,
 )
 from pattern_scanner import scan_patterns, TIMEFRAME_META, PATTERN_EMOJIS
+from data_manager import archive_today_trades, cleanup_old_archives
 
 
 async def _fetch(interval: str = "5m", period: str = "5d") -> pd.DataFrame:
@@ -82,18 +83,45 @@ def _seconds_to_next_candle_close(candle_minutes: int = 5) -> float:
     return max(secs_to_boundary, 10)  # at least 10s
 
 
+# Track last archived date for automatic daily archiving
+_last_archived_date = None
+
 async def _auto_trader_loop():
     """Background loop: evaluates strategy at every 5-min candle close.
 
     Syncs to clock boundaries (:00, :05, :10 ...) so evaluation always
     happens on a CLOSED candle — never mid-candle garbage.
+    
+    Also handles automatic daily archiving when date changes.
     """
+    global _last_archived_date
     print("🤖 Auto-trader loop started — synced to 5-min candle closes")
+    
+    # Initialize last archived date to today
+    _last_archived_date = datetime.now().strftime("%Y-%m-%d")
+    
     while True:
         wait = _seconds_to_next_candle_close(5)
         await asyncio.sleep(wait)
 
         now_str = datetime.now().strftime("%H:%M:%S")
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        
+        # Check if date changed (new trading day) - archive previous day
+        if _last_archived_date != current_date:
+            print(f"📅 Date changed: {_last_archived_date} → {current_date}")
+            # Archive previous day's trades
+            result = await asyncio.to_thread(archive_today_trades, _last_archived_date)
+            print(result['message'])
+            
+            # Cleanup old archives (keep last 90 days)
+            cleanup_result = await asyncio.to_thread(cleanup_old_archives, 90)
+            print(cleanup_result['message'])
+            
+            # Update last archived date
+            _last_archived_date = current_date
+            print(f"✅ Ready for new trading day: {current_date}")
+        
         if not trader_state.is_running:
             continue   # silent — expected when stopped
         if trader_state.kill_switch:
@@ -3403,6 +3431,137 @@ async def auto_trader_history():
             "unrealized_pnl": unrealized_pnl,
             "day_total_pnl":  round(realized_pnl + unrealized_pnl, 2),
             "ghost_trades":   len(trades) - len(completed),  # for debugging
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ── Archive & Historical Data API ─────────────────────────────────────
+
+@app.get("/api/archive/trades/{date}")
+async def get_archived_trades(date: str):
+    """
+    Get all trades for a specific date.
+    
+    Args:
+        date: YYYY-MM-DD format
+        
+    Returns:
+        Trade data for that date or error
+    """
+    try:
+        from data_manager import get_trades_for_date
+        trades_data = await asyncio.to_thread(get_trades_for_date, date)
+        
+        if trades_data is None:
+            return {
+                "success": False,
+                "error": f"No trades found for {date}"
+            }
+        
+        return {
+            "success": True,
+            "date": date,
+            "data": trades_data
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/archive/stats/last-n-days/{days}")
+async def get_last_n_days_stats(days: int = 7):
+    """
+    Get statistics for last N days.
+    
+    Args:
+        days: Number of days to look back (default: 7)
+        
+    Returns:
+        Aggregated statistics
+    """
+    try:
+        from data_manager import get_last_n_days_stats
+        stats = await asyncio.to_thread(get_last_n_days_stats, days)
+        
+        return {
+            "success": True,
+            "stats": stats
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/archive/stats/monthly/{year}/{month}")
+async def get_monthly_stats(year: int, month: int):
+    """
+    Get statistics for a specific month.
+    
+    Args:
+        year: 2026
+        month: 1-12
+        
+    Returns:
+        Monthly statistics
+    """
+    try:
+        from data_manager import get_monthly_stats
+        stats = await asyncio.to_thread(get_monthly_stats, year, month)
+        
+        return {
+            "success": True,
+            "stats": stats
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/archive/manual")
+async def manual_archive(date: str = None):
+    """
+    Manually trigger archive of trade_log.json.
+    
+    Args:
+        date: Optional date (YYYY-MM-DD), defaults to today
+        
+    Returns:
+        Archive result
+    """
+    try:
+        from data_manager import archive_today_trades
+        result = await asyncio.to_thread(archive_today_trades, date)
+        
+        return result
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/archive/list")
+async def list_archives():
+    """
+    List all available archived dates.
+    
+    Returns:
+        List of dates that have archives
+    """
+    try:
+        from pathlib import Path
+        archives_dir = Path(__file__).parent / "archives"
+        
+        if not archives_dir.exists():
+            return {"success": True, "dates": []}
+        
+        # Find all trade_log_*.json files
+        archive_files = sorted(archives_dir.glob("trade_log_*.json"))
+        
+        dates = []
+        for f in archive_files:
+            # Extract date from filename: trade_log_2026-03-23.json
+            date_str = f.stem.replace('trade_log_', '')
+            dates.append(date_str)
+        
+        return {
+            "success": True,
+            "dates": sorted(dates, reverse=True)  # Most recent first
         }
     except Exception as e:
         return {"success": False, "error": str(e)}

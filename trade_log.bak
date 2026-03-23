@@ -1,7 +1,7 @@
 {
   "date": "2026-03-23",
-  "total_pnl": 1560.0,
-  "orders_placed": 5,
+  "total_pnl": 1579.5,
+  "orders_placed": 7,
   "paper_mode": false,
   "trades": [
     {
@@ -97,6 +97,44 @@
       "pnl": -490.75,
       "status": "exited",
       "order_id": "2035943416659369984",
+      "paper": false
+    },
+    {
+      "id": "T-20260323-111021905069",
+      "timestamp": "2026-03-23T11:10:21.905149",
+      "direction": "short",
+      "instrument": "NIFTY2632422400PE",
+      "entry_price": 22561.400390625,
+      "entry_premium": 157.75,
+      "quantity": 65,
+      "stop_loss": 22546.82,
+      "target": 22471.400390625,
+      "exit_price": 22567.05,
+      "exit_premium": 158.05,
+      "exit_time": "2026-03-23T11:32:04.311338",
+      "exit_reason": "\u26a1 tick \u2014 SL hit \u20b922546.82 @ \u20b922567",
+      "pnl": 19.5,
+      "status": "exited",
+      "order_id": "2035954786809339904",
+      "paper": false
+    },
+    {
+      "id": "T-20260323-113512019711",
+      "timestamp": "2026-03-23T11:35:12.019757",
+      "direction": "short",
+      "instrument": "NIFTY2632422400PE",
+      "entry_price": 22532.19921875,
+      "entry_premium": 171.85,
+      "quantity": 65,
+      "stop_loss": 22562.19921875,
+      "target": 22442.19921875,
+      "exit_price": null,
+      "exit_premium": null,
+      "exit_time": null,
+      "exit_reason": null,
+      "pnl": 0.0,
+      "status": "filled",
+      "order_id": "2035961036351660032",
       "paper": false
     }
   ]
