@@ -176,6 +176,9 @@ def _atomic_write(path: Path, content: str) -> None:
     os.replace() is atomic on POSIX — the old file is never partially overwritten.
     Strategy: write to .tmp → backup old → rename .tmp → old
     """
+    # 🐶 FIX: Ensure parent directory exists before writing
+    path.parent.mkdir(parents=True, exist_ok=True)
+    
     tmp = path.with_suffix(".tmp")
     bak = path.with_suffix(".bak")
     try:
@@ -192,7 +195,7 @@ def _atomic_write(path: Path, content: str) -> None:
 def _save_state_snapshot():
     """Write a full state snapshot to disk after every significant change.
 
-    Called on: entry, exit, trailing SL update.
+    Called on: entry, exit, trailing SL update, settings configuration.
     On restart, `_recover_state()` reads this to rebuild state.
 
     DESIGN: active_trade is stored separately from trades_today.
@@ -240,7 +243,14 @@ def _save_state_snapshot():
         # Only completed trades — avoids double-counting on recovery
         "trades_today": [_trade_to_dict(t) for t in completed_trades],
     }
-    _atomic_write(STATE_SNAPSHOT_FILE, json.dumps(snapshot, indent=2))
+    
+    try:
+        _atomic_write(STATE_SNAPSHOT_FILE, json.dumps(snapshot, indent=2))
+        print(f"✅ Settings saved to {STATE_SNAPSHOT_FILE}")
+    except Exception as e:
+        print(f"❌ CRITICAL: Failed to save settings snapshot: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def _subscribe_option_tick(token: int | None) -> None:
