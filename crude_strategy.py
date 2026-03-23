@@ -26,11 +26,12 @@ import pandas as pd
 
 from strategy import Direction, StrategyCondition, StrategySignal
 import indicators as ind
-from strategies.chart_patterns import (
-    detect_flag,
-    detect_double_top_bottom,
-    detect_triangle,
-)
+# from strategies.chart_patterns import (
+#     detect_flag,  # These functions no longer exist
+#     detect_double_top_bottom,
+#     detect_triangle,
+# )
+# TODO: Update crude strategy to use pattern_detector.py instead
 from strategies.candlestick_patterns import (
     detect_engulfing,
     detect_hammer_star,
