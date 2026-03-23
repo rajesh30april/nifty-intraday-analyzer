@@ -101,6 +101,11 @@ function syncAtSettingsFromStatus(data) {
     }
     if (data.max_daily_loss !== undefined) {  // ← NEW: Sync max loss from server
         set('at-max-loss', data.max_daily_loss);
+        // 🐶 FIX: Also update the display label!
+        const displayEl = document.getElementById('at-max-loss-display');
+        if (displayEl) {
+            displayEl.textContent = parseInt(data.max_daily_loss).toLocaleString('en-IN');
+        }
     }
     _updateLotsHint();
     _updateCapitalEstimate();
