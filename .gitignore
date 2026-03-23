@@ -22,3 +22,7 @@ crude_settings.json
 
 # Azure deployment credentials (contains sensitive service principal data)
 azure-config.txt
+-e 
+# Backup files
+*.backup_*
+pattern_detector_old.py
