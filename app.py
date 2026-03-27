@@ -50,7 +50,7 @@ from auto_trader import (
     get_trader_status, start_auto_trader, stop_auto_trader,
     activate_kill_switch, configure_auto_trader, sync_from_zerodha,
     set_trade_managed, discard_trade_from_app,
-    refresh_active_option_ltp,
+    refresh_active_option_ltp, reconcile_zerodha_position,
     state as trader_state, evaluate_and_act,
     _log as _at_log,
 )
@@ -293,20 +293,24 @@ async def _crude_heartbeat_loop():
 
 
 async def _ltp_refresh_loop():
-    """Keep option LTP fresh and log a heartbeat every 60s.
+    """Keep option LTP fresh, log a heartbeat every 60s, and reconcile
+    Zerodha position state every 60s.
 
     Strategy:
     - If KiteTicker WebSocket is streaming AND option is subscribed → LTP
       arrives every ~1s automatically via on_ticks. No REST call needed.
     - If WebSocket is down (disconnected / not authenticated) → fall back
-      to REST poll every 15s so P&L doesn't go stale.
+      to REST poll every 15s so P&L doesn’t go stale.
     - Heartbeat log every 60s regardless of source.
+    - Zerodha position reconciliation every 60s: if the exchange closed the
+      position (SL-M filled, user closed in Kite, expiry), detect it here
+      instead of showing a ghost open trade indefinitely.
     """
     await asyncio.sleep(3)   # short initial delay — let server finish startup
     _hb_tick = 0
     while True:
         if trader_state.active_trade:
-            # Only hit REST if WebSocket isn't delivering option ticks
+            # Only hit REST if WebSocket isn’t delivering option ticks
             ws_delivering = (
                 kite_manager.is_streaming
                 and trader_state.active_option_token is not None
@@ -315,32 +319,41 @@ async def _ltp_refresh_loop():
                 # Fallback: REST poll every 15s
                 await asyncio.to_thread(refresh_active_option_ltp)
 
-            # Heartbeat every ~60s (4 × 15s iterations)
+            # Heartbeat + position reconciliation every ~60s (4 × 15s)
             _hb_tick += 1
             if _hb_tick % 4 == 0:
+                # ── Zerodha position reconcile ───────────────────────────────
+                # Checks Zerodha’s live qty for the active instrument.
+                # If qty=0 (closed externally), force-closes the app trade.
+                # Runs BEFORE heartbeat log so Alive msg shows current state.
+                await asyncio.to_thread(reconcile_zerodha_position)
+
+                # Re-check: reconcile may have just cleared active_trade
+                if not trader_state.active_trade:
+                    _hb_tick = 0
+                    await asyncio.sleep(15)
+                    continue
+
+                # ── Heartbeat log ───────────────────────────────────────
                 t     = trader_state.active_trade
                 ltp   = trader_state.last_option_ltp
                 nifty = trader_state.last_nifty_price or 0
                 from auto_trader import _nifty_to_option_premium
                 sl_prem  = _nifty_to_option_premium(t.stop_loss, t)
                 tgt_prem = _nifty_to_option_premium(t.target, t) if t.target else None
-                
-                # Locked profit = SL moved INTO profit vs entry
-                # LONG: SL above entry = profit locked
-                # SHORT: SL below entry = profit locked
+
                 is_long = t.direction == 'long'
                 locked_profit = (
                     t.stop_loss - t.entry_price if is_long
                     else t.entry_price - t.stop_loss
                 )
                 locked_label = f"Locked:{locked_profit:+.0f}pts" if locked_profit > 0 else f"Risk:{abs(locked_profit):.0f}pts"
-                sl_nifty = t.stop_loss
-                tgt_str  = f" | Tgt ₹{tgt_prem:.1f}" if tgt_prem else ""
-                ltp_str  = f"₹{ltp:.1f}" if ltp else "–"
+                tgt_str  = f" | Tgt \u20b9{tgt_prem:.1f}" if tgt_prem else ""
+                ltp_str  = f"\u20b9{ltp:.1f}" if ltp else "–"
                 src      = "WS" if ws_delivering else "REST"
 
                 _at_log("💓", "Alive",
-                        f"LTP {ltp_str} | SL: ₹{sl_nifty:.0f} (₹{sl_prem:.1f}) {locked_label}{tgt_str} | Nifty ₹{nifty:.0f} [{src}]")
+                        f"LTP {ltp_str} | SL: \u20b9{t.stop_loss:.0f} (\u20b9{sl_prem:.1f}) {locked_label}{tgt_str} | Nifty \u20b9{nifty:.0f} [{src}]")
         else:
             _hb_tick = 0
         await asyncio.sleep(15)
@@ -3512,7 +3525,33 @@ async def auto_trader_sync_zerodha():
     return result
 
 
-@app.post("/api/auto-trader/discard-trade")
+@app.post("/api/auto-trader/reconcile")
+async def auto_trader_reconcile():
+    """Manually trigger a Zerodha position reconcile check.
+
+    Queries Zerodha for the active instrument's live qty.  If qty=0 (position
+    closed externally by exchange SL-M, manual close in Kite, or expiry),
+    force-closes the app trade and returns a summary.
+
+    This also runs automatically every ~60s via the LTP heartbeat loop.
+    Use this endpoint to trigger it immediately without waiting.
+    """
+    trade = trader_state.active_trade
+    if not trade:
+        return {"message": "No active trade to reconcile", "action": "none"}
+    instrument = trade.instrument
+    await asyncio.to_thread(reconcile_zerodha_position)
+    if not trader_state.active_trade:
+        return {
+            "message": f"{instrument} confirmed closed in Zerodha — app state cleared",
+            "action": "force_closed",
+        }
+    return {
+        "message": f"{instrument} still open in Zerodha — no change",
+        "action": "none",
+    }
+
+
 async def discard_trade_api():
     """Remove active trade from app state only — no order sent to Zerodha."""
     return await asyncio.to_thread(discard_trade_from_app)

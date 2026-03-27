@@ -557,24 +557,86 @@ def _recover_state(snapshot_file: Path | None = None):
         print(f"🔄 [RECOVERY] {state.recovery_message}")
 
 
-def _get_zerodha_position_qty(instrument: str) -> int:
+def _get_zerodha_position_qty(instrument: str) -> int | None:
     """Query Zerodha for current net quantity of `instrument`.
 
-    Returns net quantity (positive = long, negative = short, 0 = closed/not found).
-    Returns 0 if Kite is not authenticated (paper mode safe fallback).
+    Returns:
+        int  — net quantity (positive = long, negative = short, 0 = confirmed closed)
+        None — could not verify (API error, not authenticated): caller should NOT
+               assume position is closed.
     """
     try:
         if not kite_manager.is_authenticated:
-            return 0
+            return None   # can't verify — treat as unknown, not closed
         positions = kite_manager.kite.positions()
         tradingsymbol = instrument.replace("NFO:", "")
         for pos in positions.get("net", []):
             if pos.get("tradingsymbol") == tradingsymbol:
                 return int(pos.get("quantity", 0))
-        return 0
+        return 0   # not in list → confirmed closed / never opened
     except Exception as e:
         print(f"⚠️ Could not check Zerodha positions: {e}")
-        return 0   # Assume closed if can't verify
+        return None   # API error — caller must NOT force-close on this
+
+
+def reconcile_zerodha_position() -> None:
+    """Periodic sync: compare app state against Zerodha's live positions.
+
+    Called every ~60 seconds from the LTP-refresh heartbeat loop.
+    Catches external position closures the app would otherwise miss:
+      • Exchange SL-M order triggered (fills at exchange, no callback here)
+      • User manually closed the position in Kite / Kite web
+      • Option expiry / auto-settlement
+      • Margin call square-off by broker
+
+    Design:
+      - Only acts when qty is CONFIRMED zero (int 0).  API errors (None)
+        are silently ignored — we never force-close on an unknown state.
+      - Paper-mode and exit-in-progress are skipped (nothing to reconcile).
+      - Uses last_option_ltp for best-effort P&L; falls back to entry_premium.
+    """
+    trade = state.active_trade
+    if not trade:
+        return
+    if state.is_paper_mode:
+        return   # paper mode: no real Zerodha position to check
+    if state.exit_in_progress:
+        return   # exit already underway — don't race
+
+    qty = _get_zerodha_position_qty(trade.instrument)
+    if qty is None:
+        return   # API error — keep trade alive, retry next cycle
+    if qty != 0:
+        return   # position still open — nothing to do
+
+    # ── qty == 0: position is gone from Zerodha ───────────────────
+    # Compute best-effort P&L using last known option LTP
+    last_ltp    = state.last_option_ltp or trade.entry_premium
+    pnl         = round((last_ltp - trade.entry_premium) * trade.quantity, 2)
+    sym_clean   = trade.instrument.replace("NFO:", "")
+
+    _log("🔍", "RECONCILE — Position closed externally",
+         f"{sym_clean} shows qty=0 in Zerodha. "
+         f"Est. P&L \u20b9{pnl:+,.0f} (LTP \u20b9{last_ltp:.1f}). Clearing app state.")
+    print(f"\n🔍 [RECONCILE] {sym_clean}: qty=0 in Zerodha but app showed trade open.")
+    print(f"   Likely cause: SL-M filled at exchange / manual close / expiry.")
+    print(f"   Est. P&L \u20b9{pnl:+,.0f}. Forcing trade closure.\n")
+
+    trade.exit_reason  = "Position closed externally in Zerodha (reconcile)"
+    trade.exit_time    = datetime.now().isoformat()
+    trade.exit_premium = last_ltp
+    trade.exit_price   = state.last_nifty_price or trade.entry_price
+    trade.status       = OrderStatus.EXITED
+    trade.pnl          = pnl
+    state.total_pnl   += pnl
+    _unsubscribe_option_tick(state.active_option_token)
+    state.active_option_token = None
+    state.active_trade        = None
+    state.exit_in_progress    = False
+    state.last_exit_time      = datetime.now()
+    state.last_exit_direction = trade.direction
+    _save_trade_log()
+    _save_state_snapshot()
 
 
 # ── Run recovery immediately at module load ───────────────────────
