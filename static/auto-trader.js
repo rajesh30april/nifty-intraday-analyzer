@@ -597,6 +597,7 @@ function renderAutoTrader(data) {
                 trailEl.className   = 'text-xs text-gray-500';
                 trailEl.title       = 'Trail not activated yet';
             }
+        }  // end if (trailEl)
 
         // Row 2 — live prices & quantity
         const niftyCur = data.nifty_current || t.nifty_current;
