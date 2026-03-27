@@ -367,13 +367,21 @@ def _recover_state(snapshot_file: Path | None = None):
     # ── Restore running flag (auto-resume after server restart) ──
     state.is_running         = snap.get("is_running",         False)
 
-    # ── Restore historical trades ─────────────────────────────
+    # ── Restore historical trades (dedup by ID — last entry wins) ─────────────────────
+    # Snapshot can carry duplicate IDs if a previous bug persisted them.
+    # Build a map keyed by trade ID so only the last occurrence survives.
+    _seen: dict[str, dict] = {}
     for t in snap.get("trades_today", []):
+        _seen[t["id"]] = t   # later entries overwrite earlier ones
+    restored_dupes = len(snap.get("trades_today", [])) - len(_seen)
+    if restored_dupes:
+        print(f"⚠️  [RECOVERY] Removed {restored_dupes} duplicate trade(s) from snapshot")
+    for t in _seen.values():
         state.trades_today.append(Trade(
             id=t["id"], timestamp=t["timestamp"],
             direction=t["direction"], instrument=t["instrument"],
             entry_price=t["entry_price"],
-            entry_premium=t.get("entry_premium", t["entry_price"]),  # back-compat: old snapshots lack this
+            entry_premium=t.get("entry_premium", t["entry_price"]),
             quantity=t["quantity"],
             stop_loss=t["stop_loss"], target=t["target"],
             exit_price=t.get("exit_price"),
@@ -383,6 +391,10 @@ def _recover_state(snapshot_file: Path | None = None):
             status=t.get("status", OrderStatus.EXITED),
             order_id=t.get("order_id"), paper=t.get("paper", True),
         ))
+    # Re-derive total_pnl from exited trades (guards against accumulated rounding errors)
+    state.total_pnl = round(
+        sum(t.pnl for t in state.trades_today if t.status == OrderStatus.EXITED), 2
+    )
 
     # ── Recover active trade if present ───────────────────────
     at = snap.get("active_trade")
@@ -1868,23 +1880,28 @@ def tick_guard(tick: dict) -> None:
 # ── Trade Log ─────────────────────────────────────────────────
 
 def _save_trade_log():
-    """Persist trade log to JSON file."""
-    trades = []
+    """Persist trade log to JSON file.
+
+    Deduplicates by trade ID (last entry wins) before writing
+    so any in-memory corruption can never reach the file.
+    """
+    seen: dict[str, dict] = {}
     for t in state.trades_today:
-        trades.append({
+        seen[t.id] = {
             "id": t.id, "timestamp": t.timestamp,
             "direction": t.direction, "instrument": t.instrument,
-            "entry_price":   t.entry_price,    # Nifty spot at entry
-            "entry_premium": t.entry_premium,  # Option LTP at entry
+            "entry_price":   t.entry_price,
+            "entry_premium": t.entry_premium,
             "quantity": t.quantity,
             "stop_loss": t.stop_loss, "target": t.target,
-            "exit_price":   t.exit_price,      # Nifty spot at exit
-            "exit_premium": t.exit_premium,    # Option LTP at exit
+            "exit_price":   t.exit_price,
+            "exit_premium": t.exit_premium,
             "exit_time": t.exit_time,
             "exit_reason": t.exit_reason, "pnl": t.pnl,
             "status": t.status, "order_id": t.order_id,
             "paper": t.paper,
-        })
+        }
+    trades = list(seen.values())
     _atomic_write(TRADE_LOG_FILE, json.dumps({
         "date": datetime.now().strftime("%Y-%m-%d"),
         "total_pnl": round(state.total_pnl, 2),

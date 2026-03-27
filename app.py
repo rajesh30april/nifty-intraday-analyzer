@@ -3687,6 +3687,13 @@ async def auto_trader_history():
         data   = _json.loads(log_file.read_text())
         trades = data.get("trades", [])
 
+        # Dedup by trade ID (last occurrence wins) — guards against
+        # any duplicate that slipped past the auto_trader write layer.
+        seen: dict = {}
+        for t in trades:
+            seen[t["id"]] = t
+        trades = list(seen.values())
+
         # Only include properly exited trades
         completed = [
             t for t in trades
