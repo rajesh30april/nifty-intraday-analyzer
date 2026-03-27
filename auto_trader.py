@@ -954,7 +954,14 @@ def _place_sl_order(trade: "Trade", sl_trigger_price: float) -> str | None:
         # NSE banned SL-M (stop-loss market) for F&O contracts.
         # Use SL (stop-loss limit) with a 3-point buffer below the trigger
         # so the limit order fills even with minor slippage.
-        sl_limit_price = round(max(0.5, sl_trigger_price - 3.0), 1)
+        # NSE F&O tick size = ₹0.05 — prices must be multiples of 0.05
+        TICK = 0.05
+        def _snap(p: float) -> float:
+            return round(round(p / TICK) * TICK, 2)
+
+        sl_trigger_price = _snap(sl_trigger_price)
+        sl_limit_price   = _snap(max(0.5, sl_trigger_price - 3.0))
+
         order_id = kite_manager.kite.place_order(
             variety=kite_manager.kite.VARIETY_REGULAR,
             exchange="NFO",
@@ -1059,8 +1066,10 @@ def _sync_trailing_sl_to_exchange() -> None:
         return
 
     try:
-        # NSE banned SL-M for F&O — update both trigger and limit price
-        new_limit = round(max(0.5, new_trigger - 3.0), 1)
+        # NSE banned SL-M for F&O; tick size = ₹0.05 — snap both prices
+        TICK = 0.05
+        new_trigger = round(round(new_trigger / TICK) * TICK, 2)
+        new_limit   = round(round(max(0.5, new_trigger - 3.0) / TICK) * TICK, 2)
         kite_manager.kite.modify_order(
             variety=kite_manager.kite.VARIETY_REGULAR,
             order_id=trade.sl_order_id,
