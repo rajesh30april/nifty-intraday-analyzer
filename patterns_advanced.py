@@ -75,18 +75,17 @@ def detect_triple_top(
 
     # Try every combination of 3 consecutive peaks
     for i in range(len(peaks) - 2):
-        p1_idx, p1 = peaks[i]
-        p2_idx, p2 = peaks[i + 1]
-        p3_idx, p3 = peaks[i + 2]
+        p1_idx = peaks[i];     p1 = float(high.iloc[p1_idx])
+        p2_idx = peaks[i + 1]; p2 = float(high.iloc[p2_idx])
+        p3_idx = peaks[i + 2]; p3 = float(high.iloc[p3_idx])
 
         if not _peaks_within([p1, p2, p3], tol):
             continue
 
-        # Middle peak (head) must NOT be significantly higher (else it's H&S)
-        if p2 > max(p1, p3) * 1.01:        # >1% higher → H&S territory
+        # Middle peak must NOT be significantly higher (else it’s H&S)
+        if p2 > max(p1, p3) * 1.01:
             continue
 
-        # Find neckline = lowest close between peak pairs
         seg1 = low.iloc[p1_idx: p2_idx + 1]
         seg2 = low.iloc[p2_idx: p3_idx + 1]
         t1 = float(seg1.min())
@@ -159,14 +158,14 @@ def detect_triple_bottom(
         return None
 
     for i in range(len(troughs) - 2):
-        t1_idx, t1 = troughs[i]
-        t2_idx, t2 = troughs[i + 1]
-        t3_idx, t3 = troughs[i + 2]
+        t1_idx = troughs[i];     t1 = float(low.iloc[t1_idx])
+        t2_idx = troughs[i + 1]; t2 = float(low.iloc[t2_idx])
+        t3_idx = troughs[i + 2]; t3 = float(low.iloc[t3_idx])
 
         if not _peaks_within([t1, t2, t3], tol):
             continue
 
-        # Middle trough must NOT be significantly lower (else it's inv H&S)
+        # Middle trough must NOT be significantly lower (else it’s inv H&S)
         if t2 < min(t1, t3) * 0.99:
             continue
 
@@ -249,9 +248,9 @@ def detect_head_and_shoulders(
     tol = max(high.iloc[-1] * shoulder_tolerance_pct / 100, atr_val * 0.8)
 
     for i in range(len(peaks) - 2):
-        ls_idx, ls = peaks[i]       # Left shoulder
-        h_idx,  hd = peaks[i + 1]  # Head
-        rs_idx, rs = peaks[i + 2]  # Right shoulder
+        ls_idx = peaks[i];     ls = float(high.iloc[ls_idx])
+        h_idx  = peaks[i + 1]; hd = float(high.iloc[h_idx])
+        rs_idx = peaks[i + 2]; rs = float(high.iloc[rs_idx])
 
         # Head must be higher than both shoulders
         if hd <= max(ls, rs):
@@ -337,9 +336,9 @@ def detect_inverse_head_and_shoulders(
     tol = max(low.iloc[-1] * shoulder_tolerance_pct / 100, atr_val * 0.8)
 
     for i in range(len(troughs) - 2):
-        ls_idx, ls = troughs[i]
-        h_idx,  hd = troughs[i + 1]
-        rs_idx, rs = troughs[i + 2]
+        ls_idx = troughs[i];     ls = float(low.iloc[ls_idx])
+        h_idx  = troughs[i + 1]; hd = float(low.iloc[h_idx])
+        rs_idx = troughs[i + 2]; rs = float(low.iloc[rs_idx])
 
         if hd >= min(ls, rs):
             continue
@@ -542,9 +541,9 @@ def detect_channel(
     if slope_diff > atr_val * parallelism_tolerance:
         return None
 
-    # Channel width must be meaningful (not too narrow)
+    # Channel width must be meaningful (not just noise)
     channel_width = float(np.mean([h - l for h, l in zip(seg_h, seg_l)]))
-    if channel_width < atr_val * 1.2:
+    if channel_width < atr_val * 0.8:   # Reduced from 1.2 — was blocking valid channels
         return None
 
     # Channel must be sustained — at least 2 touches on each trendline
@@ -562,4 +561,156 @@ def detect_channel(
     if avg_slope > flat_threshold:
         name = "Rising Channel"
         bias = "bullish"
-        idea = "Buy dips near lower trendline ₹{:.0f}, SL below channel".format(lower)
+        idea = "Buy dips near lower trendline \u20b9{:.0f}, SL below channel".format(lower)
+        confidence = 0.65
+    elif avg_slope < -flat_threshold:
+        name = "Falling Channel"
+        bias = "bearish"
+        idea = "Sell rallies near upper trendline \u20b9{:.0f}, SL above channel".format(upper)
+        confidence = 0.65
+    else:
+        name = "Horizontal Channel"
+        bias = "neutral"
+        idea = "Range bound \u20b9{:.0f}\u2013\u20b9{:.0f}. Buy support, sell resistance".format(lower, upper)
+        confidence = 0.60
+
+    vol_confirmed = False
+    if volume is not None:
+        vol_confirmed, _ = _check_volume_confirmation(volume, len(close) - 1)
+    if vol_confirmed:
+        confidence = min(confidence + 0.07, 0.82)
+
+    current = float(close.iloc[-1])
+    mid = (upper + lower) / 2
+    target = upper if current < mid else lower
+
+    return PatternMatch(
+        name=name,
+        pattern_type="continuation",
+        bias=bias,
+        confidence=round(confidence, 2),
+        description=(
+            f"{idea}. Width \u20b9{channel_width:.0f}. "
+            f"Upper \u20b9{upper:.0f} ({upper_touches} touches), "
+            f"Lower \u20b9{lower:.0f} ({lower_touches} touches)."
+        ),
+        start_idx=len(close) - min_candles,
+        end_idx=len(close) - 1,
+        key_levels={
+            "resistance": round(upper, 2),
+            "support":    round(lower, 2),
+            "entry":      round(current, 2),
+        },
+        volume_confirmed=vol_confirmed,
+        measured_target=round(target, 2),
+        stop_loss=(
+            round(lower - atr_val * 0.5, 2) if bias == "bullish"
+            else round(upper + atr_val * 0.5, 2)
+        ),
+    )
+
+
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# SYMMETRICAL TRIANGLE
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+
+def detect_symmetrical_triangle(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: Optional[pd.Series] = None,
+    min_candles: int = 10,
+) -> Optional[PatternMatch]:
+    """Symmetrical Triangle: lower highs + higher lows converging.
+
+    Neutral until breakout. Volume shrinks inside, surges on breakout.
+    """
+    if len(high) < min_candles:
+        return None
+
+    atr_val = float(_calculate_atr(high, low, close).iloc[-1] or 0)
+    seg_h = list(high.iloc[-min_candles:])
+    seg_l = list(low.iloc[-min_candles:])
+
+    slope_h = _linreg_slope(seg_h)   # Must be negative (lower highs)
+    slope_l = _linreg_slope(seg_l)   # Must be positive (higher lows)
+
+    if slope_h >= 0 or slope_l <= 0:
+        return None
+
+    if abs(abs(slope_h) - abs(slope_l)) > atr_val * 0.3:
+        return None
+
+    ranges = [h - l for h, l in zip(seg_h, seg_l)]
+    first_half  = sum(ranges[:len(ranges)//2]) / (len(ranges)//2)
+    second_half = sum(ranges[len(ranges)//2:]) / (len(ranges) - len(ranges)//2)
+    if second_half >= first_half * 0.80:
+        return None
+
+    upper   = float(max(seg_h))
+    lower   = float(min(seg_l))
+    current = float(close.iloc[-1])
+
+    broke_up   = current > float(high.iloc[-min_candles:].max()) * 0.998
+    broke_down = current < float(low.iloc[-min_candles:].min())  * 1.002
+
+    if broke_up:
+        bias, target, confidence = "bullish", current + (upper - lower), 0.72
+    elif broke_down:
+        bias, target, confidence = "bearish", current - (upper - lower), 0.72
+    else:
+        bias, target, confidence = "neutral", (upper + lower) / 2, 0.55
+
+    vol_confirmed = False
+    if volume is not None:
+        vol_confirmed, _ = _check_volume_confirmation(volume, len(close) - 1)
+    if vol_confirmed and bias != "neutral":
+        confidence = min(confidence + 0.10, 0.85)
+
+    compression = 1 - (second_half / first_half)
+    status = (
+        "\u2705 Breakout UP" if broke_up else
+        "\u2705 Breakout DOWN" if broke_down else
+        "\u23f3 Coiling \u2014 watch for breakout"
+    )
+
+    return PatternMatch(
+        name="Symmetrical Triangle",
+        pattern_type="continuation",
+        bias=bias,
+        confidence=round(confidence, 2),
+        description=(
+            f"Lower highs + higher lows converging ({compression*100:.0f}% compressed). "
+            f"{status}. Range \u20b9{lower:.0f}\u2013\u20b9{upper:.0f}. Target \u20b9{target:.0f}."
+        ),
+        start_idx=len(close) - min_candles,
+        end_idx=len(close) - 1,
+        key_levels={
+            "resistance": round(upper, 2),
+            "support":    round(lower, 2),
+            "entry":      round(current, 2),
+        },
+        volume_confirmed=vol_confirmed,
+        measured_target=round(target, 2),
+        stop_loss=(
+            round(lower - atr_val * 0.5, 2) if broke_up else
+            round(upper + atr_val * 0.5, 2)
+        ),
+        pivot_times=[len(close) - min_candles, len(close) - 1],
+    )
+
+
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ALL ADVANCED PATTERNS
+# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+
+ALL_ADVANCED_DETECTORS = [
+    (detect_triple_top,                 "short", "\U0001f531 Triple Top"),
+    (detect_triple_bottom,              "long",  "\U0001f531 Triple Bottom"),
+    (detect_head_and_shoulders,         "short", "\U0001f464 H&S"),
+    (detect_inverse_head_and_shoulders, "long",  "\U0001f464 Inv H&S"),
+    (detect_rising_wedge,               "short", "\U0001f4d0 Rising Wedge"),
+    (detect_falling_wedge,              "long",  "\U0001f4d0 Falling Wedge"),
+    (detect_channel,                    "auto",  "\U0001f4ca Channel"),
+    (detect_symmetrical_triangle,       "auto",  "\U0001f53a Sym Triangle"),
+]
