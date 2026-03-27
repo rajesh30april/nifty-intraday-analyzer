@@ -2418,86 +2418,55 @@ def sync_from_zerodha() -> dict:
          f"Diff: ₹{premium_diff:+.2f} → Est. entry Nifty: ₹{estimated_entry_nifty:.0f} "
          f"(vs current ₹{nifty_spot:.0f})")
     
-    # 🔧 STEP 2: Set REALISTIC SL that protects the actual entry premium
-    # Instead of arbitrary Nifty - 30pts, we ensure SL premium is BELOW entry premium
-    # This guarantees we don't lock in a loss!
-    
+    # ── STEP 2: Correct SL / Target calculation ───────────────────────────────
+    # Key insight: we ALWAYS buy the option (CE for LONG, PE for SHORT).
+    # SL fires when option premium falls below entry_premium - sl_pts×delta.
+    # Profit is when premium RISES for LONG or FALLS for SHORT (PE fell = Nifty rose).
+    #
+    # LONG CE : profit when Nifty rises  → SL when Nifty FALLS  sl_pts below entry
+    # SHORT PE: profit when Nifty falls  → SL when Nifty RISES sl_pts above entry
+    #
+    # SL premium (exchange trigger) = entry_premium - sl_pts × delta
+    # Profit lock: if already in ≥ 1 SL-unit of profit, lock 40 % of it.
+
+    sl_premium = avg_price - (sl_pts * ASSUMED_DELTA)    # baseline: entry - loss tolerance
+
     if direction_val == "long":
-        # For LONG: SL premium should be entry - (sl_pts × delta)
-        # This creates a proper SL buffer below entry premium
-        # But if we're already in significant profit, lock some profit!
-        
-        if premium_diff > (sl_pts * ASSUMED_DELTA):  # More than 1 SL worth of profit
-            # Lock 40% of profit
-            sl_premium = avg_price + (premium_diff * 0.4)
-            _log("🔒", "Profit lock",
-                 f"In profit by ₹{premium_diff:.2f}/unit (>{sl_pts}pts worth). "
-                 f"Setting SL to lock ₹{sl_premium - avg_price:.2f}/unit profit")
-        else:
-            # Not enough profit - set SL to protect entry with small buffer
-            # Use 80% of normal SL distance to give some breathing room
-            sl_premium = avg_price - (sl_pts * ASSUMED_DELTA * 0.8)
-            sl_premium = max(sl_premium, avg_price * 0.5)  # Never less than 50% of entry
-            _log("🛡️", "Entry protection",
-                 f"Setting SL at ₹{sl_premium:.2f} (80% of normal, protects entry ₹{avg_price:.2f})")
-        
-        # Reverse calculate Nifty SL from premium SL
-        # sl_premium = avg_price + (sl_nifty - estimated_entry_nifty) × delta
-        # sl_nifty = estimated_entry_nifty + (sl_premium - avg_price) / delta
-        sl_level = estimated_entry_nifty + ((sl_premium - avg_price) / ASSUMED_DELTA)
-        
-        # Target: entry + (sl_pts × rr_ratio)
+        profit_unit = premium_diff                           # positive = profit for LONG
+        if profit_unit >= sl_pts * ASSUMED_DELTA:            # at least 1 SL-unit in profit
+            sl_premium = avg_price + profit_unit * 0.4       # lock 40 % of profit
+            _log("🔒", "Profit lock (LONG)",
+                 f"Profit ₹{profit_unit:.2f}/u → locking ₹{profit_unit*0.4:.2f}/u")
+        sl_level  = estimated_entry_nifty - sl_pts          # SL is sl_pts BELOW entry
         tgt_level = estimated_entry_nifty + tgt_pts
-        
-    else:  # SHORT
-        # For SHORT: SL premium should be entry + (sl_pts × delta)
-        
-        if premium_diff < -(sl_pts * ASSUMED_DELTA):  # More than 1 SL worth of profit (premium FELL)
-            # Lock 40% of profit
-            profit_amount = abs(premium_diff)
-            sl_premium = avg_price - (profit_amount * 0.4)
-            _log("🔒", "Profit lock",
-                 f"In profit by ₹{profit_amount:.2f}/unit (>{sl_pts}pts worth). "
-                 f"Setting SL to lock ₹{profit_amount * 0.4:.2f}/unit profit")
-        else:
-            # Not enough profit - set SL to protect entry
-            sl_premium = avg_price + (sl_pts * ASSUMED_DELTA * 0.8)
-            sl_premium = min(sl_premium, avg_price * 1.5)  # Never more than 150% of entry
-            _log("🛡️", "Entry protection",
-                 f"Setting SL at ₹{sl_premium:.2f} (80% of normal, protects entry ₹{avg_price:.2f})")
-        
-        # Reverse calculate Nifty SL from premium SL
-        # For SHORT: sl_premium = avg_price - (sl_nifty - estimated_entry_nifty) × delta
-        # sl_nifty = estimated_entry_nifty + (avg_price - sl_premium) / delta
-        sl_level = estimated_entry_nifty + ((avg_price - sl_premium) / ASSUMED_DELTA)
-        
-        # Target: entry - (sl_pts × rr_ratio)
+    else:  # SHORT PE
+        profit_unit = -premium_diff                          # positive = profit for SHORT (prem fell)
+        if profit_unit >= sl_pts * ASSUMED_DELTA:            # at least 1 SL-unit in profit
+            sl_premium = avg_price - profit_unit * 0.4       # lock 40 % of profit
+            _log("🔒", "Profit lock (SHORT)",
+                 f"Profit ₹{profit_unit:.2f}/u → locking ₹{profit_unit*0.4:.2f}/u")
+        sl_level  = estimated_entry_nifty + sl_pts          # SL is sl_pts ABOVE entry
         tgt_level = estimated_entry_nifty - tgt_pts
-    
-    # 🔧 STEP 3: Safety checks
-    # Ensure SL is not TOO close (min 20 pts) or TOO far (max 100 pts)
-    sl_distance = abs(nifty_spot - sl_level)
-    if sl_distance < 20:
-        _log("⚠️", "SL too tight", f"Adjusting from {sl_distance:.0f}pts to 20pts minimum")
-        sl_level = nifty_spot - 20 if direction_val == "long" else nifty_spot + 20
-    elif sl_distance > 100:
-        _log("⚠️", "SL too loose", f"Adjusting from {sl_distance:.0f}pts to 100pts maximum")
-        sl_level = nifty_spot - 100 if direction_val == "long" else nifty_spot + 100
-    
-    # Round and verify
-    sl_level = round(sl_level, 2)
-    tgt_level = round(tgt_level, 2)
-    
-    # Final check: ensure SL doesn't create immediate exit
-    immediate_exit_risk = (
-        (direction_val == "long" and nifty_spot <= sl_level) or
-        (direction_val == "short" and nifty_spot >= sl_level)
+
+    sl_premium = round(max(0.5, sl_premium), 2)
+    sl_level   = round(sl_level, 2)
+    tgt_level  = round(tgt_level, 2)
+
+    _log("🛡️", "Sync SL calc",
+         f"entry_prem=₹{avg_price} sl_pts={sl_pts} delta={ASSUMED_DELTA} → "
+         f"sl_prem=₹{sl_premium:.2f} sl_nifty=₹{sl_level:.0f} tgt_nifty=₹{tgt_level:.0f}")
+
+    # ── STEP 3: Sanity guard ──────────────────────────────────────────
+    # Verify SL is on the correct SIDE of current Nifty.
+    # If not (e.g. entry estimate drifted badly), fall back to nifty ± sl_pts.
+    sl_wrong_side = (
+        (direction_val == "long"  and sl_level >= nifty_spot) or
+        (direction_val == "short" and sl_level <= nifty_spot)
     )
-    if immediate_exit_risk:
-        _log("🚨", "CRITICAL: Immediate exit risk!",
-             f"Current ₹{nifty_spot:.0f} would hit SL ₹{sl_level:.0f}! "
-             f"Setting SL to current - 25pts to give breathing room")
-        sl_level = nifty_spot - 25 if direction_val == "long" else nifty_spot + 25
+    if sl_wrong_side:
+        _log("⚠️", "SL side corrected",
+             f"SL ₹{sl_level:.0f} was on wrong side of Nifty ₹{nifty_spot:.0f} — forcing ±{sl_pts}pts")
+        sl_level = (nifty_spot - sl_pts) if direction_val == "long" else (nifty_spot + sl_pts)
 
     trade = Trade(
         id            = f"sync-{datetime.now().strftime('%H%M%S')}",
@@ -2522,10 +2491,28 @@ def sync_from_zerodha() -> dict:
     state.highest_price_since_entry = nifty_spot
     state.lowest_price_since_entry  = nifty_spot
     state.entry_nifty_sl            = sl_level
-    state.entry_option_trigger      = _estimate_option_sl_trigger(sl_pts, avg_price)
+    state.entry_option_trigger       = sl_premium          # use the correct computed trigger
     state.pending_sl_exchange_update = False
-    state.orders_placed            += 1
-    _save_state_snapshot()   # ← persist immediately so a restart restores this trade
+    state.orders_placed             += 1
+
+    # ── Place exchange SL order ─────────────────────────────────────────
+    # This is the backstop that auto-closes the position if the app crashes.
+    # Without it, sync trades have ZERO exchange-level protection.
+    if not past_exit_time and trade.app_managed:
+        sl_order_id = _place_sl_order(trade, sl_premium)
+        if sl_order_id:
+            trade.sl_order_id = sl_order_id
+            _log("🛡", "Exchange SL armed",
+                 f"SL order placed: trigger=₹{sl_premium:.2f} limit=₹{sl_premium-3:.2f} "
+                 f"qty={trade.quantity} | id={sl_order_id}")
+        else:
+            _log("⚠️", "Exchange SL failed",
+                 "Could not place SL order — app tick-guard still active but NO exchange backstop")
+    else:
+        _log("⚠️", "SL skipped",
+             "Past exit time or monitor-only mode — no exchange SL placed")
+
+    _save_state_snapshot()   # persist trade + sl_order_id so restart restores both
     all_syms = [p["tradingsymbol"] for p in chosen_positions]
     
     # Calculate expected SL and target premiums for display
