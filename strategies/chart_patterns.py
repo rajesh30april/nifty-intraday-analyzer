@@ -16,21 +16,28 @@ from strategies.registry import register, StrategyInfo
 # ✅ SINGLE SOURCE OF TRUTH: Import from centralized pattern detector
 # 🐶 UPDATED: Now includes ALL new candlestick patterns and divergences!
 from pattern_detector import (
-    # Candlestick patterns (NEW - early reversal detection!)
     detect_bullish_engulfing,
     detect_bearish_engulfing,
     detect_hammer,
     detect_shooting_star,
     detect_morning_star,
     detect_evening_star,
-    # Divergence patterns (NEW - strongest signals!)
     detect_rsi_divergence,
-    # Chart patterns (existing)
     detect_flag as detect_flag_pattern,
     detect_double_top,
     detect_double_bottom,
     detect_ascending_triangle,
     detect_descending_triangle,
+)
+from patterns_advanced import (
+    detect_triple_top,
+    detect_triple_bottom,
+    detect_head_and_shoulders,
+    detect_inverse_head_and_shoulders,
+    detect_rising_wedge,
+    detect_falling_wedge,
+    detect_channel,
+    detect_symmetrical_triangle,
 )
 
 # ── Tuning ────────────────────────────────────────────────────────
@@ -100,6 +107,23 @@ def evaluate_chart_patterns(df: pd.DataFrame) -> StrategySignal:
          "short", "📐 Descending Triangle")
     _add(detect_flag_pattern(today_df, volume=volume, impulse_min_pct=0.25),
          "auto",  "🚩 Flag")
+    # ── Advanced patterns ────────────────────────────────────
+    _add(detect_triple_top(high, low, close, volume),
+         "short", "🔱 Triple Top")
+    _add(detect_triple_bottom(high, low, close, volume),
+         "long",  "🔱 Triple Bottom")
+    _add(detect_head_and_shoulders(high, low, close, volume),
+         "short", "👤 Head & Shoulders")
+    _add(detect_inverse_head_and_shoulders(high, low, close, volume),
+         "long",  "👤 Inverse H&S")
+    _add(detect_rising_wedge(high, low, close, volume),
+         "short", "📐 Rising Wedge")
+    _add(detect_falling_wedge(high, low, close, volume),
+         "long",  "📐 Falling Wedge")
+    _add(detect_channel(high, low, close, volume),
+         "auto",  "📊 Channel")
+    _add(detect_symmetrical_triangle(high, low, close, volume),
+         "auto",  "🔺 Sym Triangle")
 
     # ✅ Pick the winner = highest confidence (not first found!)
     detected_pattern = None

@@ -1429,21 +1429,32 @@ def detect_all_patterns(df: pd.DataFrame, timeframe: str = "5m") -> dict:
     
     # Run all detectors
     # 🐶 NEW: Candlestick patterns added (catch reversals EARLY!)
+    from patterns_advanced import (
+        detect_triple_top, detect_triple_bottom,
+        detect_head_and_shoulders, detect_inverse_head_and_shoulders,
+        detect_rising_wedge, detect_falling_wedge,
+        detect_channel, detect_symmetrical_triangle,
+    )
     detectors = [
-        # Divergence patterns (HIGHEST PRIORITY - strongest early signals)
         lambda: detect_rsi_divergence(high, low, close),
-        # Candlestick patterns (highest priority - early reversal signals)
         lambda: detect_bullish_engulfing(open_p, high, low, close, volume),
         lambda: detect_bearish_engulfing(open_p, high, low, close, volume),
         lambda: detect_hammer(open_p, high, low, close, volume),
         lambda: detect_shooting_star(open_p, high, low, close, volume),
         lambda: detect_morning_star(open_p, high, low, close, volume),
         lambda: detect_evening_star(open_p, high, low, close, volume),
-        # Chart patterns (existing)
         lambda: detect_double_top(high, low, close, volume),
         lambda: detect_double_bottom(high, low, close, volume),
+        lambda: detect_triple_top(high, low, close, volume),
+        lambda: detect_triple_bottom(high, low, close, volume),
+        lambda: detect_head_and_shoulders(high, low, close, volume),
+        lambda: detect_inverse_head_and_shoulders(high, low, close, volume),
         lambda: detect_ascending_triangle(high, low, close, volume),
         lambda: detect_descending_triangle(high, low, close, volume),
+        lambda: detect_symmetrical_triangle(high, low, close, volume),
+        lambda: detect_rising_wedge(high, low, close, volume),
+        lambda: detect_falling_wedge(high, low, close, volume),
+        lambda: detect_channel(high, low, close, volume),
         lambda: detect_flag(df, volume),
         lambda: detect_trend_structure(high, low, close),
     ]
