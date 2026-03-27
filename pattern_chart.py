@@ -148,52 +148,206 @@ def _highlight_pattern_region(ax, df: pd.DataFrame, start_idx: int, end_idx: int
 
 def _draw_key_levels(ax, df: pd.DataFrame, pattern: PatternMatch):
     """Draw support, resistance, neckline, and other key levels."""
-    x_min = -0.5
     x_max = len(df) - 0.5
-    
     levels = pattern.key_levels or {}
-    
-    # Support (green dashed line)
+    start_offset = pattern.start_idx   # global start idx
+
+    # ── Trend Structure: zigzag + LH/LL markers ───────────────────
+    if pattern.pattern_type == "structure":
+        is_down = pattern.bias == "bearish"
+
+        # Convert global indices to local chart indices
+        def _local(global_idx: int) -> int:
+            return global_idx - start_offset
+
+        if is_down:
+            lh_idxs = [_local(i) for i in levels.get("lh_indices", [])]
+            ll_idxs = [_local(i) for i in levels.get("ll_indices", [])]
+            lh_vals = levels.get("lh_values", [])
+            ll_vals = levels.get("ll_values", [])
+
+            # Draw zigzag connecting pivots
+            all_pts = sorted(
+                [(i, v, "LH") for i, v in zip(lh_idxs, lh_vals)] +
+                [(i, v, "LL") for i, v in zip(ll_idxs, ll_vals)]
+            )
+            if len(all_pts) >= 2:
+                xs = [p[0] for p in all_pts]
+                ys = [p[1] for p in all_pts]
+                ax.plot(xs, ys, color='#ff6666', linewidth=1.5,
+                        linestyle='--', alpha=0.7, zorder=3, label='Structure')
+
+            # LH markers (red downward triangles)
+            for xi, yv in zip(lh_idxs, lh_vals):
+                if 0 <= xi < len(df):
+                    ax.plot(xi, yv, marker='v', color='#ff2222', markersize=10,
+                            zorder=5, markeredgecolor='white', markeredgewidth=0.8)
+                    ax.annotate(f"LH\n₹{yv:.0f}", xy=(xi, yv),
+                                xytext=(0, 12), textcoords='offset points',
+                                color='#ff8888', fontsize=8, fontweight='bold',
+                                ha='center', va='bottom',
+                                bbox=dict(boxstyle='round,pad=0.2', fc='#1a0000',
+                                          ec='#ff4444', lw=0.8, alpha=0.9))
+
+            # LL markers (red upward triangles at low)
+            for xi, yv in zip(ll_idxs, ll_vals):
+                if 0 <= xi < len(df):
+                    ax.plot(xi, yv, marker='^', color='#ff4444', markersize=9,
+                            zorder=5, markeredgecolor='white', markeredgewidth=0.8)
+                    ax.annotate(f"LL\n₹{yv:.0f}", xy=(xi, yv),
+                                xytext=(0, -18), textcoords='offset points',
+                                color='#ff8888', fontsize=8, fontweight='bold',
+                                ha='center', va='top',
+                                bbox=dict(boxstyle='round,pad=0.2', fc='#1a0000',
+                                          ec='#ff4444', lw=0.8, alpha=0.9))
+
+            # Dashed resistance at latest LH
+            latest_lh = levels.get("latest_lh")
+            if latest_lh:
+                ax.axhline(y=latest_lh, color='#ff4444', linestyle='--',
+                           linewidth=1.5, alpha=0.6)
+                ax.text(x_max, latest_lh, f" Sell Zone ₹{latest_lh:.0f}",
+                        color='#ff6666', fontsize=9, va='bottom', fontweight='bold')
+
+            # Structure break level
+            sb = levels.get("structure_break")
+            if sb:
+                ax.axhline(y=sb, color='#ffaa00', linestyle=':',
+                           linewidth=1.2, alpha=0.5)
+                ax.text(x_max, sb, f" Break ₹{sb:.0f}",
+                        color='#ffaa00', fontsize=8, va='top')
+
+        else:  # Uptrend
+            hh_idxs = [_local(i) for i in levels.get("hh_indices", [])]
+            hl_idxs = [_local(i) for i in levels.get("hl_indices", [])]
+            hh_vals = levels.get("hh_values", [])
+            hl_vals = levels.get("hl_values", [])
+
+            all_pts = sorted(
+                [(i, v, "HH") for i, v in zip(hh_idxs, hh_vals)] +
+                [(i, v, "HL") for i, v in zip(hl_idxs, hl_vals)]
+            )
+            if len(all_pts) >= 2:
+                xs = [p[0] for p in all_pts]
+                ys = [p[1] for p in all_pts]
+                ax.plot(xs, ys, color='#44ff88', linewidth=1.5,
+                        linestyle='--', alpha=0.7, zorder=3)
+
+            for xi, yv in zip(hh_idxs, hh_vals):
+                if 0 <= xi < len(df):
+                    ax.plot(xi, yv, marker='^', color='#22ff44', markersize=10,
+                            zorder=5, markeredgecolor='white', markeredgewidth=0.8)
+                    ax.annotate(f"HH\n₹{yv:.0f}", xy=(xi, yv),
+                                xytext=(0, 12), textcoords='offset points',
+                                color='#88ff99', fontsize=8, fontweight='bold',
+                                ha='center', va='bottom',
+                                bbox=dict(boxstyle='round,pad=0.2', fc='#001a00',
+                                          ec='#44ff88', lw=0.8, alpha=0.9))
+
+            for xi, yv in zip(hl_idxs, hl_vals):
+                if 0 <= xi < len(df):
+                    ax.plot(xi, yv, marker='v', color='#00cc44', markersize=9,
+                            zorder=5, markeredgecolor='white', markeredgewidth=0.8)
+                    ax.annotate(f"HL\n₹{yv:.0f}", xy=(xi, yv),
+                                xytext=(0, -18), textcoords='offset points',
+                                color='#88ff99', fontsize=8, fontweight='bold',
+                                ha='center', va='top',
+                                bbox=dict(boxstyle='round,pad=0.2', fc='#001a00',
+                                          ec='#44ff88', lw=0.8, alpha=0.9))
+
+            latest_hl = levels.get("latest_hl")
+            if latest_hl:
+                ax.axhline(y=latest_hl, color='#44ff88', linestyle='--',
+                           linewidth=1.5, alpha=0.6)
+                ax.text(x_max, latest_hl, f" Buy Zone ₹{latest_hl:.0f}",
+                        color='#44ff88', fontsize=9, va='top', fontweight='bold')
+
+            sb = levels.get("structure_break")
+            if sb:
+                ax.axhline(y=sb, color='#ffaa00', linestyle=':',
+                           linewidth=1.2, alpha=0.5)
+                ax.text(x_max, sb, f" Break ₹{sb:.0f}",
+                        color='#ffaa00', fontsize=8, va='bottom')
+        return  # structure done
+
+    # ── Double Bottom: draw W-shape zigzag ────────────────────────
+    if pattern.name in ("Double Bottom", "Double Top"):
+        is_bottom = pattern.name == "Double Bottom"
+        t1_idx = levels.get("t1_idx")
+        t2_idx = levels.get("t2_idx")
+        nl_idx = levels.get("neckline_idx")
+        t1_val = levels.get("trough1") or levels.get("peak1")
+        t2_val = levels.get("trough2") or levels.get("peak2")
+        nl_val = levels.get("neckline")
+
+        # Adjust indices relative to chart window
+        chart_offset = pattern.start_idx
+        def _cl(gi):
+            return gi - chart_offset if gi is not None else None
+
+        ct1, ct2, cnl = _cl(t1_idx), _cl(t2_idx), _cl(nl_idx)
+
+        pts = [(ct1, t1_val, 'T1'), (cnl, nl_val, 'NK'), (ct2, t2_val, 'T2')]
+        pts = [(x, y, l) for x, y, l in pts if x is not None and y is not None and 0 <= x < len(df)]
+
+        if len(pts) >= 2:
+            color = '#00ff88' if is_bottom else '#ff4444'
+            ax.plot([p[0] for p in pts], [p[1] for p in pts],
+                    color=color, linewidth=2.0, linestyle='-', alpha=0.8,
+                    zorder=4, marker='o', markersize=7,
+                    markerfacecolor=color, markeredgecolor='white',
+                    markeredgewidth=1)
+
+        label_map = {'T1': 'T1', 'NK': 'Neck', 'T2': 'T2'}
+        color_map = {'T1': '#00ff88', 'NK': '#00ffff', 'T2': '#00ff88'} if is_bottom else {'T1': '#ff4444', 'NK': '#00ffff', 'T2': '#ff4444'}
+        for xi, yi, lbl in pts:
+            offset_y = -18 if is_bottom else 12
+            ax.annotate(f"{label_map[lbl]}\n₹{yi:.0f}", xy=(xi, yi),
+                        xytext=(0, offset_y), textcoords='offset points',
+                        color=color_map[lbl], fontsize=8, fontweight='bold',
+                        ha='center', va='top' if offset_y < 0 else 'bottom',
+                        bbox=dict(boxstyle='round,pad=0.25',
+                                  fc='#0a1a12' if is_bottom else '#1a0a0a',
+                                  ec=color_map[lbl], lw=0.8, alpha=0.9))
+
+    # ── Generic key levels (for all other patterns) ────────────────
+    x_min = -0.5
+
     if 'support' in levels and levels['support']:
         ax.axhline(y=levels['support'], color='#00ff00', linestyle='--',
                   linewidth=1.5, alpha=0.7, label='Support')
-        ax.text(x_max, levels['support'], f" Support: ₹{levels['support']:.0f}",
+        ax.text(x_max, levels['support'], f" Support ₹{levels['support']:.0f}",
                color='#00ff00', fontsize=9, va='bottom', weight='bold')
-    
-    # Resistance (red dashed line)
+
     if 'resistance' in levels and levels['resistance']:
         ax.axhline(y=levels['resistance'], color='#ff0000', linestyle='--',
                   linewidth=1.5, alpha=0.7, label='Resistance')
-        ax.text(x_max, levels['resistance'], f" Resistance: ₹{levels['resistance']:.0f}",
+        ax.text(x_max, levels['resistance'], f" Resistance ₹{levels['resistance']:.0f}",
                color='#ff0000', fontsize=9, va='top', weight='bold')
-    
-    # Neckline (cyan solid line) - important for H&S patterns
+
     if 'neckline' in levels and levels['neckline']:
         ax.axhline(y=levels['neckline'], color='#00ffff', linestyle='-',
                   linewidth=2, alpha=0.8, label='Neckline')
-        ax.text(x_max, levels['neckline'], f" Neckline: ₹{levels['neckline']:.0f}",
+        ax.text(x_max, levels['neckline'], f" Neckline ₹{levels['neckline']:.0f}",
                color='#00ffff', fontsize=10, va='center', weight='bold')
-    
-    # Entry level (yellow dotted line)
+
     if 'entry' in levels and levels['entry']:
         ax.axhline(y=levels['entry'], color='#ffff00', linestyle=':',
                   linewidth=2, alpha=0.9, label='Entry')
-        ax.text(x_max, levels['entry'], f" Entry: ₹{levels['entry']:.0f}",
+        ax.text(x_max, levels['entry'], f" Entry ₹{levels['entry']:.0f}",
                color='#ffff00', fontsize=10, va='center', weight='bold')
-    
-    # Target levels (green dotted lines)
+
     for i, target_key in enumerate(['target1', 'target2', 'target3']):
         if target_key in levels and levels[target_key]:
             ax.axhline(y=levels[target_key], color='#00ff88', linestyle=':',
                       linewidth=1.5, alpha=0.6)
-            ax.text(x_max, levels[target_key], f" T{i+1}: ₹{levels[target_key]:.0f}",
+            ax.text(x_max, levels[target_key], f" T{i+1} ₹{levels[target_key]:.0f}",
                    color='#00ff88', fontsize=8, va='center')
-    
-    # Stop loss (red dotted line)
+
     if 'stop_loss' in levels and levels['stop_loss']:
         ax.axhline(y=levels['stop_loss'], color='#ff6666', linestyle=':',
                   linewidth=2, alpha=0.8, label='Stop Loss')
-        ax.text(x_max, levels['stop_loss'], f" SL: ₹{levels['stop_loss']:.0f}",
+        ax.text(x_max, levels['stop_loss'], f" SL ₹{levels['stop_loss']:.0f}",
                color='#ff6666', fontsize=9, va='center', weight='bold')
 
 

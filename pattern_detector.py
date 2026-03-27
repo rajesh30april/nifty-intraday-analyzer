@@ -82,7 +82,7 @@ def _check_volume_confirmation(
         ratio = breakout_vol / avg_vol
         confirmed = ratio >= threshold
         
-        detail = f"Vol {ratio:.2f}x avg"
+        detail = f"Breakout vol {int(breakout_vol):,} vs avg {int(avg_vol):,} ({ratio:.1f}x)"
         return confirmed, detail
     except Exception as e:
         return False, f"Vol error: {str(e)}"
@@ -291,10 +291,17 @@ def detect_double_bottom(
     low: pd.Series,
     close: pd.Series,
     volume: Optional[pd.Series] = None,
-    tolerance_pct: float = 0.3,
+    tolerance_pct: float = 0.20,   # tighter: was 0.3% — reduces false positives
     min_separation: int = 8
 ) -> Optional[PatternMatch]:
-    """IMPROVED: Detect Double Bottom with volume confirmation."""
+    """Detect Double Bottom (W pattern) with strict validation.
+
+    Requirements:
+    - Two troughs within 0.2% of each other (tighter than before)
+    - Minimum 8 candles separation (ensures a real bounce, not noise)
+    - Pattern height >= 0.4% of price (filters micro-wiggles)
+    - Neckline must be a confirmed swing high between the two troughs
+    """
     peaks, troughs = _find_peaks_troughs(high, low, order=4, min_distance=3)
     
     if len(troughs) < 2 or len(peaks) < 1:
@@ -327,7 +334,7 @@ def detect_double_bottom(
     pattern_height = neckline - t1_val
     height_pct = (pattern_height / t1_val) * 100
     
-    if height_pct < 0.3:
+    if height_pct < 0.4:   # was 0.3 — stricter noise filter
         return None
     
     current = close.iloc[-1]
@@ -341,22 +348,41 @@ def detect_double_bottom(
     measured_target = neckline + pattern_height
     stop_loss = t2_val - (current_atr * 1.5) if current_atr > 0 else t2_val - (pattern_height * 0.1)
     
+    confirmed_text = "✅ Neckline BROKEN — pattern active" if confirmed else "⏳ Watching for neckline break"
+    vol_note = f" + {vol_detail}" if vol_confirmed else ""
+    trough_diff = abs(t1_val - t2_val)
+    trough_diff_pct = (trough_diff / t1_val) * 100
+
+    description = (
+        f"W-Pattern: Trough 1 ₹{t1_val:.0f} → Neckline ₹{neckline:.0f} → "
+        f"Trough 2 ₹{t2_val:.0f} ({trough_diff_pct:.2f}% apart). "
+        f"Height ₹{pattern_height:.0f} ({height_pct:.1f}%). "
+        f"{confirmed_text}{vol_note}. "
+        f"Target: ₹{measured_target:.0f} | SL below ₹{t2_val:.0f}."
+    )
+
     base_confidence = 0.85 if confirmed else 0.55
     if vol_confirmed:
         base_confidence = min(base_confidence + 0.10, 0.95)
-    
+
     return PatternMatch(
         name="Double Bottom",
         pattern_type="reversal",
         bias="bullish",
         confidence=base_confidence,
-        description=f"Troughs: T1={round(t1_val,1)}, T2={round(t2_val,1)}. Neckline={round(neckline,1)}. {vol_detail}",
+        description=description,
         start_idx=t1_idx,
         end_idx=len(close) - 1,
         key_levels={
-            "trough1": round(t1_val, 2),
-            "trough2": round(t2_val, 2),
-            "neckline": round(neckline, 2),
+            "trough1":    round(t1_val,   2),
+            "trough2":    round(t2_val,   2),
+            "neckline":   round(neckline, 2),
+            "support":    round(min(t1_val, t2_val), 2),
+            "resistance": round(neckline, 2),
+            "entry":      round(neckline, 2),  # enter on neckline break
+            "t1_idx":     int(t1_idx),
+            "t2_idx":     int(t2_idx),
+            "neckline_idx": int(neckline_idx),
         },
         volume_confirmed=vol_confirmed,
         measured_target=round(measured_target, 2),
@@ -593,90 +619,778 @@ def detect_descending_triangle(
     )
 
 
+# ══════════════════════════════════════════════════════════════════════
+# DIVERGENCE PATTERNS (Advanced Early Warning)
+# ══════════════════════════════════════════════════════════════════════
+
+def detect_rsi_divergence(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    lookback: int = 20,
+) -> Optional[PatternMatch]:
+    """Detect RSI divergence - early reversal warning signal.
+    
+    Bullish Divergence:
+    - Price making lower lows
+    - RSI making higher lows
+    - Indicates buying pressure building despite price drop
+    
+    Bearish Divergence:
+    - Price making higher highs
+    - RSI making lower highs
+    - Indicates selling pressure building despite price rise
+    
+    Confidence: 80-90% (strongest when combined with other patterns)
+    """
+    if len(close) < lookback + 14:
+        return None
+    
+    # Calculate RSI
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0).ewm(span=14).mean()
+    loss = (-delta.where(delta < 0, 0)).ewm(span=14).mean()
+    rs = gain / loss.replace(0, 1e-10)
+    rsi = 100 - (100 / (1 + rs))
+    
+    # Find recent price pivots
+    price_highs_idx = []
+    price_lows_idx = []
+    
+    for i in range(lookback - 5, lookback):
+        if i < 5 or i >= len(close) - 5:
+            continue
+        
+        # Check if local high
+        if high.iloc[i] > high.iloc[i-3:i].max() and high.iloc[i] > high.iloc[i+1:i+4].max():
+            price_highs_idx.append(i)
+        
+        # Check if local low
+        if low.iloc[i] < low.iloc[i-3:i].min() and low.iloc[i] < low.iloc[i+1:i+4].min():
+            price_lows_idx.append(i)
+    
+    # Need at least 2 pivots to compare
+    if len(price_highs_idx) < 2 and len(price_lows_idx) < 2:
+        return None
+    
+    # Check for BULLISH divergence (lower lows in price, higher lows in RSI)
+    if len(price_lows_idx) >= 2:
+        idx1, idx2 = price_lows_idx[-2], price_lows_idx[-1]
+        price_ll = low.iloc[idx2] < low.iloc[idx1]  # Lower low in price
+        rsi_hl = rsi.iloc[idx2] > rsi.iloc[idx1]    # Higher low in RSI
+        
+        if price_ll and rsi_hl and rsi.iloc[idx2] < 40:  # RSI still in oversold region
+            target = close.iloc[-1] + abs(close.iloc[-1] - low.iloc[idx2])
+            stop_loss = low.iloc[idx2] - (abs(close.iloc[-1] - low.iloc[idx2]) * 0.2)
+            
+            return PatternMatch(
+                name="Bullish RSI Divergence",
+                pattern_type="reversal",
+                bias="bullish",
+                confidence=0.85,
+                description=f"Bullish RSI Divergence: Price {low.iloc[idx1]:.1f}→{low.iloc[idx2]:.1f} (lower), "
+                           f"RSI {rsi.iloc[idx1]:.1f}→{rsi.iloc[idx2]:.1f} (higher). "
+                           f"Strong reversal signal! Target: {target:.1f}, SL: {stop_loss:.1f}",
+                start_idx=idx1,
+                end_idx=len(close) - 1,
+                key_levels={"entry": close.iloc[-1], "target": target, "stop_loss": stop_loss,
+                          "pivot1_price": low.iloc[idx1], "pivot2_price": low.iloc[idx2],
+                          "pivot1_rsi": rsi.iloc[idx1], "pivot2_rsi": rsi.iloc[idx2]},
+                measured_target=round(target, 2),
+                stop_loss=round(stop_loss, 2),
+                pivot_times=[idx1, idx2],
+            )
+    
+    # Check for BEARISH divergence (higher highs in price, lower highs in RSI)
+    if len(price_highs_idx) >= 2:
+        idx1, idx2 = price_highs_idx[-2], price_highs_idx[-1]
+        price_hh = high.iloc[idx2] > high.iloc[idx1]  # Higher high in price
+        rsi_lh = rsi.iloc[idx2] < rsi.iloc[idx1]      # Lower high in RSI
+        
+        if price_hh and rsi_lh and rsi.iloc[idx2] > 60:  # RSI still in overbought region
+            target = close.iloc[-1] - abs(high.iloc[idx2] - close.iloc[-1])
+            stop_loss = high.iloc[idx2] + (abs(high.iloc[idx2] - close.iloc[-1]) * 0.2)
+            
+            return PatternMatch(
+                name="Bearish RSI Divergence",
+                pattern_type="reversal",
+                bias="bearish",
+                confidence=0.85,
+                description=f"Bearish RSI Divergence: Price {high.iloc[idx1]:.1f}→{high.iloc[idx2]:.1f} (higher), "
+                           f"RSI {rsi.iloc[idx1]:.1f}→{rsi.iloc[idx2]:.1f} (lower). "
+                           f"Strong reversal signal! Target: {target:.1f}, SL: {stop_loss:.1f}",
+                start_idx=idx1,
+                end_idx=len(close) - 1,
+                key_levels={"entry": close.iloc[-1], "target": target, "stop_loss": stop_loss,
+                          "pivot1_price": high.iloc[idx1], "pivot2_price": high.iloc[idx2],
+                          "pivot1_rsi": rsi.iloc[idx1], "pivot2_rsi": rsi.iloc[idx2]},
+                measured_target=round(target, 2),
+                stop_loss=round(stop_loss, 2),
+                pivot_times=[idx1, idx2],
+            )
+    
+    return None
+
+
+# ══════════════════════════════════════════════════════════════════════
+# CANDLESTICK PATTERNS (Early Reversal Detection)
+# ══════════════════════════════════════════════════════════════════════
+
+def detect_bullish_engulfing(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: Optional[pd.Series] = None,
+) -> Optional[PatternMatch]:
+    """Detect Bullish Engulfing pattern - strong reversal signal.
+    
+    Requirements:
+    - Previous candle: bearish (close < open)
+    - Current candle: bullish (close > open)
+    - Current body completely engulfs previous body
+    - Occurs after downtrend or at support
+    - Volume confirmation (optional but adds confidence)
+    
+    Confidence: 75-85%
+    """
+    if len(close) < 15:
+        return None
+    
+    # Check last 2 candles
+    prev_open = float(open_p.iloc[-2])
+    prev_close = float(close.iloc[-2])
+    curr_open = float(open_p.iloc[-1])
+    curr_close = float(close.iloc[-1])
+    
+    # Previous candle must be bearish
+    if prev_close >= prev_open:
+        return None
+    
+    # Current candle must be bullish
+    if curr_close <= curr_open:
+        return None
+    
+    # Current must engulf previous
+    engulfs = curr_open <= prev_close and curr_close >= prev_open
+    if not engulfs:
+        return None
+    
+    # Check if in downtrend (price below EMA)
+    recent_closes = close.tail(10)
+    ema = recent_closes.ewm(span=9).mean()
+    in_downtrend = float(close.iloc[-3]) < float(ema.iloc[-3])
+    
+    # Volume confirmation
+    vol_confirmed = False
+    if volume is not None and len(volume) >= 20:
+        vol_confirmed, _ = _check_volume_confirmation(volume, len(volume) - 1, lookback=20)
+    
+    confidence = 0.75
+    if in_downtrend:
+        confidence += 0.05
+    if vol_confirmed:
+        confidence += 0.05
+    
+    body_size = abs(curr_close - curr_open)
+    target = curr_close + (body_size * 2)  # 2x body size target
+    stop_loss = min(curr_open, curr_close, low.iloc[-1]) - (body_size * 0.3)
+    
+    return PatternMatch(
+        name="Bullish Engulfing",
+        pattern_type="reversal",
+        bias="bullish",
+        confidence=min(confidence, 0.85),
+        description=f"Bullish Engulfing at {curr_close:.1f} (prev {prev_close:.1f}→{prev_open:.1f}, curr {curr_open:.1f}→{curr_close:.1f}). "
+                   f"{'In downtrend. ' if in_downtrend else ''}{'Volume confirmed. ' if vol_confirmed else ''}"
+                   f"Target: {target:.1f}, SL: {stop_loss:.1f}",
+        start_idx=len(close) - 2,
+        end_idx=len(close) - 1,
+        key_levels={"entry": curr_close, "target": target, "stop_loss": stop_loss},
+        volume_confirmed=vol_confirmed,
+        measured_target=round(target, 2),
+        stop_loss=round(stop_loss, 2),
+    )
+
+
+def detect_bearish_engulfing(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: Optional[pd.Series] = None,
+) -> Optional[PatternMatch]:
+    """Detect Bearish Engulfing pattern - strong reversal signal.
+    
+    Requirements:
+    - Previous candle: bullish (close > open)
+    - Current candle: bearish (close < open)
+    - Current body completely engulfs previous body
+    - Occurs after uptrend or at resistance
+    - Volume confirmation (optional but adds confidence)
+    
+    Confidence: 75-85%
+    """
+    if len(close) < 15:
+        return None
+    
+    # Check last 2 candles
+    prev_open = float(open_p.iloc[-2])
+    prev_close = float(close.iloc[-2])
+    curr_open = float(open_p.iloc[-1])
+    curr_close = float(close.iloc[-1])
+    
+    # Previous candle must be bullish
+    if prev_close <= prev_open:
+        return None
+    
+    # Current candle must be bearish
+    if curr_close >= curr_open:
+        return None
+    
+    # Current must engulf previous
+    engulfs = curr_open >= prev_close and curr_close <= prev_open
+    if not engulfs:
+        return None
+    
+    # Check if in uptrend (price above EMA)
+    recent_closes = close.tail(10)
+    ema = recent_closes.ewm(span=9).mean()
+    in_uptrend = float(close.iloc[-3]) > float(ema.iloc[-3])
+    
+    # Volume confirmation
+    vol_confirmed = False
+    if volume is not None and len(volume) >= 20:
+        vol_confirmed, _ = _check_volume_confirmation(volume, len(volume) - 1, lookback=20)
+    
+    confidence = 0.75
+    if in_uptrend:
+        confidence += 0.05
+    if vol_confirmed:
+        confidence += 0.05
+    
+    body_size = abs(curr_close - curr_open)
+    target = curr_close - (body_size * 2)  # 2x body size target
+    stop_loss = max(curr_open, curr_close, high.iloc[-1]) + (body_size * 0.3)
+    
+    return PatternMatch(
+        name="Bearish Engulfing",
+        pattern_type="reversal",
+        bias="bearish",
+        confidence=min(confidence, 0.85),
+        description=f"Bearish Engulfing at {curr_close:.1f} (prev {prev_open:.1f}→{prev_close:.1f}, curr {curr_open:.1f}→{curr_close:.1f}). "
+                   f"{'In uptrend. ' if in_uptrend else ''}{'Volume confirmed. ' if vol_confirmed else ''}"
+                   f"Target: {target:.1f}, SL: {stop_loss:.1f}",
+        start_idx=len(close) - 2,
+        end_idx=len(close) - 1,
+        key_levels={"entry": curr_close, "target": target, "stop_loss": stop_loss},
+        volume_confirmed=vol_confirmed,
+        measured_target=round(target, 2),
+        stop_loss=round(stop_loss, 2),
+    )
+
+
+def detect_hammer(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: Optional[pd.Series] = None,
+) -> Optional[PatternMatch]:
+    """Detect Hammer candle - bullish reversal at support.
+    
+    Requirements:
+    - Small body at top (body < 30% of total range)
+    - Long lower shadow (at least 2x body size)
+    - Little/no upper shadow (< 10% of total range)
+    - Occurs after downtrend or at support level
+    
+    Confidence: 70-80%
+    """
+    if len(close) < 15:
+        return None
+    
+    curr_open = float(open_p.iloc[-1])
+    curr_high = float(high.iloc[-1])
+    curr_low = float(low.iloc[-1])
+    curr_close = float(close.iloc[-1])
+    
+    body_size = abs(curr_close - curr_open)
+    total_range = curr_high - curr_low
+    
+    if total_range == 0:
+        return None
+    
+    # Body should be small (< 30% of range)
+    if body_size / total_range > 0.30:
+        return None
+    
+    # Lower shadow should be long (at least 2x body)
+    lower_shadow = min(curr_open, curr_close) - curr_low
+    if lower_shadow < body_size * 2:
+        return None
+    
+    # Upper shadow should be tiny (< 10% of range)
+    upper_shadow = curr_high - max(curr_open, curr_close)
+    if upper_shadow / total_range > 0.10:
+        return None
+    
+    # Check if in downtrend
+    recent_closes = close.tail(10)
+    ema = recent_closes.ewm(span=9).mean()
+    in_downtrend = float(close.iloc[-2]) < float(ema.iloc[-2])
+    
+    # Volume confirmation
+    vol_confirmed = False
+    if volume is not None and len(volume) >= 20:
+        vol_confirmed, _ = _check_volume_confirmation(volume, len(volume) - 1, lookback=20)
+    
+    confidence = 0.70
+    if in_downtrend:
+        confidence += 0.05
+    if vol_confirmed:
+        confidence += 0.05
+    
+    target = curr_close + (lower_shadow * 0.618)  # Fib 61.8% of shadow
+    stop_loss = curr_low - (total_range * 0.2)
+    
+    return PatternMatch(
+        name="Hammer",
+        pattern_type="reversal",
+        bias="bullish",
+        confidence=min(confidence, 0.80),
+        description=f"Hammer at {curr_close:.1f} (low {curr_low:.1f}, shadow {lower_shadow:.1f}pts). "
+                   f"{'In downtrend. ' if in_downtrend else ''}{'Volume confirmed. ' if vol_confirmed else ''}"
+                   f"Target: {target:.1f}, SL: {stop_loss:.1f}",
+        start_idx=len(close) - 1,
+        end_idx=len(close) - 1,
+        key_levels={"entry": curr_close, "target": target, "stop_loss": stop_loss, "low": curr_low},
+        volume_confirmed=vol_confirmed,
+        measured_target=round(target, 2),
+        stop_loss=round(stop_loss, 2),
+    )
+
+
+def detect_shooting_star(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: Optional[pd.Series] = None,
+) -> Optional[PatternMatch]:
+    """Detect Shooting Star candle - bearish reversal at resistance.
+    
+    Requirements:
+    - Small body at bottom (body < 30% of total range)
+    - Long upper shadow (at least 2x body size)
+    - Little/no lower shadow (< 10% of total range)
+    - Occurs after uptrend or at resistance level
+    
+    Confidence: 70-80%
+    """
+    if len(close) < 15:
+        return None
+    
+    curr_open = float(open_p.iloc[-1])
+    curr_high = float(high.iloc[-1])
+    curr_low = float(low.iloc[-1])
+    curr_close = float(close.iloc[-1])
+    
+    body_size = abs(curr_close - curr_open)
+    total_range = curr_high - curr_low
+    
+    if total_range == 0:
+        return None
+    
+    # Body should be small (< 30% of range)
+    if body_size / total_range > 0.30:
+        return None
+    
+    # Upper shadow should be long (at least 2x body)
+    upper_shadow = curr_high - max(curr_open, curr_close)
+    if upper_shadow < body_size * 2:
+        return None
+    
+    # Lower shadow should be tiny (< 10% of range)
+    lower_shadow = min(curr_open, curr_close) - curr_low
+    if lower_shadow / total_range > 0.10:
+        return None
+    
+    # Check if in uptrend
+    recent_closes = close.tail(10)
+    ema = recent_closes.ewm(span=9).mean()
+    in_uptrend = float(close.iloc[-2]) > float(ema.iloc[-2])
+    
+    # Volume confirmation
+    vol_confirmed = False
+    if volume is not None and len(volume) >= 20:
+        vol_confirmed, _ = _check_volume_confirmation(volume, len(volume) - 1, lookback=20)
+    
+    confidence = 0.70
+    if in_uptrend:
+        confidence += 0.05
+    if vol_confirmed:
+        confidence += 0.05
+    
+    target = curr_close - (upper_shadow * 0.618)  # Fib 61.8% of shadow
+    stop_loss = curr_high + (total_range * 0.2)
+    
+    return PatternMatch(
+        name="Shooting Star",
+        pattern_type="reversal",
+        bias="bearish",
+        confidence=min(confidence, 0.80),
+        description=f"Shooting Star at {curr_close:.1f} (high {curr_high:.1f}, shadow {upper_shadow:.1f}pts). "
+                   f"{'In uptrend. ' if in_uptrend else ''}{'Volume confirmed. ' if vol_confirmed else ''}"
+                   f"Target: {target:.1f}, SL: {stop_loss:.1f}",
+        start_idx=len(close) - 1,
+        end_idx=len(close) - 1,
+        key_levels={"entry": curr_close, "target": target, "stop_loss": stop_loss, "high": curr_high},
+        volume_confirmed=vol_confirmed,
+        measured_target=round(target, 2),
+        stop_loss=round(stop_loss, 2),
+    )
+
+
+def detect_morning_star(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: Optional[pd.Series] = None,
+) -> Optional[PatternMatch]:
+    """Detect Morning Star pattern - strong bullish reversal.
+    
+    Three-candle pattern:
+    1. Large bearish candle
+    2. Small indecision candle (doji/spinning top) - gap down
+    3. Large bullish candle closing above midpoint of candle 1
+    
+    Confidence: 80-85%
+    """
+    if len(close) < 15:
+        return None
+    
+    # Get last 3 candles
+    o1, h1, l1, c1 = float(open_p.iloc[-3]), float(high.iloc[-3]), float(low.iloc[-3]), float(close.iloc[-3])
+    o2, h2, l2, c2 = float(open_p.iloc[-2]), float(high.iloc[-2]), float(low.iloc[-2]), float(close.iloc[-2])
+    o3, h3, l3, c3 = float(open_p.iloc[-1]), float(high.iloc[-1]), float(low.iloc[-1]), float(close.iloc[-1])
+    
+    # Candle 1: Large bearish
+    body1 = abs(c1 - o1)
+    if c1 >= o1 or body1 < (h1 - l1) * 0.5:  # Must be bearish with decent body
+        return None
+    
+    # Candle 2: Small body (indecision)
+    body2 = abs(c2 - o2)
+    range2 = h2 - l2
+    if range2 > 0 and body2 / range2 > 0.3:  # Body should be < 30% of range
+        return None
+    
+    # Candle 3: Large bullish
+    body3 = abs(c3 - o3)
+    if c3 <= o3 or body3 < (h3 - l3) * 0.5:  # Must be bullish with decent body
+        return None
+    
+    # Candle 3 should close above midpoint of candle 1
+    mid1 = (o1 + c1) / 2
+    if c3 <= mid1:
+        return None
+    
+    # Volume confirmation on candle 3
+    vol_confirmed = False
+    if volume is not None and len(volume) >= 20:
+        vol_confirmed, _ = _check_volume_confirmation(volume, len(volume) - 1, lookback=20)
+    
+    confidence = 0.80
+    if vol_confirmed:
+        confidence += 0.05
+    
+    target = c3 + body3  # One body size above
+    stop_loss = min(l1, l2, l3) - (body3 * 0.2)
+    
+    return PatternMatch(
+        name="Morning Star",
+        pattern_type="reversal",
+        bias="bullish",
+        confidence=min(confidence, 0.85),
+        description=f"Morning Star completed at {c3:.1f} (3-candle: {c1:.1f}→{c2:.1f}→{c3:.1f}). "
+                   f"{'Volume confirmed. ' if vol_confirmed else ''}"
+                   f"Target: {target:.1f}, SL: {stop_loss:.1f}",
+        start_idx=len(close) - 3,
+        end_idx=len(close) - 1,
+        key_levels={"entry": c3, "target": target, "stop_loss": stop_loss},
+        volume_confirmed=vol_confirmed,
+        measured_target=round(target, 2),
+        stop_loss=round(stop_loss, 2),
+        pivot_times=[len(close) - 3, len(close) - 2, len(close) - 1],
+    )
+
+
+def detect_evening_star(
+    open_p: pd.Series,
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: Optional[pd.Series] = None,
+) -> Optional[PatternMatch]:
+    """Detect Evening Star pattern - strong bearish reversal.
+    
+    Three-candle pattern:
+    1. Large bullish candle
+    2. Small indecision candle (doji/spinning top) - gap up
+    3. Large bearish candle closing below midpoint of candle 1
+    
+    Confidence: 80-85%
+    """
+    if len(close) < 15:
+        return None
+    
+    # Get last 3 candles
+    o1, h1, l1, c1 = float(open_p.iloc[-3]), float(high.iloc[-3]), float(low.iloc[-3]), float(close.iloc[-3])
+    o2, h2, l2, c2 = float(open_p.iloc[-2]), float(high.iloc[-2]), float(low.iloc[-2]), float(close.iloc[-2])
+    o3, h3, l3, c3 = float(open_p.iloc[-1]), float(high.iloc[-1]), float(low.iloc[-1]), float(close.iloc[-1])
+    
+    # Candle 1: Large bullish
+    body1 = abs(c1 - o1)
+    if c1 <= o1 or body1 < (h1 - l1) * 0.5:  # Must be bullish with decent body
+        return None
+    
+    # Candle 2: Small body (indecision)
+    body2 = abs(c2 - o2)
+    range2 = h2 - l2
+    if range2 > 0 and body2 / range2 > 0.3:  # Body should be < 30% of range
+        return None
+    
+    # Candle 3: Large bearish
+    body3 = abs(c3 - o3)
+    if c3 >= o3 or body3 < (h3 - l3) * 0.5:  # Must be bearish with decent body
+        return None
+    
+    # Candle 3 should close below midpoint of candle 1
+    mid1 = (o1 + c1) / 2
+    if c3 >= mid1:
+        return None
+    
+    # Volume confirmation on candle 3
+    vol_confirmed = False
+    if volume is not None and len(volume) >= 20:
+        vol_confirmed, _ = _check_volume_confirmation(volume, len(volume) - 1, lookback=20)
+    
+    confidence = 0.80
+    if vol_confirmed:
+        confidence += 0.05
+    
+    target = c3 - body3  # One body size below
+    stop_loss = max(h1, h2, h3) + (body3 * 0.2)
+    
+    return PatternMatch(
+        name="Evening Star",
+        pattern_type="reversal",
+        bias="bearish",
+        confidence=min(confidence, 0.85),
+        description=f"Evening Star completed at {c3:.1f} (3-candle: {c1:.1f}→{c2:.1f}→{c3:.1f}). "
+                   f"{'Volume confirmed. ' if vol_confirmed else ''}"
+                   f"Target: {target:.1f}, SL: {stop_loss:.1f}",
+        start_idx=len(close) - 3,
+        end_idx=len(close) - 1,
+        key_levels={"entry": c3, "target": target, "stop_loss": stop_loss},
+        volume_confirmed=vol_confirmed,
+        measured_target=round(target, 2),
+        stop_loss=round(stop_loss, 2),
+        pivot_times=[len(close) - 3, len(close) - 2, len(close) - 1],
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════
+# CHART PATTERNS (Existing + New)
+# ══════════════════════════════════════════════════════════════════════
+
 def detect_trend_structure(
     high: pd.Series,
     low: pd.Series,
     close: pd.Series,
-    lookback: int = 40
+    lookback: int = 50,
 ) -> Optional[PatternMatch]:
-    """Detect price structure: HH/HL (uptrend) or LH/LL (downtrend).
-    
-    This is NOT a breakout pattern — it's trend confirmation.
-    Used to identify when price is making a clean trending structure.
+    """Detect price structure using REAL swing pivots — not a half-split heuristic.
+
+    Requires at least 2 confirmed Lower Highs + 2 confirmed Lower Lows
+    (or Higher Highs + Higher Lows for uptrend), each step exceeding
+    0.25 × ATR so random noise can't trigger this.
+
+    Returns a PatternMatch with all pivot indices in key_levels so the
+    chart can draw zigzag lines and label each LH/LL (or HH/HL) marker.
     """
     if len(high) < lookback:
         return None
-    
-    recent = pd.DataFrame({"high": high, "low": low, "close": close}).tail(lookback)
-    
-    # Split into two halves
-    mid = lookback // 2
-    first_half = recent.iloc[:mid]
-    second_half = recent.iloc[mid:]
-    
-    first_high = first_half["high"].max()
-    second_high = second_half["high"].max()
-    first_low = first_half["low"].min()
-    second_low = second_half["low"].min()
-    
-    # Collect swing highs and lows for detailed description
-    peaks, troughs = _find_peaks_troughs(recent["high"], recent["low"], order=3, min_distance=3)
-    
-    recent_highs = [recent["high"].iloc[i] for i in peaks[-3:]] if len(peaks) >= 3 else []
-    recent_lows = [recent["low"].iloc[i] for i in troughs[-3:]] if len(troughs) >= 3 else []
-    
-    # UPTREND: Higher Highs + Higher Lows
-    if second_high > first_high and second_low > first_low:
-        hh_str = ", ".join([f"{h:.1f}" for h in recent_highs]) if recent_highs else f"{second_high:.1f}"
-        hl_str = ", ".join([f"{l:.1f}" for l in recent_lows]) if recent_lows else f"{second_low:.1f}"
-        
-        latest_hh = recent_highs[-1] if recent_highs else second_high
-        latest_hl = recent_lows[-1] if recent_lows else second_low
-        
-        return PatternMatch(
-            name="Uptrend Structure (HH/HL)",
-            pattern_type="structure",
-            bias="bullish",
-            confidence=0.75,
-            description=f"Making Higher Highs ({hh_str}) and Higher Lows ({hl_str}). Trend is up — buy dips near latest higher low.",
-            start_idx=len(high) - lookback,
-            end_idx=len(high) - 1,
-            key_levels={
-                "latest_hh": round(latest_hh, 2),
-                "latest_hl": round(latest_hl, 2),
-            },
-            measured_target=None,  # No target - it's a trend, not a breakout
-            stop_loss=round(latest_hl * 0.998, 2),  # Just below last higher low
-            pivot_times=peaks + troughs,
+
+    recent_high  = high.iloc[-lookback:].reset_index(drop=True)
+    recent_low   = low.iloc[-lookback:].reset_index(drop=True)
+    recent_close = close.iloc[-lookback:].reset_index(drop=True)
+    offset       = len(high) - lookback          # maps local idx → global idx
+
+    atr_val = _calculate_atr(recent_high, recent_low, recent_close).iloc[-1]
+    if pd.isna(atr_val) or atr_val <= 0:
+        atr_val = recent_close.mean() * 0.003   # fallback: 0.3% of price
+    min_step = 0.25 * atr_val                   # noise filter
+
+    peaks, troughs = _find_peaks_troughs(
+        recent_high, recent_low, order=4, min_distance=4
+    )
+
+    if len(peaks) < 2 or len(troughs) < 2:
+        return None
+
+    swing_highs = [(i, float(recent_high.iloc[i])) for i in peaks]
+    swing_lows  = [(i, float(recent_low.iloc[i]))  for i in troughs]
+
+    # ── DOWNTREND: every swing high and every swing low must step DOWN ──
+    lh_seq = _strictly_decreasing(swing_highs, min_step)
+    ll_seq  = _strictly_decreasing(swing_lows,  min_step)
+
+    if len(lh_seq) >= 2 and len(ll_seq) >= 2:
+        lh_vals  = [v for _, v in lh_seq]
+        ll_vals  = [v for _, v in ll_seq]
+        lh_idxs  = [i + offset for i, _ in lh_seq]
+        ll_idxs  = [i + offset for i, _ in ll_seq]
+
+        avg_lh_drop = (lh_vals[0] - lh_vals[-1]) / max(len(lh_vals) - 1, 1)
+        avg_ll_drop = (ll_vals[0] - ll_vals[-1]) / max(len(ll_vals) - 1, 1)
+
+        # Confidence scales with number of clean pivots (cap at 0.92)
+        n_pivots    = len(lh_seq) + len(ll_seq)
+        confidence  = min(0.55 + n_pivots * 0.06, 0.92)
+
+        latest_lh   = lh_vals[-1]
+        latest_ll   = ll_vals[-1]
+        prev_lh     = lh_vals[-2]
+        prev_ll     = ll_vals[-2]
+
+        lh_str = " → ".join(f"₹{h:.0f}" for h in lh_vals)
+        ll_str = " → ".join(f"₹{l:.0f}" for l in ll_vals)
+
+        description = (
+            f"Lower Highs: {lh_str} | "
+            f"Lower Lows: {ll_str} | "
+            f"Avg LH drop ₹{avg_lh_drop:.0f}, LL drop ₹{avg_ll_drop:.0f}/swing. "
+            f"Sell rallies near ₹{latest_lh:.0f} (last LH). "
+            f"Structure breaks above ₹{prev_lh:.0f}."
         )
-    
-    # DOWNTREND: Lower Highs + Lower Lows
-    elif second_high < first_high and second_low < first_low:
-        lh_str = ", ".join([f"{h:.1f}" for h in recent_highs]) if recent_highs else f"{second_high:.1f}"
-        ll_str = ", ".join([f"{l:.1f}" for l in recent_lows]) if recent_lows else f"{second_low:.1f}"
-        
-        latest_lh = recent_highs[-1] if recent_highs else second_high
-        latest_ll = recent_lows[-1] if recent_lows else second_low
-        
+
         return PatternMatch(
             name="Downtrend Structure (LH/LL)",
             pattern_type="structure",
             bias="bearish",
-            confidence=0.75,
-            description=f"Making Lower Highs ({lh_str}) and Lower Lows ({ll_str}). Trend is down — sell rallies near the latest lower high.",
-            start_idx=len(high) - lookback,
+            confidence=confidence,
+            description=description,
+            start_idx=offset,
             end_idx=len(high) - 1,
             key_levels={
-                "latest_lh": round(latest_lh, 2),
-                "latest_ll": round(latest_ll, 2),
+                "latest_lh":   round(latest_lh, 2),
+                "latest_ll":   round(latest_ll, 2),
+                "prev_lh":     round(prev_lh,   2),
+                "prev_ll":     round(prev_ll,   2),
+                "resistance":  round(latest_lh, 2),   # generic chart compat
+                "support":     round(latest_ll, 2),
+                "lh_indices":  lh_idxs,
+                "ll_indices":  ll_idxs,
+                "lh_values":   [round(v, 2) for v in lh_vals],
+                "ll_values":   [round(v, 2) for v in ll_vals],
+                "structure_break": round(prev_lh, 2),
             },
-            measured_target=None,  # No target - it's a trend, not a breakout
-            stop_loss=round(latest_lh * 1.002, 2),  # Just above last lower high
-            pivot_times=peaks + troughs,
+            measured_target=None,
+            stop_loss=round(latest_lh * 1.003, 2),  # 0.3% above last LH
+            pivot_times=sorted(lh_idxs + ll_idxs),
         )
-    
-    # Not a clear trend structure
+
+    # ── UPTREND: every swing high and every swing low must step UP ──
+    hh_seq = _strictly_increasing(swing_highs, min_step)
+    hl_seq  = _strictly_increasing(swing_lows,  min_step)
+
+    if len(hh_seq) >= 2 and len(hl_seq) >= 2:
+        hh_vals  = [v for _, v in hh_seq]
+        hl_vals  = [v for _, v in hl_seq]
+        hh_idxs  = [i + offset for i, _ in hh_seq]
+        hl_idxs  = [i + offset for i, _ in hl_seq]
+
+        avg_hh_rise = (hh_vals[-1] - hh_vals[0]) / max(len(hh_vals) - 1, 1)
+        avg_hl_rise = (hl_vals[-1] - hl_vals[0]) / max(len(hl_vals) - 1, 1)
+
+        n_pivots    = len(hh_seq) + len(hl_seq)
+        confidence  = min(0.55 + n_pivots * 0.06, 0.92)
+
+        latest_hh   = hh_vals[-1]
+        latest_hl   = hl_vals[-1]
+        prev_hl     = hl_vals[-2]
+
+        hh_str = " → ".join(f"₹{h:.0f}" for h in hh_vals)
+        hl_str = " → ".join(f"₹{l:.0f}" for l in hl_vals)
+
+        description = (
+            f"Higher Highs: {hh_str} | "
+            f"Higher Lows: {hl_str} | "
+            f"Avg HH rise ₹{avg_hh_rise:.0f}, HL rise ₹{avg_hl_rise:.0f}/swing. "
+            f"Buy dips near ₹{latest_hl:.0f} (last HL). "
+            f"Structure breaks below ₹{prev_hl:.0f}."
+        )
+
+        return PatternMatch(
+            name="Uptrend Structure (HH/HL)",
+            pattern_type="structure",
+            bias="bullish",
+            confidence=confidence,
+            description=description,
+            start_idx=offset,
+            end_idx=len(high) - 1,
+            key_levels={
+                "latest_hh":   round(latest_hh, 2),
+                "latest_hl":   round(latest_hl, 2),
+                "prev_hl":     round(prev_hl,   2),
+                "resistance":  round(latest_hh, 2),
+                "support":     round(latest_hl, 2),
+                "hh_indices":  hh_idxs,
+                "hl_indices":  hl_idxs,
+                "hh_values":   [round(v, 2) for v in hh_vals],
+                "hl_values":   [round(v, 2) for v in hl_vals],
+                "structure_break": round(prev_hl, 2),
+            },
+            measured_target=None,
+            stop_loss=round(latest_hl * 0.997, 2),  # 0.3% below last HL
+            pivot_times=sorted(hh_idxs + hl_idxs),
+        )
+
     return None
+
+
+def _strictly_decreasing(
+    seq: list[tuple[int, float]], min_step: float
+) -> list[tuple[int, float]]:
+    """Return the longest suffix of seq where each value is strictly lower
+    than the previous by at least min_step. Returns empty if < 2 qualify."""
+    result = [seq[0]]
+    for i, (idx, val) in enumerate(seq[1:], 1):
+        prev_val = result[-1][1]
+        if prev_val - val >= min_step:
+            result.append((idx, val))
+        else:
+            # Chain broken — restart from here
+            result = [(idx, val)]
+    return result if len(result) >= 2 else []
+
+
+def _strictly_increasing(
+    seq: list[tuple[int, float]], min_step: float
+) -> list[tuple[int, float]]:
+    """Return the longest suffix of seq where each value is strictly higher
+    than the previous by at least min_step."""
+    result = [seq[0]]
+    for i, (idx, val) in enumerate(seq[1:], 1):
+        prev_val = result[-1][1]
+        if val - prev_val >= min_step:
+            result.append((idx, val))
+        else:
+            result = [(idx, val)]
+    return result if len(result) >= 2 else []
 
 
 def _to_native(val):
@@ -702,6 +1416,7 @@ def detect_all_patterns(df: pd.DataFrame, timeframe: str = "5m") -> dict:
     close = df["close"]
     high = df["high"]
     low = df["low"]
+    open_p = df.get("open", close)  # Fallback to close if open missing
     volume = df.get("volume", None)
     
     patterns: list[PatternMatch] = []
@@ -713,13 +1428,24 @@ def detect_all_patterns(df: pd.DataFrame, timeframe: str = "5m") -> dict:
             return ""
     
     # Run all detectors
+    # 🐶 NEW: Candlestick patterns added (catch reversals EARLY!)
     detectors = [
+        # Divergence patterns (HIGHEST PRIORITY - strongest early signals)
+        lambda: detect_rsi_divergence(high, low, close),
+        # Candlestick patterns (highest priority - early reversal signals)
+        lambda: detect_bullish_engulfing(open_p, high, low, close, volume),
+        lambda: detect_bearish_engulfing(open_p, high, low, close, volume),
+        lambda: detect_hammer(open_p, high, low, close, volume),
+        lambda: detect_shooting_star(open_p, high, low, close, volume),
+        lambda: detect_morning_star(open_p, high, low, close, volume),
+        lambda: detect_evening_star(open_p, high, low, close, volume),
+        # Chart patterns (existing)
         lambda: detect_double_top(high, low, close, volume),
         lambda: detect_double_bottom(high, low, close, volume),
         lambda: detect_ascending_triangle(high, low, close, volume),
         lambda: detect_descending_triangle(high, low, close, volume),
         lambda: detect_flag(df, volume),
-        lambda: detect_trend_structure(high, low, close),  # 🐶 NEW: Trend structure (HH/HL, LH/LL)
+        lambda: detect_trend_structure(high, low, close),
     ]
     
     for detector in detectors:
