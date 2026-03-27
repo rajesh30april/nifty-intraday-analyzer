@@ -156,9 +156,10 @@ async def _crude_trader_loop():
     Works identically to _auto_trader_loop but fetches MCX Crude OHLCV
     and calls evaluate_and_act_crude().  Crude trades until 11:25 PM.
     """
-    from crude_trader import evaluate_and_act_crude, state as crude_state
+    from crude_trader import evaluate_and_act_crude, state as crude_state, _log as _crude_log
     from crude_data import fetch_crude_intraday_data, get_crude_spot
     print("🛢️  Crude auto-trader loop started")
+    
     while True:
         wait = _seconds_to_next_candle_close(5)
         await asyncio.sleep(wait)
@@ -176,17 +177,25 @@ async def _crude_trader_loop():
 
 
 async def _crude_ltp_refresh_loop():
-    """REST fallback: refresh option LTP every 5 s and run exit/trail check.
+    """REST fallback: refresh option LTP every 5s, run exit/trail check, and log heartbeat every 60s.
 
     PRIMARY path: Kite WebSocket on_ticks → _manage_trade_by_premium on
     every ~1s tick (crude option subscribed after entry).
 
     FALLBACK path (WebSocket down / not streaming): this loop polls REST
-    every 5 s so worst-case exit delay is 5 s, not 15 s.
+    every 5s so worst-case exit delay is 5s, not 15s.
+    
+    HEARTBEAT: Logs a live heartbeat every 60s to show the trader is alive.
     """
-    from crude_trader import state as crude_state, _manage_trade_by_premium
+    from crude_trader import (
+        state as crude_state, 
+        _manage_trade_by_premium,
+        _log as _crude_log,
+    )
     from crude_data import get_crude_option_ltp, get_crude_spot
     await asyncio.sleep(4)
+    _hb_tick = 0  # Heartbeat counter
+    
     while True:
         try:
             if crude_state.active_trade:
@@ -197,15 +206,90 @@ async def _crude_ltp_refresh_loop():
                     crude_state.last_option_ltp = ltp
                     # ── Primary exit+trail check on every LTP refresh ──
                     await asyncio.to_thread(
-                        _manage_trade_by_premium, ltp, "15s_poll"
+                        _manage_trade_by_premium, ltp, "5s_poll"
                     )
+                
+                # 🐶 NEW: Heartbeat every ~60s (12 × 5s iterations)
+                _hb_tick += 1
+                if _hb_tick % 12 == 0:
+                    t = crude_state.active_trade
+                    ltp_val = crude_state.last_option_ltp
+                    crude_price = crude_state.last_crude_price or 0
+                    
+                    # Calculate P&L
+                    is_short = t.direction.lower() == 'short'
+                    lot_size = getattr(t, 'lot_size', 10)
+                    if ltp_val > 0:
+                        delta = (t.entry_premium - ltp_val) if is_short else (ltp_val - t.entry_premium)
+                        pnl = round(delta * t.quantity * lot_size, 2)
+                        pnl_str = f"P&L ₹{pnl:+,.0f}"
+                    else:
+                        pnl_str = "P&L –"
+                    
+                    # Locked profit (distance from entry to current SL)
+                    locked = abs(t.stop_loss - t.entry_price)
+                    
+                    # Format heartbeat message
+                    ltp_str = f"₹{ltp_val:.1f}" if ltp_val else "–"
+                    ws_active = kite_manager.is_streaming
+                    src = "WS" if ws_active else "REST"
+                    
+                    _crude_log("💓", "Alive",
+                               f"Crude ₹{crude_price:.0f} | Option LTP {ltp_str} ({src}) | "
+                               f"SL ₹{t.stop_loss:.0f} (locked +₹{locked:.0f}) | {pnl_str}")
+            
+            # Always refresh spot price
             spot = await asyncio.to_thread(get_crude_spot)
             if spot:
                 crude_state.last_crude_price = spot
+                
         except Exception as e:
             print(f"⚠️ Crude LTP refresh error: {e}")
+        
         # 5s REST fallback — WebSocket is primary (~1s tick)
         await asyncio.sleep(5)
+
+
+async def _crude_heartbeat_loop():
+    """🐶 Heartbeat EVERY 60 SECONDS - shows crude system is alive!
+    
+    Fires every minute regardless of whether there's a trade or not.
+    """
+    from crude_trader import state as crude_state, _log as _crude_log
+    from crude_data import get_crude_spot
+    
+    await asyncio.sleep(10)  # Initial delay
+    
+    while True:
+        try:
+            if not crude_state.is_running or crude_state.kill_switch:
+                await asyncio.sleep(60)
+                continue
+                
+            # Get current price
+            price = await asyncio.to_thread(get_crude_spot)
+            if not price:
+                price = crude_state.last_crude_price or 0
+            
+            # Count firing strategies
+            firing = sum(1 for s in crude_state.meta_scores if s.get('should_enter', False))
+            total = len(crude_state.meta_scores) if crude_state.meta_scores else 6
+            regime = crude_state.regime or "unknown"
+            
+            # Log heartbeat
+            if crude_state.active_trade:
+                _crude_log("💓", "Heartbeat", 
+                           f"TRADE ACTIVE | Crude ₹{price:.0f} | Trades: {crude_state.orders_placed}")
+            else:
+                _crude_log("💓", "Heartbeat", 
+                           f"Monitoring | Crude ₹{price:.0f} | {firing}/{total} firing | "
+                           f"{regime} | Trades: {crude_state.orders_placed}")
+                           
+        except Exception as e:
+            print(f"⚠️ Crude heartbeat error: {e}")
+        
+        # Wait 60 seconds before next heartbeat
+        await asyncio.sleep(60)
 
 
 async def _ltp_refresh_loop():
@@ -241,18 +325,22 @@ async def _ltp_refresh_loop():
                 sl_prem  = _nifty_to_option_premium(t.stop_loss, t)
                 tgt_prem = _nifty_to_option_premium(t.target, t) if t.target else None
                 
-                # 🐶 NEW: Show Nifty SL, premium, and locked profit!
+                # Locked profit = SL moved INTO profit vs entry
+                # LONG: SL above entry = profit locked
+                # SHORT: SL below entry = profit locked
                 is_long = t.direction == 'long'
-                locked_profit = abs(t.stop_loss - t.entry_price)
+                locked_profit = (
+                    t.stop_loss - t.entry_price if is_long
+                    else t.entry_price - t.stop_loss
+                )
+                locked_label = f"Locked:{locked_profit:+.0f}pts" if locked_profit > 0 else f"Risk:{abs(locked_profit):.0f}pts"
                 sl_nifty = t.stop_loss
-                
                 tgt_str  = f" | Tgt ₹{tgt_prem:.1f}" if tgt_prem else ""
                 ltp_str  = f"₹{ltp:.1f}" if ltp else "–"
                 src      = "WS" if ws_delivering else "REST"
-                
-                # 🐶 NEW: Enhanced format with Nifty SL + locked profit
+
                 _at_log("💓", "Alive",
-                        f"LTP {ltp_str} | SL: ₹{sl_nifty:.0f} (₹{sl_prem:.1f}) Locked:{locked_profit:.0f}pts{tgt_str} | Nifty ₹{nifty:.0f} [{src}]")
+                        f"LTP {ltp_str} | SL: ₹{sl_nifty:.0f} (₹{sl_prem:.1f}) {locked_label}{tgt_str} | Nifty ₹{nifty:.0f} [{src}]")
         else:
             _hb_tick = 0
         await asyncio.sleep(15)
@@ -279,6 +367,11 @@ async def _maybe_start_ticker():
 @asynccontextmanager
 async def lifespan(_app):
     """Startup: launch background tasks. Shutdown: cancel them."""
+    # ✅ CRITICAL: Load settings from snapshot FIRST!
+    from auto_trader import _recover_state
+    _recover_state()
+    print("♻️  Settings restored from snapshot")
+    
     # Auto-resume auto-trader if it was running before server restart
     if trader_state.is_running:
         import threading
@@ -294,6 +387,7 @@ async def lifespan(_app):
     task_ticker       = asyncio.create_task(_maybe_start_ticker())
     task_crude        = asyncio.create_task(_crude_trader_loop())
     task_crude_ltp    = asyncio.create_task(_crude_ltp_refresh_loop())
+    task_crude_hb     = asyncio.create_task(_crude_heartbeat_loop())  # 🐶 NEW: Every 60s heartbeat!
     yield
     for t in (task_trader, task_ltp, task_ticker, task_crude, task_crude_ltp):
         t.cancel()
@@ -1037,12 +1131,18 @@ async def replay_stream(
     strategy: str = "smart_router",
     data_source: str = "yahoo",
     quantity: int = 750,
+    enabled_strategies: str = "",  # 🎯 NEW!
 ):
     """SSE stream: replay day candle-by-candle with live progress."""
     from backtester import replay_day
     import queue, threading
 
     q: queue.Queue = queue.Queue()
+    
+    # 🎯 Parse enabled_strategies
+    enabled_list = enabled_strategies.split(',') if enabled_strategies else None
+    if enabled_list:
+        enabled_list = [s.strip() for s in enabled_list if s.strip()]
 
     def _run():
         try:
@@ -1050,6 +1150,7 @@ async def replay_stream(
                 date_str=date, period=period, strategy_id=strategy,
                 sl_points=sl_points, trailing_sl=trailing_sl, rr_ratio=rr_ratio,
                 max_trades=max_trades, data_source=data_source, quantity=quantity,
+                enabled_strategies=enabled_list,  # 🎯 Pass it!
                 on_progress=lambda p: q.put(("progress", p)),
             )
             q.put(("done", result))
@@ -1106,12 +1207,27 @@ async def backtest_stream(
     strategy: str = "smart_router",
     data_source: str = "yahoo",
     quantity: int = 750,
+    enabled_strategies: str = "",  # 🎯 NEW! Comma-separated strategy IDs
+    strike_offset: int = 0,  # ⚡ NEW! Strike offset (ITM/OTM)
+    trail_mode: str = "fixed",  # 🎯 NEW! Trail SL mode
+    max_daily_loss: float = 3000.0,  # 🚫 NEW! Max daily loss
+    cooldown: int = 0,  # ⏳ NEW! Cooldown minutes
 ):
     """SSE stream: full backtest with live day-by-day progress."""
     from backtester import run_backtest
     import queue, threading
 
     q: queue.Queue = queue.Queue()
+    
+    # 🎯 Parse enabled_strategies from CSV string to list
+    enabled_list = enabled_strategies.split(',') if enabled_strategies else None
+    if enabled_list:
+        enabled_list = [s.strip() for s in enabled_list if s.strip()]  # Remove empty strings
+        print(f"🎯 [Backtest API] Testing only: {enabled_list}")
+    
+    # 📦 Log new parameters
+    print(f"⚡ [Backtest API] Strike Offset: {strike_offset} | Trail Mode: {trail_mode}")
+    print(f"🚫 [Backtest API] Max Daily Loss: ₹{max_daily_loss:,.0f} | Cooldown: {cooldown}m")
 
     def _run():
         try:
@@ -1120,6 +1236,11 @@ async def backtest_stream(
                 sl_points=sl_points, trailing_sl=trailing_sl, rr_ratio=rr_ratio,
                 max_trades_per_day=max_trades, strategy_id=strategy,
                 data_source=data_source,
+                enabled_strategies=enabled_list,  # 🎯 Pass it!
+                strike_offset=strike_offset,  # ⚡ NOW PASSED!
+                trail_mode=trail_mode,  # 🎯 NOW PASSED!
+                max_daily_loss=max_daily_loss,  # 🚫 NOW PASSED!
+                cooldown_minutes=cooldown,  # ⏳ NOW PASSED!
                 on_progress=lambda p: q.put(("progress", p)),
             )
             q.put(("done", result))
@@ -2491,30 +2612,134 @@ async def crude_config(
     rr_ratio:       float | None = None,
     capital:        float | None = None,
     strike_offset:  int   | None = None,
-    trail_mode:     str   | None = None,   # 'fixed' | 'atr' | 'supertrend'
+    trail_mode:     str   | None = None,   # 'off' | 'atr0.4' | 'atr0.7' | 'atr1.5' | 'atr2' | 'premium'
     atr_multiplier: float | None = None,
     max_trades:     int   | None = None,   # max entries per day (1-20)
-    max_daily_loss: float | None = None,   # ← NEW: daily loss limit
+    max_daily_loss: float | None = None,
 ):
     from crude_trader import state as cs, CRUDE_MAX_TRADES, save_crude_settings
+    
+    print(f"🔧 [API] Crude config update: sl={sl_points} trail={trail_points} rr={rr_ratio} cap={capital} mode={trail_mode} offset={strike_offset} max={max_trades} loss={max_daily_loss}")
+    
     if sl_points      is not None: cs.sl_points      = sl_points
     if trail_points   is not None: cs.trail_points   = trail_points
     if rr_ratio       is not None: cs.rr_ratio       = rr_ratio
     if capital        is not None: cs.capital        = capital
     if strike_offset  is not None: cs.strike_offset  = strike_offset
-    if trail_mode     is not None and trail_mode in ('fixed', 'atr', 'supertrend'):
-        cs.trail_mode = trail_mode
+    if trail_mode     is not None:
+        # Parse ATR multiplier from trail mode
+        valid_modes = ('off', 'atr0.4', 'atr0.7', 'atr1.5', 'atr2', 'premium', 'atr')  # 'atr' for backwards compat
+        if trail_mode in valid_modes:
+            # Extract multiplier from mode string
+            if trail_mode == 'atr0.4':
+                cs.trail_mode = 'atr'
+                cs.atr_multiplier = 0.4
+            elif trail_mode == 'atr0.7':
+                cs.trail_mode = 'atr'
+                cs.atr_multiplier = 0.7
+            elif trail_mode == 'atr1.5':
+                cs.trail_mode = 'atr'
+                cs.atr_multiplier = 1.5
+            elif trail_mode == 'atr2':
+                cs.trail_mode = 'atr'
+                cs.atr_multiplier = 2.0
+            elif trail_mode == 'atr':
+                cs.trail_mode = 'atr'
+                # Keep existing multiplier or default to 1.5
+                if atr_multiplier is None:
+                    cs.atr_multiplier = 1.5
+            else:
+                cs.trail_mode = trail_mode  # 'off' or 'premium'
+            print(f"✅ [API] Trail mode set to: {cs.trail_mode} (mult={cs.atr_multiplier})")
+        else:
+            print(f"⚠️ [API] Invalid trail mode: {trail_mode}")
     if atr_multiplier is not None: cs.atr_multiplier = atr_multiplier
     if max_trades     is not None: cs.max_trades     = max(1, min(20, max_trades))
-    if max_daily_loss is not None: cs.max_daily_loss = max(100, abs(max_daily_loss))  # ← NEW: min ₹100
+    if max_daily_loss is not None: cs.max_daily_loss = max(100, abs(max_daily_loss))
+    
     save_crude_settings()   # ← persist to disk immediately
+    print(f"💾 [API] Settings saved to crude_settings.json")
+    
     return {
         'success': True,
         'sl_points': cs.sl_points, 'trail_points': cs.trail_points,
         'rr_ratio': cs.rr_ratio,   'capital': cs.capital,
         'trail_mode': cs.trail_mode, 'atr_multiplier': cs.atr_multiplier,
+        'strike_offset': cs.strike_offset,  # 🐶 ADDED: return this too!
         'max_trades': cs.max_trades,
-        'max_daily_loss': cs.max_daily_loss,  # ← NEW: return to UI
+        'max_daily_loss': cs.max_daily_loss,
+    }
+
+
+@app.post("/api/crude/strategies")
+async def crude_update_strategies(request: Request):
+    """🎯 Update enabled strategy selection.
+    
+    Body: {"enabled_strategies": ["supertrend", "divergence", ...]}
+    Empty list = all strategies enabled (default)
+    """
+    from crude_trader import state as cs, save_crude_settings
+    from crude_meta_router import CRUDE_STRATEGIES
+    
+    body = await request.json()
+    enabled = body.get("enabled_strategies", [])
+    
+    # Validate strategy IDs
+    valid_ids = {s["id"] for s in CRUDE_STRATEGIES}
+    invalid = [sid for sid in enabled if sid not in valid_ids]
+    
+    if invalid:
+        return {"success": False, "error": f"Invalid strategy IDs: {invalid}"}
+    
+    # Update state
+    cs.enabled_strategies = enabled
+    save_crude_settings()  # Persist to disk
+    
+    count = len(enabled) if enabled else len(CRUDE_STRATEGIES)
+    total = len(CRUDE_STRATEGIES)
+    
+    print(f"🎯 [API] Strategy selection updated: {count}/{total} enabled")
+    if enabled:
+        print(f"  Active: {', '.join(enabled)}")
+    else:
+        print(f"  All strategies enabled (default)")
+    
+    return {
+        "success": True,
+        "enabled_strategies": enabled,
+        "enabled_count": count,
+        "total_count": total,
+        "all_enabled": not bool(enabled),  # empty list = all enabled
+    }
+
+
+@app.get("/api/crude/strategies")
+async def crude_get_strategies():
+    """🎯 Get all available strategies and their enabled status."""
+    from crude_trader import state as cs
+    from crude_meta_router import CRUDE_STRATEGIES
+    
+    # If enabled_strategies is empty, all are enabled
+    enabled_ids = set(cs.enabled_strategies) if cs.enabled_strategies else {s["id"] for s in CRUDE_STRATEGIES}
+    
+    strategies = [
+        {
+            "id": s["id"],
+            "name": s["name"],
+            "emoji": s["emoji"],
+            "category": s["category"],
+            "win_rate": s["win_rate"],
+            "enabled": s["id"] in enabled_ids,
+        }
+        for s in CRUDE_STRATEGIES
+    ]
+    
+    return {
+        "success": True,
+        "strategies": strategies,
+        "enabled_count": len(enabled_ids),
+        "total_count": len(CRUDE_STRATEGIES),
+        "all_enabled": not bool(cs.enabled_strategies),
     }
 
 
@@ -2829,14 +3054,16 @@ async def crude_sync_positions():
     This pulls any open MCX crude oil option positions from Zerodha and
     loads them into the auto-trader so it can manage them.
     """
-    from crude_trader import state as crude_state, CrudeTrade, CrudeOrderStatus, _save_snapshot
+    from crude_trader import state as crude_state, CrudeTrade, CrudeOrderStatus, _save_snapshot, _log  # 🐶 ADD _log!
     from crude_data import get_crude_spot
     import traceback as _tb
     
     if not kite_manager.is_authenticated:
+        _log("❌", "Sync failed", "Not authenticated with Zerodha")
         return JSONResponse({"success": False, "error": "Not authenticated with Zerodha"})
     
     try:
+        _log("🔍", "Fetching positions", "Querying Zerodha API...")
         # Get positions from Zerodha
         positions = kite_manager.kite.positions().get('net', [])
         
@@ -2850,8 +3077,10 @@ async def crude_sync_positions():
         ]
         
         print(f"🔍 [Sync] Found {len(crude_positions)} crude option positions")
+        _log("🔍", "Sync initiated", f"Found {len(crude_positions)} crude positions")
         
         if not crude_positions:
+            _log("ℹ️", "Sync complete", "No crude options found in Zerodha")
             return JSONResponse({"success": True, "found": False, "message": "No crude options found"})
         
         # Take the first position (if multiple, warn user)
@@ -2861,6 +3090,7 @@ async def crude_sync_positions():
         avg_price = pos.get('average_price', 0)
         
         print(f"🔄 [Sync] Syncing position: {symbol} qty={qty} avg={avg_price}")
+        _log("🔄", "Syncing position", f"{symbol} qty={qty} @ ₹{avg_price}")
         
         # Determine direction
         direction = 'long' if qty > 0 else 'short'
@@ -2919,6 +3149,7 @@ async def crude_sync_positions():
         _save_snapshot()
         
         print(f"✅ [Sync] Position synced: {direction.upper()} {lots} lots @ ₹{avg_price}")
+        _log("✅", "Sync successful", f"{direction.upper()} {lots} lots @ ₹{avg_price} | SL ₹{stop_loss:.0f} | Tgt ₹{target:.0f}")
         
         return JSONResponse({
             "success": True,
@@ -2934,6 +3165,7 @@ async def crude_sync_positions():
         
     except Exception as e:
         _tb.print_exc()
+        _log("❌", "Sync error", str(e)[:100])
         return JSONResponse({"success": False, "error": str(e)})
 
 
@@ -3391,6 +3623,54 @@ async def auto_trader_update_trail_sl(new_sl_points: float = Query(...)):
     }
 
 
+@app.post("/api/auto-trader/update-sl-premium")
+async def auto_trader_update_sl_premium(premium_sl: float = Query(...)):
+    """Directly update SL based on premium value (for synced trades).
+    
+    This bypasses the Nifty-to-premium conversion and sets the SL
+    to trigger when option premium falls to the specified level.
+    Useful for synced trades where the normal calculation is wrong.
+    """
+    from auto_trader import state as at_state, _save_state_snapshot, ASSUMED_DELTA
+    
+    if not at_state.active_trade:
+        return {"success": False, "error": "No active trade"}
+    
+    if premium_sl < 5 or premium_sl > 500:
+        return {"success": False, "error": "Premium SL must be between ₹5 and ₹500"}
+    
+    t = at_state.active_trade
+    old_sl_nifty = t.stop_loss
+    from auto_trader import _nifty_to_option_premium
+    old_sl_premium = _nifty_to_option_premium(old_sl_nifty, t)
+    
+    # Reverse calculate: what Nifty SL gives this premium?
+    # premium_sl = entry_premium + (nifty_sl - entry_nifty) * sign * delta
+    # Solve for nifty_sl:
+    sign = 1.0 if t.direction == "long" else -1.0
+    nifty_sl = t.entry_price + ((premium_sl - t.entry_premium) / (sign * ASSUMED_DELTA))
+    
+    # Update the SL
+    t.stop_loss = round(nifty_sl, 2)
+    
+    # Save state
+    _save_state_snapshot()
+    
+    # Verify the new premium SL
+    new_sl_premium = _nifty_to_option_premium(t.stop_loss, t)
+    
+    return {
+        "success": True,
+        "old_sl_nifty": old_sl_nifty,
+        "new_sl_nifty": t.stop_loss,
+        "old_sl_premium": round(old_sl_premium, 2),
+        "new_sl_premium": round(new_sl_premium, 2),
+        "requested_premium": premium_sl,
+        "direction": t.direction,
+        "entry_premium": t.entry_premium,
+    }
+
+
 @app.get("/api/auto-trader/history")
 async def auto_trader_history():
     """Return completed trade history from trade log.
@@ -3577,6 +3857,92 @@ async def list_strategies():
     import strategies.loader  # noqa: F401
     from strategies.registry import to_json
     return {"success": True, "strategies": to_json()}
+
+
+# 🎯 NEW: Nifty strategy selection endpoints (like Crude Oil)
+@app.get("/api/nifty/strategies")
+async def get_nifty_strategies():
+    """Return all Nifty strategies with enabled status."""
+    import strategies.loader  # noqa: F401
+    from strategies.registry import all_strategies
+    from auto_trader import state
+    from calibrator import win_rate_for
+    
+    all_strats = all_strategies()
+    enabled_set = set(state.enabled_strategies) if state.enabled_strategies else set()
+    all_enabled = len(enabled_set) == 0  # empty = all enabled
+    
+    # Map categories for display
+    category_map = {
+        "trend": "trend",
+        "reversal": "reversal",
+        "breakout": "breakout",
+        "momentum": "momentum",
+        "scalping": "scalping",
+        "adaptive": "adaptive",
+        "pattern": "pattern",
+    }
+    
+    strategies_list = [
+        {
+            "id": s.id,
+            "name": s.name,
+            "emoji": s.emoji,
+            "category": category_map.get(s.category, s.category),
+            "win_rate": round(win_rate_for(s.id), 1),
+            "enabled": all_enabled or s.id in enabled_set,
+        }
+        for s in all_strats
+        if s.id not in ("smart_router", "meta_router")  # Skip meta strategies
+    ]
+    
+    enabled_count = len([s for s in strategies_list if s["enabled"]])
+    
+    return {
+        "success": True,
+        "strategies": strategies_list,
+        "enabled_count": enabled_count,
+        "total_count": len(strategies_list),
+        "all_enabled": all_enabled,
+    }
+
+
+@app.post("/api/nifty/strategies")
+async def update_nifty_strategies(request: Request):
+    """Update which strategies are enabled for Nifty trading."""
+    from auto_trader import state, _save_state_snapshot
+    
+    try:
+        body = await request.json()
+        enabled_list = body.get("enabled_strategies", [])
+        
+        # Validate strategy IDs
+        import strategies.loader  # noqa: F401
+        from strategies.registry import ids as get_all_ids
+        valid_ids = set(get_all_ids())
+        valid_ids.discard("smart_router")
+        valid_ids.discard("meta_router")
+        
+        # Filter to valid IDs only
+        enabled_strategies = [sid for sid in enabled_list if sid in valid_ids]
+        
+        # Update state
+        state.enabled_strategies = enabled_strategies
+        
+        # Persist to disk
+        _save_state_snapshot()
+        
+        all_enabled = len(enabled_strategies) == 0
+        
+        return {
+            "success": True,
+            "enabled_strategies": enabled_strategies,
+            "enabled_count": len(enabled_strategies) if enabled_strategies else len(valid_ids),
+            "total_count": len(valid_ids),
+            "all_enabled": all_enabled,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 @app.get("/api/truedata/status")

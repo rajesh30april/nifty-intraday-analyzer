@@ -1659,18 +1659,20 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
 
     def _apply_sl_move(new_sl_val: float) -> None:
         """Update SL in state + log. Inlined helper to avoid duplicate code."""
-        # ✨ CRITICAL SAFETY CHECK: Prevent super-tight stops! ✨
-        # Never allow SL closer than 30 points (absolute minimum for Nifty)
-        # This prevents whipsaw from over-aggressive trailing.
-        # INCREASED from 20 → 30 to prevent ATR over-tightening (Mar 23, 2026)
-        MIN_SL_DISTANCE = 30  # Minimum 30 Nifty points
-        
-        current_distance = abs(current_price - new_sl_val)
-        if current_distance < MIN_SL_DISTANCE:
-            print(f"⚠️  Trail blocked! SL too tight: {current_distance:.1f} pts (min: {MIN_SL_DISTANCE})")
-            print(f"   Current: ₹{current_price:.0f} | Proposed SL: ₹{new_sl_val:.0f}")
-            print(f"   Keeping current SL: ₹{trade.stop_loss:.0f} ({abs(current_price - trade.stop_loss):.1f} pts away)")
-            return  # Don't move SL - too dangerous!
+        # Safety check: measure distance from the BEST PRICE SEEN, not
+        # current price. The trail formula already guarantees:
+        #   |best_price - new_sl| == trailing_sl_points
+        # Checking from current price wrongly blocks valid trails when
+        # price reverses toward the SL after a favourable move.
+        MIN_SL_DISTANCE = 15  # Minimum trail distance (sanity guard only)
+        best_price = (
+            state.highest_price_since_entry if is_long
+            else state.lowest_price_since_entry
+        )
+        best_distance = abs(best_price - new_sl_val)
+        if best_distance < MIN_SL_DISTANCE:
+            print(f"⚠️  Trail blocked! Distance from best price too small: {best_distance:.1f} pts")
+            return
         
         # 🐶 NEW: Capture old SL BEFORE updating for live log
         old_sl_nifty = trade.stop_loss
@@ -1692,10 +1694,16 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
         # 🐶 NEW: Show old → new for both Nifty and premium!
         sl_change = f'₹{old_sl_nifty:.0f}→₹{trade.stop_loss:.0f}'
         prem_change = f'₹{old_sl_prem:.1f}→₹{new_sl_prem:.1f}'
-        locked_profit = abs(trade.stop_loss - trade.entry_price)
+        # Locked profit = how far SL has moved INTO profit territory
+        # LONG:  SL above entry = profit locked; SHORT: SL below entry = profit locked
+        locked_profit = (
+            trade.stop_loss - trade.entry_price if is_long
+            else trade.entry_price - trade.stop_loss
+        )
+        locked_label = f"Locked:{locked_profit:+.0f}pts" if locked_profit > 0 else f"Risk:{abs(locked_profit):.0f}pts"
         
         _log(icon, f'Trail [{label}] SL moved',
-             f'Nifty SL: {sl_change} | Prem: {prem_change} | Locked: {locked_profit:.0f}pts' + ltp_part)
+             f'Nifty SL: {sl_change} | Prem: {prem_change} | {locked_label}' + ltp_part)
 
     if new_sl is not None:
         if is_long and new_sl > trade.stop_loss:
