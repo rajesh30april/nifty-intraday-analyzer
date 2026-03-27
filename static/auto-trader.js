@@ -974,6 +974,12 @@ function renderTradeHistory(data) {
             ? `Realized ₹${realizedPnl >= 0?'+':''}${realizedPnl.toFixed(0)} + Unrealized ₹${unrealPnl >= 0?'+':''}${unrealPnl.toFixed(0)}`
             : 'Realized P&L only (no open trade)';
     }
+    // Show a small note next to "Day Total" label when an open trade is affecting it
+    const noteEl = document.getElementById('ath-day-total-note');
+    if (noteEl) {
+        noteEl.textContent = unrealPnl !== 0
+            ? `(+open)` : '';
+    }
 
     const container = document.getElementById('at-history-table');
     if (!container) return;
@@ -1016,11 +1022,17 @@ function renderTradeHistory(data) {
             <td></td>
         </tr>` : '';
 
+    // Footer = REALIZED only (open trade is already shown in unrealRow above;
+    // mixing it into the total here would double-count it visually).
+    const footerColor = realizedPnl >= 0 ? 'text-green-400' : 'text-red-400';
+    const footerLabel = unrealPnl !== 0
+        ? `Realized (${trades.length} closed, ${wins}W/${losses}L)`
+        : `Day Total (${trades.length} trades, ${wins}W/${losses}L)`;
     const totalRow = `
         <tr class="border-t-2 border-gray-600 text-[11px] font-bold">
-            <td class="py-1.5 pl-1 text-gray-300" colspan="4">Day Total (${trades.length} trades, ${wins}W/${losses}L)</td>
-            <td class="text-center ${dayTotal >= 0 ? 'text-green-400' : 'text-red-400'}">
-                ₹${dayTotal >= 0 ? '+' : ''}${dayTotal.toFixed(0)}
+            <td class="py-1.5 pl-1 text-gray-300" colspan="4">${footerLabel}</td>
+            <td class="text-center ${footerColor}">
+                ₹${realizedPnl >= 0 ? '+' : ''}${realizedPnl.toFixed(0)}
             </td>
             <td></td>
         </tr>`;
