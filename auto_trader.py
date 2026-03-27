@@ -471,7 +471,16 @@ def _recover_state(snapshot_file: Path | None = None):
         return False   # unknown format — don’t discard
 
     instrument_str = at.get("instrument", "")
-    if _option_expiry_is_past(instrument_str):
+
+    # ── Check Zerodha FIRST — if position is live, skip expiry guard ────
+    # The symbol-parsed expiry date can lag settlement timing (e.g. same-day
+    # expiry options trade until 3:30 PM, weekly options intraday). Zerodha
+    # is the authoritative source: if qty != 0 the option is still live.
+    paper_mode   = at.get("paper", True)
+    zerodha_qty  = _get_zerodha_position_qty(instrument_str) if not paper_mode else None
+    zerodha_live = (zerodha_qty is not None and zerodha_qty != 0)
+
+    if not paper_mode and not zerodha_live and _option_expiry_is_past(instrument_str):
         print(
             f"⏰ [RECOVERY] Option {instrument_str} has expired — "
             f"discarding stale trade from snapshot (no ghost position)."
@@ -484,9 +493,9 @@ def _recover_state(snapshot_file: Path | None = None):
         )
         return
 
-    # Check Zerodha for live position
-    zerodha_qty  = _get_zerodha_position_qty(at["instrument"])
-    paper_mode   = at.get("paper", True)
+    # Check Zerodha for live position (reuse result from above)
+    if zerodha_qty is None and not paper_mode:
+        zerodha_qty = _get_zerodha_position_qty(at["instrument"])
 
     if zerodha_qty != 0 or paper_mode:
         # Position still open in Zerodha (or paper mode → trust snapshot)
@@ -942,6 +951,10 @@ def _place_sl_order(trade: "Trade", sl_trigger_price: float) -> str | None:
         clean = trade.instrument.replace("NFO:", "")
         # We are always an OPTION BUYER (BUY CE or BUY PE at entry).
         # The SL-M backstop closes the position → always SELL.
+        # NSE banned SL-M (stop-loss market) for F&O contracts.
+        # Use SL (stop-loss limit) with a 3-point buffer below the trigger
+        # so the limit order fills even with minor slippage.
+        sl_limit_price = round(max(0.5, sl_trigger_price - 3.0), 1)
         order_id = kite_manager.kite.place_order(
             variety=kite_manager.kite.VARIETY_REGULAR,
             exchange="NFO",
@@ -949,11 +962,12 @@ def _place_sl_order(trade: "Trade", sl_trigger_price: float) -> str | None:
             transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
             quantity=trade.quantity,
             product=kite_manager.kite.PRODUCT_MIS,
-            order_type=kite_manager.kite.ORDER_TYPE_SLM,
+            order_type=kite_manager.kite.ORDER_TYPE_SL,
             trigger_price=sl_trigger_price,
+            price=sl_limit_price,
             validity="DAY",
         )
-        print(f"🛡 [LIVE] SL-M backstop placed @ ₹{sl_trigger_price:.2f} | ID: {order_id}")
+        print(f"🛡 [LIVE] SL backstop placed @ trigger=₹{sl_trigger_price:.2f} limit=₹{sl_limit_price:.2f} | ID: {order_id}")
         return str(order_id)
     except Exception as e:
         print(f"⚠️  SL-M order failed (tick guard still protects): {e}")
@@ -1045,14 +1059,17 @@ def _sync_trailing_sl_to_exchange() -> None:
         return
 
     try:
+        # NSE banned SL-M for F&O — update both trigger and limit price
+        new_limit = round(max(0.5, new_trigger - 3.0), 1)
         kite_manager.kite.modify_order(
             variety=kite_manager.kite.VARIETY_REGULAR,
             order_id=trade.sl_order_id,
-            order_type=kite_manager.kite.ORDER_TYPE_SLM,   # explicit — preserve SL-M type
+            order_type=kite_manager.kite.ORDER_TYPE_SL,
             trigger_price=new_trigger,
+            price=new_limit,
         )
-        print(f"🛡 [TRAILING] Exchange SL-M updated → "
-              f"₹{new_trigger:.1f} option | Nifty SL ₹{nifty_sl:.0f}")
+        print(f"🛡 [TRAILING] SL updated → "
+              f"trigger=₹{new_trigger:.1f} limit=₹{new_limit:.1f} | Nifty SL ₹{nifty_sl:.0f}")
     except Exception as e:
         # Order may have been filled already (trade closed) — non-fatal
         print(f"⚠️  Exchange SL-M modify failed (order may be filled): {e}")
