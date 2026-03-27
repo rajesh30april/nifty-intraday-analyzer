@@ -512,50 +512,59 @@ function renderAutoTrader(data) {
         }
 
         // ── All prices in OPTION PREMIUM terms ───────────────────
-        const ltp    = t.current_option_ltp;
-        const slPrem = t.option_sl_premium;
-        const tgtPrem = t.option_target_premium;
+        const ltp     = t.current_option_ltp;
+        // original_sl_premium = entry SL (fixed, never trails)
+        // option_sl_premium   = current SL (updated by trailing)
+        const origSlPrem = t.original_sl_premium ?? t.option_sl_premium;
+        const curSlPrem  = t.option_sl_premium;
+        const tgtPrem    = t.option_target_premium;
+        const slTrailed  = t.sl_trailed_past_entry === true;
 
         // Entry — show entry premium paid
-        setT('at-entry', t.entry_premium ? `₹${t.entry_premium.toFixed(2)}` : '--');
+        setT('at-entry', t.entry_premium ? `\u20b9${t.entry_premium.toFixed(2)}` : '--');
 
-        // SL — option premium SL level, Nifty spot as tooltip
+        // SL — show ORIGINAL entry-SL premium so the number stays stable;
+        //       Nifty spot SL level as tooltip
         const slEl = document.getElementById('at-sl');
         if (slEl) {
-            slEl.textContent = slPrem ? `₹${slPrem.toFixed(1)}` : '--';
-            slEl.title       = `Nifty spot SL: ₹${t.stop_loss}`;
+            slEl.textContent = origSlPrem ? `\u20b9${origSlPrem.toFixed(1)}` : '--';
+            slEl.title       = `Nifty spot SL: \u20b9${t.stop_loss} | Current (trailed): \u20b9${curSlPrem?.toFixed(1)}`;
         }
 
         // Target — option premium target level, Nifty spot as tooltip
         const tgtEl = document.getElementById('at-tgt');
         if (tgtEl) {
-            tgtEl.textContent = tgtPrem ? `₹${tgtPrem.toFixed(1)}` : '--';
-            tgtEl.title       = `Nifty spot target: ₹${t.target}`;
+            tgtEl.textContent = tgtPrem ? `\u20b9${tgtPrem.toFixed(1)}` : '--';
+            tgtEl.title       = `Nifty spot target: \u20b9${t.target}`;
         }
 
-        // Distance — how far option LTP is from SL / target in premium terms
+        // Distance — distance from ORIGINAL SL (entry SL) and target
         const distSl  = document.getElementById('at-dist-sl');
         const distTgt = document.getElementById('at-dist-tgt');
-        if (distSl && ltp && slPrem) {
-            const d = (ltp - slPrem).toFixed(1);
-            distSl.textContent = `₹${d} away`;
+        if (distSl && ltp && origSlPrem) {
+            const d = (ltp - origSlPrem).toFixed(1);
+            distSl.textContent = `\u20b9${d} away`;
             distSl.className   = parseFloat(d) < 5 ? 'text-[9px] text-red-400 font-bold' : 'text-[9px] text-gray-500';
         }
         if (distTgt && ltp && tgtPrem) {
             const d = (tgtPrem - ltp).toFixed(1);
-            distTgt.textContent = `₹${d} away`;
+            distTgt.textContent = `\u20b9${d} away`;
         }
 
-        // ── Strike price — extract from Kite tradingsymbol ─────────
-        // Format: NIFTY{YY}{M}{DD}{STRIKE}{CE/PE}  e.g. NIFTY2632422900PE
+        // ── Strike price — extract from Kite tradingsymbol ──────────
+        // Handles both weekly (NIFTY{YY}{M}{DD}...) and monthly (NIFTY{YY}{MON}...)
         const strikeEl = document.getElementById('at-strike');
         if (strikeEl) {
-            const sym   = (t.instrument || '').replace('NFO:', '');
-            const smatch = sym.match(/NIFTY\d{2}[0-9OND]\d{2}(\d+)(CE|PE)/i);
+            const sym = (t.instrument || '').replace('NFO:', '');
+            // Weekly format: NIFTY26327{STRIKE}{TYPE}
+            const weeklyMatch = sym.match(/NIFTY\d{2}[0-9OND]\d{2}(\d+)(CE|PE)/i);
+            // Monthly format: NIFTY26MAR{STRIKE}{TYPE}
+            const monthlyMatch = sym.match(/NIFTY\d{2}(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(\d+)(CE|PE)/i);
+            const smatch = weeklyMatch || monthlyMatch;
             if (smatch) {
-                const strike    = parseInt(smatch[1], 10).toLocaleString('en-IN');
-                const optType   = smatch[2].toUpperCase();
-                const optColor  = optType === 'CE' ? 'text-green-400' : 'text-red-400';
+                const strike   = parseInt(smatch[1], 10).toLocaleString('en-IN');
+                const optType  = smatch[2].toUpperCase();
+                const optColor = optType === 'CE' ? 'text-green-400' : 'text-red-400';
                 strikeEl.innerHTML = `<span class="text-[#ffc220]">${strike}</span> <span class="${optColor} text-[9px] font-black">${optType}</span>`;
                 strikeEl.title     = `Full symbol: ${sym}`;
             } else {
@@ -563,50 +572,31 @@ function renderAutoTrader(data) {
             }
         }
 
-        // ── Trailing SL — CURRENT Premium SL (advances as trail fires) ─
-        // trailing_sl_premium = current (possibly trailed) SL in premium terms
-        // original_sl_premium = SL at entry in premium terms
+        // ── Trail SL — shows the CURRENT (trailed) SL in premium terms ────
+        // When trail has NOT fired: shows '--' (original SL still holds)
+        // When trail fires:        shows the new locked-in SL premium
+        //   • If slTrailed = true (SL past entry), show LOCKED badge
+        //   • Otherwise show normal trail level
         const trailEl = document.getElementById('at-trail-sl-display');
-        
-        console.log('[Trail SL Element]', trailEl ? 'FOUND ✅' : 'NOT FOUND ❌', trailEl);
-        
         if (trailEl) {
-            const tslPrem    = t.trailing_sl_premium ?? t.option_sl_premium;
-            const origSlPrem = t.original_sl_premium ?? tslPrem;
-            
-            // DEBUG: Log the values to see what we're getting
-            console.log('[Trail SL Debug]', {
-                trailing_sl_premium: t.trailing_sl_premium,
-                option_sl_premium: t.option_sl_premium,
-                original_sl_premium: t.original_sl_premium,
-                computed_tslPrem: tslPrem,
-                computed_origSlPrem: origSlPrem
-            });
-            
-            if (tslPrem && !isNaN(tslPrem)) {
-                // Trail has fired if current SL premium has moved from original
-                const moved = Math.abs(tslPrem - origSlPrem) > 1.0;  // 1 rupee threshold
-                const newValue = `₹${tslPrem.toFixed(1)}`;
-                
-                console.log('[Trail SL Update] Setting value:', newValue, 'moved:', moved);
-                
-                trailEl.textContent = newValue;
-                trailEl.className   = moved
-                    ? 'text-xs font-black text-green-400 animate-pulse'  // profit-locked ✅
-                    : 'text-xs font-black text-orange-400';              // original SL still active
-                trailEl.title = moved
-                    ? `🔒 Trail fired! Original SL ₹${origSlPrem.toFixed(1)} → Now ₹${tslPrem.toFixed(1)}`
-                    : `Stop-loss @ Premium ₹${tslPrem.toFixed(1)} (original — trail not fired yet)`;
-                    
-                // Verify it was actually set
-                console.log('[Trail SL Verify] Element text after update:', trailEl.textContent);
+            const trailMoved = curSlPrem != null && origSlPrem != null &&
+                               Math.abs(curSlPrem - origSlPrem) > 1.0;
+            if (trailMoved && curSlPrem != null) {
+                trailEl.textContent = `\u20b9${curSlPrem.toFixed(1)}`;
+                if (slTrailed) {
+                    // Trail has locked in profit beyond entry
+                    trailEl.className = 'text-xs font-black text-green-400';
+                    trailEl.title     = `\ud83d\udd12 Profit locked! Trail SL \u20b9${curSlPrem.toFixed(1)} | Entry SL was \u20b9${origSlPrem.toFixed(1)}`;
+                } else {
+                    // Trail fired but still in loss territory
+                    trailEl.className = 'text-xs font-black text-orange-400 animate-pulse';
+                    trailEl.title     = `Trail SL \u20b9${curSlPrem.toFixed(1)} | Original \u20b9${origSlPrem.toFixed(1)}`;
+                }
             } else {
-                console.warn('[Trail SL] No valid SL premium value:', tslPrem);
                 trailEl.textContent = '--';
+                trailEl.className   = 'text-xs text-gray-500';
+                trailEl.title       = 'Trail not activated yet';
             }
-        } else {
-            console.error('[Trail SL] Element with ID "at-trail-sl-display" not found in DOM!');
-        }
 
         // Row 2 — live prices & quantity
         const niftyCur = data.nifty_current || t.nifty_current;

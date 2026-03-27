@@ -415,35 +415,60 @@ def _recover_state(snapshot_file: Path | None = None):
     def _option_expiry_is_past(instrument: str) -> bool:
         """Parse option expiry from Kite symbol and check if it's passed.
 
-        Kite weekly Nifty symbols: NIFTY{YY}{M}{DD}{strike}{CE/PE}
-        e.g. NIFTY2632422950PE → year=26 month=3 day=24
-        Month can be 1-9, O, N, D (single-char NSE month codes).
+        Handles two Kite formats:
+          Weekly:  NIFTY{YY}{M}{DD}{strike}{CE/PE}
+                   e.g. NIFTY2632422950PE → year=26 month=3 day=24
+                   Month can be 1-9, O (Oct), N (Nov), D (Dec)
+          Monthly: NIFTY{YY}{MON}{strike}{CE/PE}
+                   e.g. NIFTY26MAR22850PE → March 2026 monthly expiry
+                   Expires on the LAST THURSDAY of the calendar month.
         """
         import re
-        from datetime import date as dt_date
+        from datetime import date as dt_date, timedelta
         sym = instrument.replace("NFO:", "").upper()
-        # Standard Kite format: NIFTY + 2-digit year + 1-char month + 2-digit day
+
+        # ── Monthly format: NIFTY{YY}{MON}... ──────────────────────────────
+        mon_map = {"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4,
+                   "MAY": 5, "JUN": 6, "JUL": 7, "AUG": 8,
+                   "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12}
+        m_mon = re.match(r"NIFTY(\d{2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)", sym)
+        if m_mon:
+            year  = 2000 + int(m_mon.group(1))
+            month = mon_map[m_mon.group(2)]
+            # Find the last Thursday of that month
+            if month == 12:
+                next_month_first = dt_date(year + 1, 1, 1)
+            else:
+                next_month_first = dt_date(year, month + 1, 1)
+            last_day = next_month_first - timedelta(days=1)
+            # weekday(): 0=Mon ... 3=Thu
+            days_back = (last_day.weekday() - 3) % 7
+            last_thursday = last_day - timedelta(days=days_back)
+            return last_thursday < dt_date.today()
+
+        # ── Weekly format: NIFTY{YY}{M}{DD}... ───────────────────────────
         m = re.match(r"NIFTY(\d{2})([0-9OND])(\d{2})", sym)
-        if not m:
-            # Legacy/non-standard format (e.g. NIFTY20260317_23200CE) —
-            # try to extract an 8-digit date YYYYMMDD
-            m2 = re.search(r"(\d{4})(\d{2})(\d{2})", sym)
-            if m2:
-                try:
-                    expiry = dt_date(int(m2.group(1)), int(m2.group(2)), int(m2.group(3)))
-                    return expiry < dt_date.today()
-                except ValueError:
-                    pass
-            return False  # unknown format — don't discard
-        year_2d, month_code, day = m.group(1), m.group(2), m.group(3)
-        month_map = {'O': 10, 'N': 11, 'D': 12}
-        try:
-            month = month_map.get(month_code, int(month_code))
-            year  = 2000 + int(year_2d)
-            expiry = dt_date(year, month, int(day))
-            return expiry < dt_date.today()
-        except (ValueError, KeyError):
-            return False
+        if m:
+            year_2d, month_code, day = m.group(1), m.group(2), m.group(3)
+            month_map2 = {'O': 10, 'N': 11, 'D': 12}
+            try:
+                month = month_map2.get(month_code, int(month_code))
+                year  = 2000 + int(year_2d)
+                expiry = dt_date(year, month, int(day))
+                return expiry < dt_date.today()
+            except (ValueError, KeyError):
+                pass
+
+        # ── Legacy / YYYYMMDD fallback ───────────────────────────────────
+        m2 = re.search(r"(\d{4})(\d{2})(\d{2})", sym)
+        if m2:
+            try:
+                expiry = dt_date(int(m2.group(1)), int(m2.group(2)), int(m2.group(3)))
+                return expiry < dt_date.today()
+            except ValueError:
+                pass
+
+        return False   # unknown format — don’t discard
 
     instrument_str = at.get("instrument", "")
     if _option_expiry_is_past(instrument_str):
@@ -989,21 +1014,27 @@ def _exit_position(reason: str, current_price: float):
         except Exception as e:
             err_str = str(e).lower()
 
-            # ── TERMINAL: instrument expired / does not exist ──────────────
-            # The option has expired or was never valid (stale snapshot from
-            # a previous expiry). Re-arming SL-M is pointless — it will also
-            # fail with the same error, creating a death-loop every second.
-            # Force-close the paper trade; for live, the exchange has already
-            # settled/expired the position so clearing state is correct.
-            if "expired" in err_str or "does not exist" in err_str:
-                _log("💀", "EXIT — INSTRUMENT EXPIRED",
-                     f"Option {sym_clean} has expired. Forcing trade closure (P&L unknown).")
-                print(f"💀 [FORCE CLOSE] {sym_clean} expired — clearing stale trade from state")
-                trade.exit_reason  = f"Instrument expired: {e}"
+            # ── TERMINAL: instrument expired / position already closed ─────────
+            # The option has expired, or the position was already closed by the
+            # exchange (SL-M fired, auto-settlement).  Zerodha then treats the
+            # SELL as opening a naked short — requiring huge margin — and
+            # rejects it with "Insufficient funds".
+            # Re-arming SL-M here is pointless and creates a death-loop.
+            # Force-close the app state so the user can start a fresh trade.
+            TERMINAL_ERRORS = ("expired", "does not exist",
+                               "insufficient funds", "no open position")
+            if any(p in err_str for p in TERMINAL_ERRORS):
+                pnl_est = round(pnl, 2)   # best-effort P&L from last known LTP
+                _log("💀", "EXIT — POSITION GONE",
+                     f"{sym_clean}: position already closed by exchange. "
+                     f"Est. P&L \u20b9{pnl_est:+,.0f}. Clearing app state.")
+                print(f"💀 [FORCE CLOSE] Position gone ({e}). "
+                      f"Est. P&L \u20b9{pnl_est:+,.0f} — clearing stale trade.")
+                trade.exit_reason  = f"Position already closed by exchange: {e}"
                 trade.exit_time    = datetime.now().isoformat()
                 trade.status       = OrderStatus.EXITED
-                trade.pnl          = 0.0   # can't compute — option settled
-                state.total_pnl   += 0.0
+                trade.pnl          = pnl_est
+                state.total_pnl   += pnl_est
                 state.active_trade = None
                 state.exit_in_progress = False
                 state.active_option_token = None
@@ -1735,10 +1766,18 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
     # If the option LTP itself drops below the SL premium level,
     # exit immediately — don't wait for Nifty spot to cross SL level.
     # This catches: theta crush, vega collapse, illiquid gap fills.
+    #
+    # ⚠️  IMPORTANT: this check is only valid when the Nifty SL is on the
+    # LOSS side of entry (prem_sl ≤ entry_prem).  Once the trailing SL has
+    # moved the Nifty SL past entry into profitable territory, prem_sl flips
+    # above entry_prem.  At that point the Nifty spot SL alone protects the
+    # position — the premium check would fire spuriously because real IV/theta
+    # diverges from the simple delta model used by _nifty_to_option_premium.
     opt_ltp = state.last_option_ltp
     if opt_ltp and opt_ltp > 0 and trade.entry_premium > 0:
         prem_sl = _nifty_to_option_premium(trade.stop_loss, trade)
-        if opt_ltp <= prem_sl:
+        sl_on_loss_side = prem_sl <= trade.entry_premium   # True = SL hasn't trailed past entry
+        if sl_on_loss_side and opt_ltp <= prem_sl:
             _exit_position(
                 f"{source} — Premium SL ₹{prem_sl:.1f} hit (LTP ₹{opt_ltp:.1f})",
                 current_price,
@@ -1969,6 +2008,17 @@ def get_trader_status() -> dict:
             "option_sl_premium":     _nifty_to_option_premium(active.stop_loss, active),
             "option_target_premium": _nifty_to_option_premium(active.target, active)
                                      if active.target else None,
+            # ── Original (entry) SL in premium terms ──────────────────────────
+            # This stays fixed at the entry-time SL regardless of trailing.
+            # UI uses it for the "Entry SL" label; option_sl_premium shows
+            # the current (possibly trailed) level.
+            "original_sl_premium":   _nifty_to_option_premium(state.entry_nifty_sl, active)
+                                     if state.entry_nifty_sl else None,
+            # Convenience: has the trailing SL moved past the entry price?
+            "sl_trailed_past_entry": (
+                (active.direction == "long"  and active.stop_loss > active.entry_price) or
+                (active.direction == "short" and active.stop_loss < active.entry_price)
+            ),
             # ─────────────────────────────────────────────────────
             "exchange_sl_pending": state.pending_sl_exchange_update,
             "quantity":        active.quantity,
