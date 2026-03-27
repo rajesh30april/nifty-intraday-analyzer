@@ -1005,20 +1005,25 @@ def _cancel_sl_order(trade: "Trade") -> None:
 
 
 def _compute_option_trigger_for_nifty_sl(nifty_sl: float) -> float:
-    """Convert a Nifty spot SL level → estimated option trigger price.
+    """Convert a Nifty spot SL level → estimated option premium trigger price.
 
-    Uses the delta offset from the original entry:
-      option_trigger = entry_option_trigger
-                       + DELTA × (nifty_sl − entry_nifty_sl)
+    Direction matters:
+      LONG CE : premium rises when Nifty rises.
+                SL moves UP  → delta_nifty > 0 → trigger rises.  (+delta)
+      SHORT PE: premium rises when Nifty FALLS.
+                SL moves DOWN → delta_nifty < 0 → trigger must RISE. (−delta)
 
-    For a LONG trade: nifty_sl > entry_nifty_sl (SL moved in our favour),
-    so option_trigger rises (we're protecting more premium).
-    For a SHORT trade: nifty_sl < entry_nifty_sl → same math, negative diff.
+    Formula:
+      LONG  CE: trigger = entry_trigger + delta × (nifty_sl − entry_nifty_sl)
+      SHORT PE: trigger = entry_trigger - delta × (nifty_sl − entry_nifty_sl)
     """
     ASSUMED_DELTA = 0.5
-    delta_nifty   = nifty_sl - state.entry_nifty_sl        # pts SL moved from entry
-    new_trigger   = state.entry_option_trigger + ASSUMED_DELTA * delta_nifty
-    return max(round(new_trigger, 1), 1.0)
+    delta_nifty   = nifty_sl - state.entry_nifty_sl
+    trade         = state.active_trade
+    direction     = getattr(trade, "direction", "long") if trade else "long"
+    sign          = 1.0 if direction == "long" else -1.0
+    new_trigger   = state.entry_option_trigger + sign * ASSUMED_DELTA * delta_nifty
+    return max(round(new_trigger, 2), 0.5)
 
 
 ASSUMED_DELTA = 0.5   # ATM delta assumption for premium ↔ Nifty conversion
