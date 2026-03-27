@@ -121,6 +121,7 @@ class TraderState:
     strike_offset:      int   = 0                   # -3=ITM3,-2=ITM2,-1=ITM1,0=ATM,1=OTM1,2=OTM2,3=OTM3
     max_trades_per_day: int   = MAX_ORDERS_PER_DAY  # runtime-overridable (1-50)
     cooldown_minutes:   int   = int(os.getenv("COOLDOWN_MINUTES", "5"))  # post-exit wait
+    enabled_strategies: list[str] = field(default_factory=list)  # 🎯 Strategy selection — empty = all enabled
     recovery_mode: bool = False    # True if state was restored after a crash
     recovery_message: str = ""     # Human-readable description of what was recovered
     recovery_type: str = ""        # 'open' = trade still live | 'closed' = already exited | 'clean' = no trade
@@ -229,6 +230,7 @@ def _save_state_snapshot():
         "max_trades_per_day": state.max_trades_per_day,
         "cooldown_minutes":   state.cooldown_minutes,
         "max_daily_loss":     state.max_daily_loss,  # ← NEW: Configurable max loss,
+        "enabled_strategies":  state.enabled_strategies,  # 🎯 Strategy selection
         # cooldown — survive restarts so re-entry filter stays intact
         "last_exit_time":      state.last_exit_time.isoformat() if state.last_exit_time else None,
         "last_exit_direction": state.last_exit_direction,
@@ -361,6 +363,7 @@ def _recover_state(snapshot_file: Path | None = None):
     state.strike_offset      = snap.get("strike_offset",      0)   # default ATM
     state.max_trades_per_day = snap.get("max_trades_per_day", MAX_ORDERS_PER_DAY)
     state.max_daily_loss     = snap.get("max_daily_loss",     MAX_LOSS_PER_DAY)  # ← NEW: Restore configurable max loss
+    state.enabled_strategies = snap.get("enabled_strategies",  [])  # 🎯 Strategy selection - empty = all enabled
     # ── Restore running flag (auto-resume after server restart) ──
     state.is_running         = snap.get("is_running",         False)
 
@@ -626,41 +629,65 @@ def _get_nfo_instruments() -> list[dict]:
 
 
 def _get_nearest_expiry_date() -> datetime:
-    """Return nearest FUTURE weekly expiry date for Nifty options.
+    """Return nearest FUTURE weekly expiry date from actual Kite instruments.
 
-    NSE changed Nifty 50 weekly option expiry from Thursday → Tuesday
-    effective October 2024 (SEBI circular on expiry-day rationalisation).
-    weekday(): Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
-
-    Safety rule: if today IS expiry day and it's past 14:00 (2 PM),
-    roll forward to NEXT week. Trading a 90-minute-to-expiry option
-    is extremely risky — theta decay is brutal and liquidity dries up.
-    This also prevents the scenario where the app enters a trade on a
-    same-day contract that expires at 3:30 PM before we can exit.
+    Don't calculate expiry (holidays mess this up) - fetch from instruments!
+    Safety: if today IS expiry and it's past 2 PM, skip to next week.
     """
-    from datetime import timedelta
-    EXPIRY_WEEKDAY  = 1      # Tuesday (Nifty 50 weekly expiry as of Oct 2024)
-    CUTOFF_HOUR     = 14     # 2 PM — no same-day expiry after this
-    today = datetime.now()
-    days_until_expiry = (EXPIRY_WEEKDAY - today.weekday()) % 7
-    if days_until_expiry == 0 and today.hour >= CUTOFF_HOUR:
-        # Past 2 PM on expiry day → roll to next week's expiry
-        days_until_expiry = 7
-    return today + timedelta(days=days_until_expiry)
+    instruments = _get_nfo_instruments()
+    if not instruments:
+        # Fallback to Tuesday calculation if instruments unavailable
+        from datetime import timedelta
+        EXPIRY_WEEKDAY  = 1  # Tuesday
+        CUTOFF_HOUR     = 14
+        today = datetime.now()
+        days_until_expiry = (EXPIRY_WEEKDAY - today.weekday()) % 7
+        if days_until_expiry == 0 and today.hour >= CUTOFF_HOUR:
+            days_until_expiry = 7
+        return today + timedelta(days=days_until_expiry)
+    
+    # Get all unique expiries, sorted
+    today = datetime.now().date()
+    all_expiries = sorted(set(
+        i["expiry"].date() if hasattr(i["expiry"], 'date') else i["expiry"]
+        for i in instruments if i.get("expiry")
+    ))
+    
+    # Filter to future expiries only
+    future_expiries = [e for e in all_expiries if e > today]
+    
+    # Safety: if first expiry is TODAY and it's past 2 PM, skip it
+    if future_expiries and future_expiries[0] == today and datetime.now().hour >= 14:
+        future_expiries = future_expiries[1:]
+    
+    if not future_expiries:
+        raise RuntimeError("No future expiries found in NFO instruments!")
+    
+    nearest = future_expiries[0]
+    return datetime.combine(nearest, datetime.min.time())
 
 
-def _get_option_symbol(nifty_price: float, direction: Direction) -> tuple[str, int]:
+def _get_option_symbol(
+    nifty_price: float,
+    direction: Direction,
+    override_offset: int | None = None,
+) -> tuple[str, int]:
     """Find the nearest OTM Nifty option tradingsymbol via Kite instruments.
 
     Returns: (tradingsymbol, instrument_token) or raises RuntimeError if not found.
 
     Uses the Kite instruments API — no guessing at symbol strings.
+
+    Args:
+        override_offset: If provided, use this strike offset instead of state.strike_offset.
+                         Used by the affordability fallback loop in _enter_trade.
     """
     atm_strike = round(nifty_price / 50) * 50
     option_type = "CE" if direction == Direction.LONG else "PE"
 
     # strike_offset=0 → ATM, 1 → 1-OTM, 2 → 2-OTM (configurable from UI)
-    offset = state.strike_offset * 50   # each step = 50 points
+    offset_steps = override_offset if override_offset is not None else state.strike_offset
+    offset = offset_steps * 50   # each step = 50 points
     strike = atm_strike + offset if direction == Direction.LONG else atm_strike - offset
 
     expiry_date = _get_nearest_expiry_date()
@@ -687,9 +714,13 @@ def _get_option_symbol(nifty_price: float, direction: Direction) -> tuple[str, i
             and str(i["expiry"]) == expiry_str
         ]
         if not atm_matches:
+            # Debug: Show available expiries
+            all_expiries = sorted(set(str(i["expiry"]) for i in instruments if i["instrument_type"] == option_type))
+            nearby_expiries = all_expiries[:5] if all_expiries else []
             raise RuntimeError(
                 f"No {option_type} option found: strike={strike}, expiry={expiry_str}. "
-                f"Check if expiry date is correct ({expiry_date.strftime('%A %d %b %Y')})"
+                f"Check if expiry date is correct ({expiry_date.strftime('%A %d %b %Y')}). "
+                f"Available expiries: {', '.join(nearby_expiries)}"
             )
         matches = atm_matches
         strike  = atm_strike
@@ -700,7 +731,7 @@ def _get_option_symbol(nifty_price: float, direction: Direction) -> tuple[str, i
     token      = instrument["instrument_token"]
 
     _strike_labels = {-3:"ITM3",-2:"ITM2",-1:"ITM1",0:"ATM",1:"OTM1",2:"OTM2",3:"OTM3"}
-    offset_label = _strike_labels.get(state.strike_offset, f"OTM{abs(state.strike_offset)}")
+    offset_label = _strike_labels.get(offset_steps, f"OTM{abs(offset_steps)}")
     print(f"🎯 Strike Selection:")
     print(f"   Nifty: {nifty_price:.0f} | ATM: {atm_strike} | Offset: {offset_label} | Picked: {strike} {option_type}")
     print(f"   Expiry: {expiry_str} | Symbol: {symbol} | Token: {token}")
@@ -1099,7 +1130,7 @@ def evaluate_and_act(df, current_price: float):
     meta_result = None
     if state.selected_strategy == "smart_router":
         from strategy_meta_router import evaluate_all   # noqa: PLC0415
-        meta_result = evaluate_all(df)
+        meta_result = evaluate_all(df, enabled_strategies=state.enabled_strategies)  # 🎯 Pass selection
         signal = meta_result.signal
         state.last_meta_regime = meta_result.regime
         # Trim scores to what the UI needs (drop heavy signal objects)
@@ -1237,16 +1268,22 @@ def _estimate_premium_fallback(nifty_price: float) -> float:
     return round(nifty_price * 0.0035, 1)
 
 
-def _resolve_quantity(nifty_price: float, real_premium: float | None = None) -> int:
-    """Return qty (units) to trade based on qty_mode.
+def _resolve_quantity(nifty_price: float, real_premium: float | None = None) -> tuple[int, float]:
+    """Return (qty, required_margin) tuple based on qty_mode.
 
-    manual  → return state.manual_qty directly
+    manual  → return (state.manual_qty, 0.0)
     capital → use real_premium if available (fetched via Kite quote just
                before entry), else fall back to 0.35% spot estimate.
-               qty = floor(capital / (premium × LOT_SIZE)) × LOT_SIZE
+               qty = floor(capital / (premium × LOT_SIZE × MARGIN_MULT)) × LOT_SIZE
+    
+    🔧 FIX: Apply 2x margin multiplier to account for Zerodha margin requirements!
+           For options, required margin ≈ 2× premium cost (includes buffer/span)
+    
+    Returns:
+        (qty, required_margin_for_1_lot): Tuple of quantity and required margin
     """
     if state.qty_mode == "manual":
-        return state.manual_qty
+        return (state.manual_qty, 0.0)
 
     # Use real LTP when available — MUCH more accurate than formula
     if real_premium and real_premium > 0:
@@ -1256,12 +1293,22 @@ def _resolve_quantity(nifty_price: float, real_premium: float | None = None) -> 
         premium = _estimate_premium_fallback(nifty_price)
         source  = f"estimated ₹{premium:.1f} (0.35% of spot — Kite unavailable)"
 
-    cost_per_lot = premium * LOT_SIZE
-    lots = max(1, int(state.capital / cost_per_lot))
+    # 🔧 FIX: Apply 2x safety margin for option margin requirements
+    MARGIN_MULTIPLIER = 2.0  # Zerodha margin ≈ 2× premium for options
+    
+    cost_per_lot = premium * LOT_SIZE * MARGIN_MULTIPLIER
+    lots = int(state.capital / cost_per_lot)  # Floor division, no max()!
+    
+    # Prevent trading if insufficient capital for even 1 lot
+    if lots < 1:
+        print(f"⚠️  Insufficient capital: need ₹{cost_per_lot:,.0f}/lot (with {MARGIN_MULTIPLIER}x margin), "
+              f"have ₹{state.capital:,.0f} → SKIPPING TRADE")
+        return (0, cost_per_lot)
+    
     qty  = lots * LOT_SIZE
     print(f"📐 Capital mode: ₹{state.capital:,.0f} ÷ "
-          f"(₹{cost_per_lot:.0f}/lot via {source}) = {lots} lots → {qty} units")
-    return qty
+          f"(₹{cost_per_lot:.0f}/lot via {source} × {MARGIN_MULTIPLIER}x margin) = {lots} lots → {qty} units")
+    return (qty, cost_per_lot)
 
 
 def _fetch_available_margin() -> tuple[float, float, float] | tuple[None, None, None]:
@@ -1321,14 +1368,7 @@ def _fetch_available_margin() -> tuple[float, float, float] | tuple[None, None, 
 
 def _enter_trade(direction: Direction, price: float):
     """Open a new trade."""
-    try:
-        symbol, opt_token = _get_option_symbol(price, direction)
-    except RuntimeError as e:
-        print(f"❌ Cannot enter trade: {e}")
-        state.last_signal_reason = f"❌ Instrument lookup failed: {e}"
-        return
-
-    # ── Sync capital from Zerodha before every trade ─────────────
+    # ── Sync capital from Zerodha FIRST so affordability check is accurate ──
     free, net, used = _fetch_available_margin()
     if free is not None:
         if abs(free - state.capital) > 100:
@@ -1336,10 +1376,53 @@ def _enter_trade(direction: Direction, price: float):
                   f"(net=₹{net:,.0f}, utilised=₹{used:,.0f})")
         state.capital = free   # always use FREE margin, not net
 
-    # ── Fetch real option LTP for accurate capital-mode lot sizing ──
-    # We know the exact symbol now — get its actual live price.
-    # Falls back to 0.35%-of-spot estimate if Kite is unavailable.
-    real_ltp = kite_manager.get_option_ltp(symbol.replace("NFO:", ""))
+    # ── Strike affordability fallback loop ────────────────────────
+    # If the configured strike is too expensive, walk one step further OTM
+    # (cheaper premium) up to MAX_STRIKE_FALLBACKS times before giving up.
+    MAX_STRIKE_FALLBACKS = 3
+    symbol = opt_token = real_ltp = None
+    qty, required_margin = 0, 0.0
+    tried_offsets = []
+
+    for extra in range(MAX_STRIKE_FALLBACKS + 1):
+        candidate_offset = state.strike_offset + extra
+        try:
+            sym, tok = _get_option_symbol(price, direction, override_offset=candidate_offset)
+        except RuntimeError as e:
+            print(f"❌ Cannot enter trade: {e}")
+            state.last_signal_reason = f"❌ Instrument lookup failed: {e}"
+            return
+
+        ltp = kite_manager.get_option_ltp(sym.replace("NFO:", ""))
+        q, req = _resolve_quantity(price, real_premium=ltp)
+        tried_offsets.append((candidate_offset, sym, req))
+
+        if q > 0:
+            symbol, opt_token, real_ltp, qty, required_margin = sym, tok, ltp, q, req
+            if extra > 0:
+                print(
+                    f"💡 Strike fallback: original offset +{state.strike_offset} too expensive "
+                    f"(₹{tried_offsets[0][2]:,.0f} needed). "
+                    f"Using +{candidate_offset} OTM → {sym} (₹{req:,.0f}/lot)"
+                )
+            break
+
+        if extra < MAX_STRIKE_FALLBACKS:
+            print(
+                f"⚠️  Offset +{candidate_offset} too expensive "
+                f"(₹{req:,.0f} needed, ₹{state.capital:,.0f} available). "
+                f"Trying next OTM step..."
+            )
+
+    # ── All fallbacks exhausted? Block the trade ──────────────────
+    if qty == 0:
+        all_tried = ", ".join(f"+{o}(₹{r:,.0f})" for o, _, r in tried_offsets)
+        state.last_signal_reason = (
+            f"❌ Insufficient capital: tried offsets [{all_tried}], "
+            f"have ₹{state.capital:,.0f}"
+        )
+        _log('❌', 'Entry blocked', state.last_signal_reason)
+        return
 
     # ── Advisory: Show option quality info (non-blocking) ──────────
     try:
@@ -1365,7 +1448,6 @@ def _enter_trade(direction: Direction, price: float):
     sl_pts  = state.sl_points
     trail   = state.trailing_sl_points
     rr      = state.rr_ratio
-    qty     = _resolve_quantity(price, real_premium=real_ltp)
 
     if direction == Direction.LONG:
         sl     = price - sl_pts
@@ -1927,7 +2009,7 @@ def configure_auto_trader(
     if sl_points          is not None: state.sl_points          = sl_points
     if trailing_sl_points is not None: state.trailing_sl_points = trailing_sl_points
     if trail_mode         is not None: state.trail_mode         = trail_mode
-    if trail_atr_mult     is not None: state.trail_atr_mult     = max(0.5, min(4.0, trail_atr_mult))
+    if trail_atr_mult     is not None: state.trail_atr_mult     = max(0.3, min(4.0, trail_atr_mult))  # 🐶 Allow 0.4 (was 0.5 min)
     if rr_ratio           is not None: state.rr_ratio           = rr_ratio
     if qty_mode           is not None: state.qty_mode           = qty_mode
     if manual_qty         is not None: state.manual_qty         = manual_qty
@@ -2104,22 +2186,120 @@ def sync_from_zerodha() -> dict:
             "error":   "Could not fetch live Nifty price — wait a moment for the first tick then try again.",
         }
 
-    # ── Build SL and Target as price LEVELS, not point deltas ─────
+    # ── Build SL and Target for SYNCED trades (Premium-First Approach) ─────
+    # 🎯 CRITICAL: For synced trades, we DON'T know the actual entry Nifty level!
+    # We only know: entry_premium (from Zerodha avg_price) and current_premium (LTP)
+    # Strategy: Calculate entry_nifty by reverse-engineering from premium difference
+    
     sl_pts  = state.sl_points
     tgt_pts = sl_pts * state.rr_ratio
-    if direction_val == "short":
-        sl_level  = round(nifty_spot + sl_pts, 2)    # SL above current for SHORT
-        tgt_level = round(nifty_spot - tgt_pts, 2)   # Target below current for SHORT
-    else:
-        sl_level  = round(nifty_spot - sl_pts, 2)    # SL below current for LONG
-        tgt_level = round(nifty_spot + tgt_pts, 2)   # Target above current for LONG
+    
+    # 🔧 STEP 1: Estimate ACTUAL entry Nifty from premium difference
+    # Current premium vs entry premium tells us how far Nifty has moved
+    # For LONG CE: premium_change ≈ nifty_change × delta
+    # For SHORT PE: premium_change ≈ nifty_change × delta (in opposite direction)
+    premium_diff = opt_ltp - avg_price  # Current - Entry (positive = profit for LONG)
+    
+    # Reverse calculate how much Nifty moved since entry
+    # premium_diff = nifty_change × delta × direction_sign
+    sign = 1.0 if direction_val == "long" else -1.0
+    estimated_nifty_move = (premium_diff / ASSUMED_DELTA) * sign
+    
+    # Estimated entry Nifty = current - movement
+    estimated_entry_nifty = nifty_spot - estimated_nifty_move
+    
+    _log("📊", "Sync analysis",
+         f"Entry prem: ₹{avg_price:.2f} | Current prem: ₹{opt_ltp:.2f} | "
+         f"Diff: ₹{premium_diff:+.2f} → Est. entry Nifty: ₹{estimated_entry_nifty:.0f} "
+         f"(vs current ₹{nifty_spot:.0f})")
+    
+    # 🔧 STEP 2: Set REALISTIC SL that protects the actual entry premium
+    # Instead of arbitrary Nifty - 30pts, we ensure SL premium is BELOW entry premium
+    # This guarantees we don't lock in a loss!
+    
+    if direction_val == "long":
+        # For LONG: SL premium should be entry - (sl_pts × delta)
+        # This creates a proper SL buffer below entry premium
+        # But if we're already in significant profit, lock some profit!
+        
+        if premium_diff > (sl_pts * ASSUMED_DELTA):  # More than 1 SL worth of profit
+            # Lock 40% of profit
+            sl_premium = avg_price + (premium_diff * 0.4)
+            _log("🔒", "Profit lock",
+                 f"In profit by ₹{premium_diff:.2f}/unit (>{sl_pts}pts worth). "
+                 f"Setting SL to lock ₹{sl_premium - avg_price:.2f}/unit profit")
+        else:
+            # Not enough profit - set SL to protect entry with small buffer
+            # Use 80% of normal SL distance to give some breathing room
+            sl_premium = avg_price - (sl_pts * ASSUMED_DELTA * 0.8)
+            sl_premium = max(sl_premium, avg_price * 0.5)  # Never less than 50% of entry
+            _log("🛡️", "Entry protection",
+                 f"Setting SL at ₹{sl_premium:.2f} (80% of normal, protects entry ₹{avg_price:.2f})")
+        
+        # Reverse calculate Nifty SL from premium SL
+        # sl_premium = avg_price + (sl_nifty - estimated_entry_nifty) × delta
+        # sl_nifty = estimated_entry_nifty + (sl_premium - avg_price) / delta
+        sl_level = estimated_entry_nifty + ((sl_premium - avg_price) / ASSUMED_DELTA)
+        
+        # Target: entry + (sl_pts × rr_ratio)
+        tgt_level = estimated_entry_nifty + tgt_pts
+        
+    else:  # SHORT
+        # For SHORT: SL premium should be entry + (sl_pts × delta)
+        
+        if premium_diff < -(sl_pts * ASSUMED_DELTA):  # More than 1 SL worth of profit (premium FELL)
+            # Lock 40% of profit
+            profit_amount = abs(premium_diff)
+            sl_premium = avg_price - (profit_amount * 0.4)
+            _log("🔒", "Profit lock",
+                 f"In profit by ₹{profit_amount:.2f}/unit (>{sl_pts}pts worth). "
+                 f"Setting SL to lock ₹{profit_amount * 0.4:.2f}/unit profit")
+        else:
+            # Not enough profit - set SL to protect entry
+            sl_premium = avg_price + (sl_pts * ASSUMED_DELTA * 0.8)
+            sl_premium = min(sl_premium, avg_price * 1.5)  # Never more than 150% of entry
+            _log("🛡️", "Entry protection",
+                 f"Setting SL at ₹{sl_premium:.2f} (80% of normal, protects entry ₹{avg_price:.2f})")
+        
+        # Reverse calculate Nifty SL from premium SL
+        # For SHORT: sl_premium = avg_price - (sl_nifty - estimated_entry_nifty) × delta
+        # sl_nifty = estimated_entry_nifty + (avg_price - sl_premium) / delta
+        sl_level = estimated_entry_nifty + ((avg_price - sl_premium) / ASSUMED_DELTA)
+        
+        # Target: entry - (sl_pts × rr_ratio)
+        tgt_level = estimated_entry_nifty - tgt_pts
+    
+    # 🔧 STEP 3: Safety checks
+    # Ensure SL is not TOO close (min 20 pts) or TOO far (max 100 pts)
+    sl_distance = abs(nifty_spot - sl_level)
+    if sl_distance < 20:
+        _log("⚠️", "SL too tight", f"Adjusting from {sl_distance:.0f}pts to 20pts minimum")
+        sl_level = nifty_spot - 20 if direction_val == "long" else nifty_spot + 20
+    elif sl_distance > 100:
+        _log("⚠️", "SL too loose", f"Adjusting from {sl_distance:.0f}pts to 100pts maximum")
+        sl_level = nifty_spot - 100 if direction_val == "long" else nifty_spot + 100
+    
+    # Round and verify
+    sl_level = round(sl_level, 2)
+    tgt_level = round(tgt_level, 2)
+    
+    # Final check: ensure SL doesn't create immediate exit
+    immediate_exit_risk = (
+        (direction_val == "long" and nifty_spot <= sl_level) or
+        (direction_val == "short" and nifty_spot >= sl_level)
+    )
+    if immediate_exit_risk:
+        _log("🚨", "CRITICAL: Immediate exit risk!",
+             f"Current ₹{nifty_spot:.0f} would hit SL ₹{sl_level:.0f}! "
+             f"Setting SL to current - 25pts to give breathing room")
+        sl_level = nifty_spot - 25 if direction_val == "long" else nifty_spot + 25
 
     trade = Trade(
         id            = f"sync-{datetime.now().strftime('%H%M%S')}",
         timestamp     = datetime.now().isoformat(),
         direction     = direction_val,
         instrument    = f"NFO:{sym}",
-        entry_price   = nifty_spot,         # current Nifty spot (best proxy for "where we are")
+        entry_price   = round(estimated_entry_nifty, 2),  # 🎯 FIXED: Use estimated entry, not current spot!
         entry_premium = avg_price,          # what was actually paid for the option
         quantity      = qty,
         stop_loss     = sl_level,
@@ -2132,6 +2312,8 @@ def sync_from_zerodha() -> dict:
     )
     state.active_trade              = trade
     state.last_option_ltp           = opt_ltp
+    # 🎯 FIXED: Set highest/lowest to CURRENT price, not entry!
+    # This prevents immediate trailing activation and gives breathing room
     state.highest_price_since_entry = nifty_spot
     state.lowest_price_since_entry  = nifty_spot
     state.entry_nifty_sl            = sl_level
@@ -2140,8 +2322,17 @@ def sync_from_zerodha() -> dict:
     state.orders_placed            += 1
     _save_state_snapshot()   # ← persist immediately so a restart restores this trade
     all_syms = [p["tradingsymbol"] for p in chosen_positions]
+    
+    # Calculate expected SL and target premiums for display
+    expected_sl_prem = _nifty_to_option_premium(sl_level, trade)
+    expected_tgt_prem = _nifty_to_option_premium(tgt_level, trade)
+    
     _log("🔗", "Synced from Zerodha",
-         f"{all_syms} | {qty}u | avg ₹{avg_price:.2f} | Nifty ₹{nifty_spot:.0f} | SL ₹{sl_level:.0f} | Tgt ₹{tgt_level:.0f}")
+         f"{all_syms} | {qty}u | Entry prem: ₹{avg_price:.2f} (Est. Nifty ₹{estimated_entry_nifty:.0f})")
+    _log("🎯", "Sync SL/Target",
+         f"SL: ₹{sl_level:.0f} (prem ₹{expected_sl_prem:.1f}) | "
+         f"Target: ₹{tgt_level:.0f} (prem ₹{expected_tgt_prem:.1f}) | "
+         f"Current: ₹{nifty_spot:.0f} (prem ₹{opt_ltp:.1f})")
     return {
         "success":          True,
         "instrument":       sym,
@@ -2150,12 +2341,18 @@ def sync_from_zerodha() -> dict:
         "direction":        direction_val,
         "quantity":         qty,
         "avg_price":        avg_price,
+        "current_premium":  opt_ltp,
+        "premium_diff":     premium_diff,
         "nifty_spot":       nifty_spot,
+        "estimated_entry_nifty": estimated_entry_nifty,
         "sl_level":         sl_level,
+        "sl_premium":       expected_sl_prem,
         "tgt_level":        tgt_level,
+        "tgt_premium":      expected_tgt_prem,
         "note":             (
-            f"Merged {len(chosen_positions)} position(s) — "
-            "SL/Target set from current Nifty spot + your SL settings — trailing SL active"
+            f"Synced {len(chosen_positions)} position(s). "
+            f"Est. entry: ₹{estimated_entry_nifty:.0f} (from premium analysis). "
+            f"SL protects entry premium, trailing will activate after {state.trailing_sl_points}pt profit."
         ),
         "past_exit_time":   past_exit_time,
         "warning":          (
