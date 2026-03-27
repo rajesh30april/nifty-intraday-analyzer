@@ -603,6 +603,25 @@ def reconcile_zerodha_position() -> None:
     if state.exit_in_progress:
         return   # exit already underway — don't race
 
+    # ── Fast path: check if our SL-M order itself has been COMPLETE ───
+    # More reliable than position qty — if the specific SL-M order
+    # filled, we know exactly what price it filled at (no estimation).
+    sl_fill_price: float | None = None
+    if trade.sl_order_id and not trade.sl_order_id.startswith("SL-PAPER"):
+        try:
+            km = _kite()
+            history = km.kite.order_history(trade.sl_order_id)
+            last    = history[-1] if history else {}
+            if last.get("status") == "COMPLETE":
+                sl_fill_price = float(last.get("average_price") or 0) or None
+                sym_clean = trade.instrument.replace("NFO:", "")
+                _log("🔍", "RECONCILE — SL-M order filled",
+                     f"Order {trade.sl_order_id} COMPLETE @ ₹{sl_fill_price}. Closing app state.")
+                _close_trade_externally(trade, sl_fill_price)
+                return
+        except Exception as _e:
+            pass   # order_history API error — fall through to position qty check
+
     qty = _get_zerodha_position_qty(trade.instrument)
     if qty is None:
         return   # API error — keep trade alive, retry next cycle
@@ -621,10 +640,20 @@ def reconcile_zerodha_position() -> None:
     print(f"\n🔍 [RECONCILE] {sym_clean}: qty=0 in Zerodha but app showed trade open.")
     print(f"   Likely cause: SL-M filled at exchange / manual close / expiry.")
     print(f"   Est. P&L \u20b9{pnl:+,.0f}. Forcing trade closure.\n")
+    _close_trade_externally(trade, last_ltp)
 
+
+def _close_trade_externally(trade: "Trade", fill_price: float) -> None:
+    """Shared helper: mark a trade as externally closed and persist state.
+
+    Called by reconcile_zerodha_position() when either:
+      a) The SL-M order is confirmed COMPLETE (exact fill_price from order history)
+      b) Position qty drops to 0 (estimated fill_price from last known LTP)
+    """
+    pnl = round((fill_price - trade.entry_premium) * trade.quantity, 2)
     trade.exit_reason  = "Position closed externally in Zerodha (reconcile)"
     trade.exit_time    = datetime.now().isoformat()
-    trade.exit_premium = last_ltp
+    trade.exit_premium = fill_price
     trade.exit_price   = state.last_nifty_price or trade.entry_price
     trade.status       = OrderStatus.EXITED
     trade.pnl          = pnl
@@ -2050,6 +2079,28 @@ def refresh_active_option_ltp() -> float | None:
     return None
 
 
+def _realized_pnl_from_log() -> float:
+    """Read realized P&L directly from trade_log.json as source of truth.
+
+    Falls back to state.total_pnl if the file is missing or unreadable.
+    This prevents stale in-memory values from showing wrong totals after
+    a manual trade-log patch or a crash-recovery discrepancy.
+    """
+    try:
+        if TRADE_LOG_FILE.exists():
+            data = json.loads(TRADE_LOG_FILE.read_text(encoding="utf-8"))
+            trades = data.get("trades", [])
+            realized = sum(
+                t.get("pnl", 0) or 0
+                for t in trades
+                if t.get("status") == "exited" and t.get("exit_premium") is not None
+            )
+            return round(realized, 2)
+    except Exception:
+        pass
+    return round(state.total_pnl, 2)
+
+
 def get_trader_status() -> dict:
     """Get current auto-trader state for dashboard."""
     active = state.active_trade
@@ -2088,7 +2139,7 @@ def get_trader_status() -> dict:
             "app_managed":     getattr(active, "app_managed", True),
             "pnl_unrealized":  0,   # enriched by app.py caller with live LTP
         } if active else None,
-        "total_pnl": round(state.total_pnl, 2),
+        "total_pnl": _realized_pnl_from_log(),   # source of truth: trade_log.json
         "orders_placed": state.orders_placed,
         "max_orders": state.max_trades_per_day,  # ← Use configurable value
         "max_loss": state.max_daily_loss,  # ← Use configurable value instead of constant,

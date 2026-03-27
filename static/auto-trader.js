@@ -478,15 +478,6 @@ function renderAutoTrader(data) {
         if (noPos)  noPos.classList.add('hidden');
 
         const t      = data.active_trade;
-        
-        // DEBUG: Log full trade data to see what backend is sending
-        console.log('[Auto-Trader] Full trade data from backend:', {
-            trailing_sl: t.trailing_sl,
-            original_sl: t.original_sl,
-            stop_loss: t.stop_loss,
-            full_trade: t
-        });
-        
         const isLong = t.direction === 'long';
 
         // Direction badge
