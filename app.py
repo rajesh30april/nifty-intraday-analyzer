@@ -472,10 +472,12 @@ async def simple_health():
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    """Render the main dashboard."""
+    """Render the main dashboard, or redirect to login if not authenticated."""
+    if not kite_manager.is_authenticated:
+        return RedirectResponse(url="/login")
     return templates.TemplateResponse("index.html", {
         "request": request,
-        "is_live": kite_manager.is_authenticated,
+        "is_live": True,
     })
 
 
@@ -709,7 +711,9 @@ async def patterns_history(
 
 @app.get("/login")
 async def login(request: Request):
-    """Render a professional login landing page before redirecting to Zerodha."""
+    """Render login page, or redirect to dashboard if already authenticated."""
+    if kite_manager.is_authenticated:
+        return RedirectResponse(url="/")
     return templates.TemplateResponse(
         "login.html",
         {"request": request, "login_url": kite_manager.login_url},
