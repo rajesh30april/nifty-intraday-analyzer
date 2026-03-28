@@ -57,6 +57,45 @@
         @keyframes pulseBorder { 0%,100%{border-color:#22c55e;box-shadow:0 0 0 0 rgba(34,197,94,.4)} 50%{border-color:#4ade80;box-shadow:0 0 0 6px rgba(34,197,94,0)} }
         @keyframes slideInRight { from{opacity:0;transform:translateX(60px)} to{opacity:1;transform:translateX(0)} }
         @keyframes slideOutRight { from{opacity:1;transform:translateX(0)} to{opacity:0;transform:translateX(60px)} }
+
+        /* ── Mobile responsive ───────────────────────────── */
+        .mobile-hamburger { display: none; }
+        .mobile-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5); z-index: 199;
+            backdrop-filter: blur(2px);
+        }
+        @media (max-width: 767px) {
+            .mobile-hamburger { display: flex !important; }
+            .sidebar {
+                position: fixed !important; top: 0; left: 0;
+                height: 100dvh; z-index: 200;
+                width: 280px !important;
+                transform: translateX(-100%);
+                transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+                overflow-y: auto; padding-top: 60px;
+            }
+            .sidebar.mobile-open { transform: translateX(0); }
+            .mobile-overlay.active { display: block; }
+            #dashboard { flex-direction: column !important; }
+            /* Status bar — collapse on tiny screens */
+            .status-bar-extra { display: none !important; }
+            /* Main header padding */
+            .main-header-inner { padding-left: 1rem !important; padding-right: 1rem !important; }
+            /* Refresh button — icon only on mobile */
+            .refresh-label { display: none; }
+            /* Content area padding */
+            .content-area { padding: 0.75rem !important; }
+            /* Card grids — force single column */
+            .mobile-stack { grid-template-columns: 1fr !important; }
+            /* Overflow tables */
+            .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            /* Bottom padding so content isn't under mobile nav */
+            body { padding-bottom: 0; }
+        }
+        @media (max-width: 480px) {
+            .sidebar { width: 100vw !important; }
+        }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
@@ -71,18 +110,26 @@
                     <div id="market-status-dot" class="w-2 h-2 rounded-full bg-green-400 live-dot"></div>
                     <span id="market-status-text">Market Open</span>
                 </div>
-                <span id="live-price-time" class="opacity-75"></span>
+                <span id="live-price-time" class="opacity-75 status-bar-extra"></span>
             </div>
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-4 status-bar-extra">
                 <div id="data-source-badge" class="opacity-90"></div>
                 <span id="live-badge" class="opacity-75"></span>
             </div>
         </div>
         
         <!-- Main Header -->
-        <div class="px-6 py-4 flex items-center justify-between">
+        <div class="px-4 lg:px-6 py-3 lg:py-4 flex items-center justify-between main-header-inner">
+            <!-- Hamburger (mobile only) -->
+            <button onclick="toggleMobileNav()"
+                    class="mobile-hamburger items-center justify-center w-10 h-10 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors mr-2 flex-shrink-0"
+                    aria-label="Open navigation">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+            </button>
             <!-- Brand -->
-            <div class="flex items-center gap-8">
+            <div class="flex items-center gap-4 lg:gap-8">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg"
                          style="background: linear-gradient(135deg, #0053e2 0%, #1565ff 100%);">
@@ -111,13 +158,13 @@
             <!-- Action Button -->
             <div class="flex items-center gap-3">
                 <button onclick="loadAnalysis()" 
-                    class="flex items-center gap-2 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:brightness-110 active:scale-95 transition-all duration-150" 
+                    class="flex items-center gap-2 text-white px-3 lg:px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:brightness-110 active:scale-95 transition-all duration-150" 
                     style="background: linear-gradient(135deg, #0053e2 0%, #1565ff 100%);"
                     aria-label="Refresh">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                     </svg>
-                    <span>Refresh</span>
+                    <span class="refresh-label">Refresh</span>
                 </button>
         </div>
     </header>
@@ -188,6 +235,9 @@
         <p id="error-msg" class="text-gray-600 mt-2"></p>
         <button onclick="loadAnalysis()" class="mt-4 bg-gradient-to-r from-[#0053e2] to-[#1565ff] hover:from-[#003db3] hover:to-[#1565ff] text-white px-6 py-2 rounded-lg shadow-lg transition-all">Try Again</button>
     </div>
+
+    <!-- Mobile sidebar overlay -->
+    <div id="mobile-overlay" class="mobile-overlay" onclick="toggleMobileNav()" aria-hidden="true"></div>
 
     <!-- ==================== MAIN LAYOUT: Sidebar + Content ==================== -->
     <div id="dashboard" class="hidden flex">
@@ -300,7 +350,7 @@
         </nav>
 
         <!-- Content Area -->
-        <div class="flex-1 min-w-0 p-5 space-y-4">
+        <div class="flex-1 min-w-0 p-5 space-y-4 content-area">
 
             <!-- Progress Bar -->
             <div id="progress-container" class="hidden bg-white rounded-xl shadow-sm p-3 border border-gray-200">
@@ -359,7 +409,7 @@
                                 <h3 class="text-sm font-bold text-gray-800">💰 Account Capital</h3>
                                 <button onclick="loadMargins()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded">🔄</button>
                             </div>
-                            <div class="grid grid-cols-5 gap-3">
+                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                                 <div class="bg-gray-50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Opening</div><div id="cap-opening" class="text-sm font-bold">--</div></div>
                                 <div class="bg-gray-50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Cash</div><div id="cap-cash" class="text-sm font-bold text-green-600">--</div></div>
                                 <div class="bg-gray-50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Margin</div><div id="cap-margin" class="text-sm font-bold text-[#0053e2]">--</div></div>
@@ -391,12 +441,14 @@
                             <div class="px-4 py-3 bg-gray-800 text-white">
                                 <h3 class="text-sm font-bold">🛡️ Signal Breakdown (5-min)</h3>
                             </div>
+                            <div class="overflow-x-auto -webkit-overflow-scrolling-touch">
                             <table class="w-full text-left text-sm" aria-label="Signals">
                                 <thead class="bg-gray-100">
                                     <tr><th class="px-3 py-2 text-xs">Indicator</th><th class="px-3 py-2 text-xs">Value</th><th class="px-3 py-2 text-xs">Bias</th><th class="px-3 py-2 text-xs">Strength</th><th class="px-3 py-2 text-xs">Insight</th></tr>
                                 </thead>
                                 <tbody id="signals-body"><tr><td colspan="5" class="text-center py-6 text-gray-400">Loading...</td></tr></tbody>
                             </table>
+                            </div><!-- /overflow-x-auto -->
                         </div>
                         <!-- Insights -->
                         <div class="bg-gradient-to-r from-[#0053e2] to-blue-700 text-white rounded-xl shadow-sm p-5">
@@ -542,7 +594,7 @@
                                 <div><h3 class="text-sm font-bold text-gray-800">🚦 Trade Signal</h3><p id="ts-trend" class="text-xs text-gray-500">Loading...</p></div>
                                 <span id="ts-action" class="text-xl font-black px-3 py-1 rounded-lg">--</span>
                             </div>
-                            <div class="grid grid-cols-4 gap-3 mb-3">
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                                 <div class="bg-gray-50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Entry</div><div id="ts-entry" class="text-base font-bold">--</div></div>
                                 <div class="bg-gray-50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Stop Loss</div><div id="ts-sl" class="text-base font-bold text-red-600">--</div></div>
                                 <div class="bg-gray-50 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-500">Target</div><div id="ts-target" class="text-base font-bold text-green-600">--</div></div>
@@ -960,7 +1012,7 @@
                 </div>
 
                 <!-- Status grid -->
-                <div class="grid grid-cols-6 gap-2">
+                <div class="grid grid-cols-3 md:grid-cols-6 gap-2">
                   <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Status</div><div id="at-status" class="text-xs font-bold text-yellow-400">⏸ Idle</div></div>
                   <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Strategy</div><div id="at-strat-label" class="text-xs font-bold text-blue-400">🧠 Auto</div></div>
                   <div class="bg-gray-800 rounded-lg p-2 text-center"><div class="text-[10px] text-gray-400">Day P&L</div><div id="at-pnl" class="text-xs font-bold">₹0</div></div>
@@ -996,7 +1048,7 @@
                     <span id="at-pos-dir-badge" class="px-3 py-1 rounded-full font-black text-sm">--</span>
                   </div>
                   <!-- Row 1: Entry Premium / SL Premium / Target Premium / Unrealized P&L -->
-                  <div class="grid grid-cols-4 gap-2 text-center mb-2">
+                  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-center mb-2">
                     <div class="bg-gray-800/60 rounded-lg p-2">
                       <div class="text-[10px] text-gray-400">Entry (Prem)</div>
                       <div id="at-entry" class="text-sm font-black text-white" title="Nifty spot at entry">--</div>
@@ -1039,7 +1091,7 @@
                     </div>
                   </div>
                   <!-- Row 3: Entry Premium / Qty·Lots / Auto-exit / Sync -->
-                  <div class="grid grid-cols-4 gap-2 text-center">
+                  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
                     <div class="bg-gray-900/60 rounded-lg p-2">
                       <div class="text-[10px] text-gray-500">Entry Prem</div>
                       <div id="at-entry-prem" class="text-xs font-bold text-gray-300">--</div>
@@ -1150,7 +1202,7 @@
                     <h4 class="text-xs font-bold text-gray-400">📜 Trade History</h4>
                     <button onclick="loadTradeHistory()" class="text-[10px] bg-gray-700 hover:bg-gray-600 px-2 py-0.5 rounded text-gray-300">↻ Refresh</button>
                   </div>
-                  <div class="grid grid-cols-4 gap-2 mb-2">
+                  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
                     <div class="bg-gray-800 rounded p-1.5 text-center"><div class="text-[10px] text-gray-500">Trades</div><div id="ath-count" class="text-xs font-bold">0</div></div>
                     <div class="bg-gray-800 rounded p-1.5 text-center" title="Closed trades only">
                         <div class="text-[10px] text-gray-500">Realized</div>
@@ -1505,7 +1557,7 @@
                         </div>
                         
                         <!-- Min/Max/Avg Stats -->
-                        <div class="grid grid-cols-4 gap-2 text-center text-xs">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-center text-xs">
                             <div class="bg-green-900/30 border border-green-700 rounded p-2">
                                 <div class="text-green-400 font-semibold">Max Win</div>
                                 <strong id="bt-max-win" class="text-green-300 text-sm">--</strong>
@@ -1552,7 +1604,7 @@
                         <!-- Trade Log Table -->
                         <div class="bg-gray-800 border border-gray-700 rounded-lg p-3">
                             <h4 class="text-xs font-bold text-gray-300 mb-2">📝 Trades (<span id="bt-trade-count" class="text-[#ffc220]">0</span>)</h4>
-                            <div class="max-h-96 overflow-y-auto border border-gray-700 rounded-lg">
+                            <div class="max-h-96 overflow-y-auto overflow-x-auto border border-gray-700 rounded-lg">
                                 <table class="w-full text-left text-xs" aria-label="Trades">
                                     <thead class="bg-gray-900 sticky top-0 border-b border-gray-700">
                                         <tr>
@@ -1607,7 +1659,7 @@
                                 <span id="lm-candle-time" class="text-gray-500 font-normal"></span>
                             </div>
                             <!-- Regime + price strip -->
-                            <div id="lm-meta-strip" class="hidden grid grid-cols-7 gap-0 border-b text-center text-xs">
+                            <div id="lm-meta-strip" class="hidden grid grid-cols-4 md:grid-cols-7 gap-0 border-b text-center text-xs overflow-x-auto">
                                 <div class="py-2 border-r"><div class="text-[9px] text-gray-400">PRICE</div><div id="lm-price" class="font-black">--</div></div>
                                 <div class="py-2 border-r"><div class="text-[9px] text-gray-400">REGIME</div><div id="lm-regime" class="font-bold text-[#0053e2]">--</div></div>
                                 <div class="py-2 border-r"><div class="text-[9px] text-gray-400">STRATEGY</div><div id="lm-strat" class="font-bold">--</div></div>
@@ -1749,7 +1801,7 @@
                     <!-- Candle table -->
                     <div>
                         <h4 class="text-xs font-bold text-gray-700 mb-1">📋 Full Candle Log</h4>
-                        <div class="max-h-72 overflow-y-auto border rounded-lg" id="replay-table-wrap">
+                        <div class="max-h-72 overflow-y-auto overflow-x-auto border rounded-lg" id="replay-table-wrap">
                             <table class="w-full text-left text-xs" aria-label="Candle log">
                                 <thead class="bg-gray-100 sticky top-0">
                                     <tr>
@@ -2563,7 +2615,7 @@
                       <input type="text" id="tr-search" placeholder="Search symbol / date…" oninput="trFilterTable()"
                         class="border border-gray-300 rounded-lg px-3 py-1.5 text-xs w-44 text-gray-700">
                     </div>
-                    <div class="overflow-auto" style="max-height:380px">
+                    <div class="overflow-auto overflow-x-auto" style="max-height:380px">
                       <table class="w-full text-xs border-collapse">
                         <thead>
                           <tr class="bg-gray-50 text-gray-500 text-left">
@@ -3416,6 +3468,45 @@ function trFilterTable() {
   const q = document.getElementById('tr-search').value.toLowerCase();
   _trRenderRows(q ? _trRows.filter(t=>(t.security||'').toLowerCase().includes(q)||(t.entry_date||'').includes(q)) : _trRows);
 }
+</script>
+
+<script>
+/* ── Mobile Navigation ───────────────────────────────────── */
+function toggleMobileNav() {
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('mobile-overlay');
+    if (!sidebar || !overlay) return;
+    const isOpen = sidebar.classList.contains('mobile-open');
+    if (isOpen) {
+        sidebar.classList.remove('mobile-open');
+        overlay.classList.remove('active');
+        document.body.style.overflow = '';
+    } else {
+        sidebar.classList.add('mobile-open');
+        overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+// Close sidebar when a nav item is selected on mobile
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.addEventListener('click', () => {
+            if (window.innerWidth < 768) toggleMobileNav();
+        });
+    });
+});
+
+// Close on resize to desktop
+window.addEventListener('resize', () => {
+    if (window.innerWidth >= 768) {
+        const sidebar = document.querySelector('.sidebar');
+        const overlay = document.getElementById('mobile-overlay');
+        sidebar?.classList.remove('mobile-open');
+        overlay?.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+});
 </script>
 </body>
 </html>
