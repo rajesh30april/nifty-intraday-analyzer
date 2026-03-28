@@ -708,9 +708,12 @@ async def patterns_history(
 # ── Zerodha OAuth Flow ─────────────────────────────────────────────
 
 @app.get("/login")
-async def login():
-    """Redirect to Zerodha login page."""
-    return RedirectResponse(url=kite_manager.login_url)
+async def login(request: Request):
+    """Render a professional login landing page before redirecting to Zerodha."""
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "login_url": kite_manager.login_url},
+    )
 
 
 @app.get("/callback")
@@ -748,7 +751,35 @@ async def status():
     }
 
 
-# ── Account Capital / Margins ──────────────────────────────────────
+# ── All open positions (every exchange) ──────────────────────
+
+@app.get("/api/positions/all")
+async def all_positions():
+    """Return every open net position across ALL exchanges (NFO, MCX, BSE, NSE…)."""
+    if not kite_manager.is_authenticated:
+        return {"success": False, "error": "Not authenticated"}
+    try:
+        pos = kite_manager.kite.positions()
+        open_pos = [
+            {
+                "exchange":     p.get("exchange", ""),
+                "symbol":       p.get("tradingsymbol", ""),
+                "quantity":     p.get("quantity", 0),
+                "avg_price":    round(float(p.get("average_price") or 0), 2),
+                "ltp":          round(float(p.get("last_price") or 0), 2),
+                "pnl":          round(float(p.get("unrealised") or 0), 2),
+                "product":      p.get("product", ""),
+                "instrument_token": p.get("instrument_token"),
+            }
+            for p in pos.get("net", [])
+            if int(p.get("quantity", 0)) != 0
+        ]
+        return {"success": True, "positions": open_pos, "count": len(open_pos)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ── Account Capital / Margins ─────────────────────────────────
 
 @app.get("/api/margins")
 async def margins():

@@ -121,26 +121,58 @@
     </header>
 
     <!-- Login Banner -->
-    <div id="login-banner" class="hidden bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-4 flex items-center justify-between shadow-lg">
-        <div>
-            <h3 class="font-bold text-lg">🔑 Login Required</h3>
-            <p class="text-indigo-100 text-sm">Connect Zerodha for live data and trading.</p>
+    <div id="login-banner" class="hidden text-white p-3.5 flex items-center justify-between shadow-lg"
+         style="background: linear-gradient(90deg, #003db3 0%, #0053e2 60%, #1565ff 100%);">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center">
+          <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+          </svg>
         </div>
-        <a href="/login" class="bg-white text-indigo-600 px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-50 transition shadow-md hover:shadow-lg">🔑 Login</a>
+        <div>
+          <p class="font-bold text-sm">Zerodha session required</p>
+          <p class="text-blue-200 text-xs">Connect your broker to enable live data &amp; trading</p>
+        </div>
+      </div>
+      <a href="/login"
+         class="flex items-center gap-2 px-5 py-2 rounded-lg font-bold text-sm text-gray-900 hover:brightness-105 active:scale-95 transition-all shadow-md"
+         style="background: #ffc220;">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M4 4h16v2.5L8.5 18H20v2H4v-2.5L15.5 6H4V4z"/>
+        </svg>
+        Connect Zerodha
+      </a>
+    </div>
+
+    <!-- Open Positions Bar (all exchanges) -->
+    <div id="open-positions-bar" class="hidden border-b border-gray-800"
+         style="background:#0a0f1e;">
+      <div class="px-4 py-2 flex items-center gap-3 flex-wrap">
+        <span class="text-gray-500 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">Open Positions</span>
+        <div id="open-positions-chips" class="flex gap-2 flex-wrap"></div>
+        <button onclick="refreshAllPositions()"
+                class="ml-auto text-gray-600 hover:text-gray-400 text-xs transition-colors" title="Refresh positions">
+          &#x21bb;
+        </button>
+      </div>
     </div>
     <div id="login-required-overlay" class="hidden text-center py-20">
-        <div class="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-2xl flex items-center justify-center">
-            <svg class="w-10 h-10 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center"
+             style="background:linear-gradient(135deg,#0053e2 0%,#003db3 100%);">
+            <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
             </svg>
         </div>
         <h2 class="text-2xl font-bold text-gray-900 mb-2">Connect Zerodha to Start</h2>
         <p class="text-gray-600 mb-6">Securely authenticate to access live trading features</p>
-        <a href="/login" class="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all text-lg">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+        <a href="/login"
+           class="inline-flex items-center gap-2 px-8 py-3 rounded-xl font-bold shadow-lg hover:brightness-105 active:scale-95 transition-all text-lg text-gray-900"
+           style="background:linear-gradient(135deg,#ffc220 0%,#ffab00 100%);">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M4 4h16v2.5L8.5 18H20v2H4v-2.5L15.5 6H4V4z"/>
             </svg>
-            <span>Login</span>
+            <span>Connect Zerodha</span>
         </a>
     </div>
 
@@ -2604,7 +2636,7 @@
     </div><!-- /dashboard -->
 
     <script src="/static/progress.js?v=3"></script>
-    <script src="/static/dashboard.js?v=3"></script>
+    <script src="/static/dashboard.js?v=4"></script>
     <script src="/static/charts.js?v=3"></script>
     <script src="/static/auto-trader.js?v=16"></script>
     <script src="/static/at-settings.js?v=3"></script>

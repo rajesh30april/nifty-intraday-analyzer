@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connect Zerodha — Nifty Analyzer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    * { font-family: 'Inter', sans-serif; }
+    .walmart-blue   { background-color: #0053e2; }
+    .spark-yellow   { background-color: #ffc220; }
+    .spark-text     { color: #ffc220; }
+    .blue-text      { color: #0053e2; }
+    .pulse-ring {
+      animation: pulse-ring 2s ease-in-out infinite;
+    }
+    @keyframes pulse-ring {
+      0%, 100% { transform: scale(1);   opacity: 0.6; }
+      50%       { transform: scale(1.08); opacity: 1;   }
+    }
+    .slide-up {
+      animation: slideUp 0.5s ease-out;
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0);    }
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+
+  <!-- Background grid -->
+  <div class="fixed inset-0 opacity-5 pointer-events-none"
+       style="background-image: linear-gradient(#0053e2 1px, transparent 1px),
+                                linear-gradient(90deg, #0053e2 1px, transparent 1px);
+              background-size: 40px 40px;"></div>
+
+  <div class="relative w-full max-w-md slide-up">
+
+    <!-- Card -->
+    <div class="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-2xl">
+
+      <!-- Top bar -->
+      <div class="h-1.5 w-full" style="background: linear-gradient(90deg, #0053e2 0%, #ffc220 100%);"></div>
+
+      <div class="p-8">
+
+        <!-- Logo area -->
+        <div class="flex items-center gap-3 mb-8">
+          <div class="w-11 h-11 walmart-blue rounded-xl flex items-center justify-center shadow-lg">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+            </svg>
+          </div>
+          <div>
+            <div class="text-white font-bold text-lg leading-tight">Nifty Analyzer</div>
+            <div class="text-gray-500 text-xs">Intraday Intelligence Platform</div>
+          </div>
+        </div>
+
+        <!-- Main copy -->
+        <h1 class="text-white font-extrabold text-2xl mb-1">Connect your broker</h1>
+        <p class="text-gray-400 text-sm mb-8">
+          Authenticate with Zerodha to enable live data, auto-trading, and position tracking.
+        </p>
+
+        <!-- Feature pills -->
+        <div class="grid grid-cols-2 gap-2 mb-8">
+          <div class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
+            <span class="text-green-400 text-sm">⚡</span>
+            <span class="text-gray-300 text-xs font-medium">Live tick data</span>
+          </div>
+          <div class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
+            <span class="text-blue-400 text-sm">🤖</span>
+            <span class="text-gray-300 text-xs font-medium">Auto-trader</span>
+          </div>
+          <div class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
+            <span class="text-yellow-400 text-sm">🛡</span>
+            <span class="text-gray-300 text-xs font-medium">SL management</span>
+          </div>
+          <div class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
+            <span class="text-purple-400 text-sm">📊</span>
+            <span class="text-gray-300 text-xs font-medium">P&amp;L tracking</span>
+          </div>
+        </div>
+
+        <!-- CTA button -->
+        <a id="connect-btn" href="{{ login_url }}"
+           class="flex items-center justify-center gap-3 w-full py-3.5 rounded-xl font-bold text-gray-900
+                  transition-all duration-150 hover:brightness-110 hover:shadow-lg active:scale-95
+                  text-base shadow-md"
+           style="background: linear-gradient(135deg, #ffc220 0%, #ffab00 100%);">
+          <!-- Zerodha Z icon -->
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M4 4h16v2.5L8.5 18H20v2H4v-2.5L15.5 6H4V4z"/>
+          </svg>
+          Continue with Zerodha
+          <svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/>
+          </svg>
+        </a>
+
+        <!-- Security note -->
+        <p class="text-center text-gray-600 text-xs mt-4">
+          🔒 OAuth 2.0 — your credentials never touch this server
+        </p>
+
+      </div>
+
+      <!-- Footer strip -->
+      <div class="bg-gray-800/60 border-t border-gray-800 px-8 py-4 flex items-center justify-between">
+        <span class="text-gray-600 text-xs">Redirecting to Zerodha Kite</span>
+        <span class="inline-flex items-center gap-1.5 text-xs">
+          <span class="w-2 h-2 rounded-full bg-green-400 pulse-ring inline-block"></span>
+          <span class="text-gray-500">Secure connection</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- Back link -->
+    <div class="text-center mt-5">
+      <a href="/" class="text-gray-600 hover:text-gray-400 text-sm transition-colors">
+        ← Back to dashboard
+      </a>
+    </div>
+  </div>
+
+</body>
+</html>

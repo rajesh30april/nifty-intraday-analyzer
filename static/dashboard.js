@@ -85,6 +85,8 @@ async function checkStatus() {
             if (loginOverlay) loginOverlay.classList.add('hidden');
             startLiveTickPolling();
             loadMargins();
+            refreshAllPositions();
+            if (!positionsInterval) positionsInterval = setInterval(refreshAllPositions, 30000);
         } else {
             isAuthenticated = false;
             badge.innerHTML = '<span class="flex items-center gap-2 bg-red-500 text-white px-3 py-1.5 rounded-full text-sm font-bold">\u26a0\ufe0f NOT CONNECTED</span>';
@@ -121,6 +123,44 @@ async function loadMargins() {
     } catch (e) {
         console.error('Margins fetch failed:', e);
         panel.classList.add('hidden');
+    }
+}
+
+
+// ── Open Positions Bar (all exchanges: NFO, MCX, BSE…) ──────────────
+async function refreshAllPositions() {
+    const bar   = document.getElementById('open-positions-bar');
+    const chips = document.getElementById('open-positions-chips');
+    if (!bar || !chips) return;
+    try {
+        const resp = await fetch('/api/positions/all');
+        const data = await resp.json();
+        if (!data.success || !data.positions || data.positions.length === 0) {
+            bar.classList.add('hidden');
+            return;
+        }
+        bar.classList.remove('hidden');
+        chips.innerHTML = data.positions.map(p => {
+            const isProfit = p.pnl >= 0;
+            const pnlColor = isProfit ? 'text-green-400' : 'text-red-400';
+            const pnlSign  = isProfit ? '+' : '';
+            const qty      = p.quantity > 0 ? `▲${p.quantity}` : `▼${Math.abs(p.quantity)}`;
+            const qtyColor = p.quantity > 0 ? 'text-green-300' : 'text-red-300';
+            const exBadge  = p.exchange === 'MCX'  ? 'bg-orange-900/60 text-orange-300 border-orange-700' :
+                             p.exchange === 'NFO'  ? 'bg-blue-900/60  text-blue-300  border-blue-700'   :
+                             p.exchange === 'NSE'  ? 'bg-teal-900/60  text-teal-300  border-teal-700'   :
+                                                    'bg-gray-800     text-gray-400  border-gray-700';
+            return `
+              <div class="flex items-center gap-1.5 border rounded-lg px-2.5 py-1 ${exBadge}"
+                   title="Avg: ₹${p.avg_price} | LTP: ₹${p.ltp}">
+                <span class="text-[10px] font-bold opacity-70">${p.exchange}</span>
+                <span class="text-xs font-semibold text-white">${p.symbol}</span>
+                <span class="text-[10px] font-bold ${qtyColor}">${qty}</span>
+                <span class="text-[10px] font-bold ${pnlColor}">${pnlSign}₹${p.pnl.toLocaleString('en-IN')}</span>
+              </div>`;
+        }).join('');
+    } catch (e) {
+        console.error('positions fetch failed:', e);
     }
 }
 
