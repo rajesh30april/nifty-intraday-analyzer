@@ -44,7 +44,7 @@
       <!-- Top bar -->
       <div class="h-1.5 w-full" style="background: linear-gradient(90deg, #0053e2 0%, #ffc220 100%);"></div>
 
-      <div class="p-8">
+      <div class="p-5 sm:p-8">
 
         <!-- Logo area -->
         <div class="flex items-center gap-3 mb-8">
@@ -88,16 +88,16 @@
 
         <!-- CTA button -->
         <a id="connect-btn" href="{{ login_url }}"
-           class="flex items-center justify-center gap-3 w-full py-3.5 rounded-xl font-bold text-gray-900
+           class="flex items-center justify-center gap-3 w-full py-4 rounded-xl font-bold text-gray-900
                   transition-all duration-150 hover:brightness-110 hover:shadow-lg active:scale-95
-                  text-base shadow-md"
+                  text-base shadow-md min-h-[52px]"
            style="background: linear-gradient(135deg, #ffc220 0%, #ffab00 100%);">
           <!-- Zerodha Z icon -->
-          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+          <svg class="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
             <path d="M4 4h16v2.5L8.5 18H20v2H4v-2.5L15.5 6H4V4z"/>
           </svg>
           Continue with Zerodha
-          <svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-4 h-4 opacity-70 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/>
           </svg>
         </a>
@@ -110,7 +110,7 @@
       </div>
 
       <!-- Footer strip -->
-      <div class="bg-gray-800/60 border-t border-gray-800 px-8 py-4 flex items-center justify-between">
+      <div class="bg-gray-800/60 border-t border-gray-800 px-5 sm:px-8 py-4 flex flex-wrap items-center justify-between gap-2">
         <span class="text-gray-600 text-xs">Redirecting to Zerodha Kite</span>
         <span class="inline-flex items-center gap-1.5 text-xs">
           <span class="w-2 h-2 rounded-full bg-green-400 pulse-ring inline-block"></span>
