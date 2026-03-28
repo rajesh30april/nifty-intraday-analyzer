@@ -19,7 +19,7 @@
         .slide-in { animation: slide-in 0.4s ease-out; }
         @keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .live-dot { animation: live-pulse 1.5s ease-in-out infinite; }
-        .logo-gradient { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .logo-gradient { background: linear-gradient(135deg, #0053e2 0%, #1565ff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         .tf-btn { color: #6b7280; cursor: pointer; }
         .tf-btn-active { background: #0053e2; color: white; }
 .learn-cat-active { background: #0053e2 !important; color: white !important; }
@@ -33,22 +33,22 @@
         .sidebar-item { display: flex; align-items: center; gap: 12px; padding: 12px 20px; cursor: pointer;
                         border-left: 3px solid transparent; color: #6b7280; font-weight: 600; font-size: 14px; 
                         transition: all 0.2s ease; margin: 2px 8px; border-radius: 8px; }
-        .sidebar-item:hover { background: linear-gradient(to right, #f0f4ff, #f9fafb); color: #4f46e5; }
-        .sidebar-item.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; 
-                              border-left-color: transparent; font-weight: 700; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); }
+        .sidebar-item:hover { background: linear-gradient(to right, #eff4ff, #f9fafb); color: #0053e2; }
+        .sidebar-item.active { background: linear-gradient(135deg, #0053e2 0%, #1565ff 100%); color: white;
+                              border-left-color: transparent; font-weight: 700; box-shadow: 0 4px 12px rgba(0,83,226,0.25); }
         .sidebar-item .badge { font-size: 10px; padding: 2px 7px; border-radius: 9999px; font-weight: 700; }
         .page-section { display: none; }
         .page-section.active { display: block; animation: slide-in 0.3s ease-out; }
         .ph-filter { cursor:pointer;border:1px solid #e5e7eb;padding:4px 12px;border-radius:9999px;
                      font-size:11px;font-weight:600;background:white;color:#374151;transition:all .2s;
                      box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-        .ph-filter.active { background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:#fff;border-color:transparent;
-                           box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3); }
+        .ph-filter.active { background:linear-gradient(135deg, #0053e2 0%, #1565ff 100%);color:#fff;border-color:transparent;
+                           box-shadow: 0 2px 8px rgba(0,83,226,0.3); }
         .ph-day-btn { cursor:pointer;border:1px solid #e5e7eb;padding:6px 12px;border-radius:10px;
                       font-size:11px;font-weight:600;background:white;color:#374151;
                       white-space:nowrap;transition:all .2s;box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .ph-day-btn:hover { border-color:#c7d2fe;background:#f0f4ff; }
-        .ph-day-btn.active { background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:#fff;border-color:transparent;
+        .ph-day-btn.active { background:linear-gradient(135deg, #0053e2 0%, #1565ff 100%);color:#fff;border-color:transparent;
                             box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3); }
         .conf-bar { height:5px;border-radius:3px;background:#e2e8f0;overflow:hidden; }
         .conf-fill { height:100%;border-radius:3px; }
@@ -64,7 +64,8 @@
     <!-- Professional Header with Status Bar -->
     <header class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
         <!-- Top Status Bar -->
-        <div class="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 text-white px-6 py-1.5 flex items-center justify-between text-xs font-medium">
+        <div class="text-white px-6 py-1.5 flex items-center justify-between text-xs font-medium"
+             style="background: linear-gradient(90deg, #002b8f 0%, #0053e2 50%, #003db3 100%);">
             <div class="flex items-center gap-6">
                 <div class="flex items-center gap-2">
                     <div id="market-status-dot" class="w-2 h-2 rounded-full bg-green-400 live-dot"></div>
@@ -83,7 +84,8 @@
             <!-- Brand -->
             <div class="flex items-center gap-8">
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <div class="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg"
+                         style="background: linear-gradient(135deg, #0053e2 0%, #1565ff 100%);">
                         <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
                         </svg>
@@ -109,14 +111,14 @@
             <!-- Action Button -->
             <div class="flex items-center gap-3">
                 <button onclick="loadAnalysis()" 
-                    class="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-200" 
+                    class="flex items-center gap-2 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:brightness-110 active:scale-95 transition-all duration-150" 
+                    style="background: linear-gradient(135deg, #0053e2 0%, #1565ff 100%);"
                     aria-label="Refresh">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                     </svg>
                     <span>Refresh</span>
                 </button>
-            </div>
         </div>
     </header>
 
@@ -178,13 +180,13 @@
 
     <!-- Loading -->
     <div id="loading" class="hidden text-center py-20">
-        <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent"></div>
+        <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[#0053e2] border-t-transparent"></div>
         <p class="mt-4 text-gray-600 text-lg font-semibold">Loading...</p>
     </div>
     <div id="error-state" class="hidden text-center py-20">
         <p class="text-red-600 text-xl font-bold">⚠️ Something went wrong</p>
         <p id="error-msg" class="text-gray-600 mt-2"></p>
-        <button onclick="loadAnalysis()" class="mt-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-6 py-2 rounded-lg shadow-lg transition-all">Try Again</button>
+        <button onclick="loadAnalysis()" class="mt-4 bg-gradient-to-r from-[#0053e2] to-[#1565ff] hover:from-[#003db3] hover:to-[#1565ff] text-white px-6 py-2 rounded-lg shadow-lg transition-all">Try Again</button>
     </div>
 
     <!-- ==================== MAIN LAYOUT: Sidebar + Content ==================== -->
@@ -276,7 +278,7 @@
                 </div>
                 <a href="/pattern-charts" target="_blank" class="sidebar-item" style="text-decoration: none;">
                     <span>📈</span><span>Pattern Charts</span>
-                    <span class="ml-auto text-[9px] bg-purple-100 text-purple-700 font-bold px-1.5 py-0.5 rounded">VISUAL</span>
+                    <span class="ml-auto text-[9px] bg-blue-100 text-[#003db3] font-bold px-1.5 py-0.5 rounded">VISUAL</span>
                 </a>
                 <div class="sidebar-item" data-page="paper-trader" onclick="switchPage('paper-trader'); loadPaperTrader()">
                     <span>📋</span><span>Paper Trader</span>
@@ -448,7 +450,7 @@
             <div id="page-charts" class="page-section">
                 <div id="section-chart">
                     <div class="section-spinner hidden text-center py-4">
-                        <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-purple-600 border-t-transparent"></div>
+                        <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-[#0053e2] border-t-transparent"></div>
                         <span class="text-sm text-gray-500 ml-2">Loading charts...</span>
                     </div>
                     <div class="section-content space-y-4">
@@ -466,7 +468,7 @@
                                 <div class="flex gap-4">
                                     <div class="text-center bg-gray-50 rounded-lg px-3 py-2">
                                         <div class="text-[10px] text-gray-500 uppercase">Patterns</div>
-                                        <div id="chart-pattern-count" class="text-2xl font-black text-purple-600">0</div>
+                                        <div id="chart-pattern-count" class="text-2xl font-black text-[#0053e2]">0</div>
                                     </div>
                                     <div class="text-center bg-gray-50 rounded-lg px-3 py-2">
                                         <div class="text-[10px] text-gray-500 uppercase">Pattern Bias</div>
@@ -493,7 +495,7 @@
                                 <div class="flex gap-2 text-xs">
                                     <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-green-500 inline-block"></span>Support</span>
                                     <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-red-500 inline-block"></span>Resistance</span>
-                                    <span class="flex items-center gap-1"><span class="w-3 h-3 bg-purple-200 border border-purple-500 rounded-full inline-block"></span>Pattern</span>
+                                    <span class="flex items-center gap-1"><span class="w-3 h-3 bg-blue-200 border border-[#0053e2] rounded-full inline-block"></span>Pattern</span>
                                 </div>
                             </div>
                             <div id="candlestickChart" style="height: 450px; width: 100%;"></div>
@@ -506,16 +508,16 @@
                         <!-- Patterns + S/R side by side -->
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-                                <div class="px-4 py-3 bg-purple-700 text-white">
+                                <div class="px-4 py-3 bg-[#003db3] text-white">
                                     <h3 class="text-sm font-bold">🔍 Patterns Detected</h3>
-                                    <p class="text-purple-200 text-xs">Auto-detected from price action</p>
+                                    <p class="text-blue-200 text-xs">Auto-detected from price action</p>
                                 </div>
                                 <div id="patterns-container" class="p-3 space-y-2 max-h-[600px] overflow-y-auto">
                                     <p class="text-gray-400 text-center py-4">Scanning...</p>
                                 </div>
                             </div>
                             <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-                                <div class="px-4 py-3 bg-indigo-700 text-white">
+                                <div class="px-4 py-3 bg-[#003db3] text-white">
                                     <h3 class="text-sm font-bold">📍 Support & Resistance</h3>
                                 </div>
                                 <div id="sr-container" class="p-3">
@@ -1048,7 +1050,7 @@
                     </div>
                     <div class="bg-gray-900/60 rounded-lg p-2" title="Auto-exit if not closed by this time">
                       <div class="text-[10px] text-gray-500">Auto-Exit</div>
-                      <div id="at-exit-time-badge" class="text-xs font-bold text-purple-400">--</div>
+                      <div id="at-exit-time-badge" class="text-xs font-bold text-blue-300">--</div>
                     </div>
                     <div class="bg-gray-900/60 rounded-lg p-2 flex items-center justify-center">
                       <button onclick="syncFromZerodha()" title="Order placed in Zerodha but not showing here? Click to sync."
@@ -1173,13 +1175,13 @@
               <div id="at-pattern-charts-wrapper" class="hidden mt-4 border border-gray-700 rounded-xl overflow-hidden">
                 <!-- Collapsible Header -->
                 <button onclick="togglePatternCharts()" 
-                  class="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-indigo-900 to-purple-900 hover:from-indigo-800 hover:to-purple-800 transition-all">
+                  class="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-gray-900 to-[#001a6e] hover:from-gray-800 hover:to-[#002080] transition-all">
                   <div class="flex items-center gap-2">
                     <span id="at-pattern-chevron" class="text-lg transition-transform">▼</span>
                     <span class="text-sm font-bold text-white">📊 Pattern Analysis Charts</span>
-                    <span id="at-pattern-count" class="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-full font-bold">0</span>
+                    <span id="at-pattern-count" class="text-xs bg-[#0053e2] text-white px-2 py-0.5 rounded-full font-bold">0</span>
                   </div>
-                  <span class="text-[10px] text-indigo-300">Click to expand/collapse</span>
+                  <span class="text-[10px] text-blue-200">Click to expand/collapse</span>
                 </button>
                 
                 <!-- Collapsible Content -->
@@ -1214,9 +1216,9 @@
             <!-- ====== PAGE: Backtester ====== -->
             <div id="page-backtester" class="page-section">
                 <div class="bg-gray-900 rounded-xl shadow-sm overflow-hidden border border-gray-700">
-                    <div class="px-4 py-3 bg-gradient-to-r from-purple-700 to-indigo-700 text-white">
+                    <div class="px-4 py-3 bg-gradient-to-r from-[#003db3] to-[#0053e2] text-white">
                         <h3 class="text-sm font-bold">🔬 Strategy Backtester</h3>
-                        <p class="text-purple-200 text-xs">Historical performance testing</p>
+                        <p class="text-blue-200 text-xs">Historical performance testing</p>
                     </div>
                     <div class="p-4 bg-gray-900 border-b border-gray-700">
                         <div class="mb-3">
@@ -1280,7 +1282,7 @@
                                     <span class="bg-green-100 text-green-700 px-1.5 py-0.5 rounded text-[9px] font-bold">FREE · 60d</span>
                                 </button>
                                 <button onclick="selectDataSource('zerodha')" id="ds-zerodha"
-                                    class="ds-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-600 bg-gray-800 text-gray-400 text-xs font-bold transition hover:border-purple-400">
+                                    class="ds-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-600 bg-gray-800 text-gray-400 text-xs font-bold transition hover:border-blue-400">
                                     🔷 Zerodha Kite
                                     <span id="ds-zerodha-badge" class="bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded text-[9px] font-bold">FREE · 60d</span>
                                 </button>
@@ -1301,8 +1303,8 @@
                                 <p id="td-creds-status" class="text-xs mt-1 text-gray-400"></p>
                             </div>
                             <!-- Zerodha login warning -->
-                            <div id="zerodha-warn" class="hidden mt-2 p-2 bg-purple-900/30 border border-purple-700 rounded-lg">
-                                <p class="text-xs text-purple-300">⚠️ Zerodha session required. Please login via the <strong>Auto-Trader</strong> tab first.</p>
+                            <div id="zerodha-warn" class="hidden mt-2 p-2 bg-blue-900/30 border border-blue-700 rounded-lg">
+                                <p class="text-xs text-blue-200">⚠️ Zerodha session required. Please login via the <strong>Auto-Trader</strong> tab first.</p>
                             </div>
                         </div>
                         
@@ -1463,13 +1465,13 @@
                         </div>
                     </div>
                     <div id="bt-loading" class="hidden text-center py-6 space-y-3 bg-gray-900">
-                        <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-purple-600 border-t-transparent"></div>
+                        <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-[#0053e2] border-t-transparent"></div>
                         <!-- SSE progress bar -->
                         <div id="bt-progress-wrap" class="hidden px-4">
                           <div id="bt-progress-label" class="text-xs text-gray-400 mb-1 text-left">Starting…</div>
                           <div class="w-full bg-gray-800 rounded-full h-3 overflow-hidden">
                             <div id="bt-progress-bar"
-                                 class="h-3 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-300"
+                                 class="h-3 rounded-full bg-gradient-to-r from-[#0053e2] to-blue-400 transition-all duration-300"
                                  style="width:0%"></div>
                           </div>
                         </div>
@@ -1607,7 +1609,7 @@
                             <!-- Regime + price strip -->
                             <div id="lm-meta-strip" class="hidden grid grid-cols-7 gap-0 border-b text-center text-xs">
                                 <div class="py-2 border-r"><div class="text-[9px] text-gray-400">PRICE</div><div id="lm-price" class="font-black">--</div></div>
-                                <div class="py-2 border-r"><div class="text-[9px] text-gray-400">REGIME</div><div id="lm-regime" class="font-bold text-indigo-600">--</div></div>
+                                <div class="py-2 border-r"><div class="text-[9px] text-gray-400">REGIME</div><div id="lm-regime" class="font-bold text-[#0053e2]">--</div></div>
                                 <div class="py-2 border-r"><div class="text-[9px] text-gray-400">STRATEGY</div><div id="lm-strat" class="font-bold">--</div></div>
                                 <div class="py-2 border-r"><div class="text-[9px] text-gray-400">CONFIDENCE</div><div id="lm-conf" class="font-bold">--%</div></div>
                                 <div class="py-2 border-r"><div class="text-[9px] text-gray-400">SL (pts)</div><div id="lm-sl-val" class="font-bold text-red-500">--</div></div>
@@ -1624,10 +1626,10 @@
                 </div>
             <!-- ====== DAY REPLAY PANEL ====== -->
             <div class="bg-white rounded-xl shadow-sm overflow-hidden mt-4">
-                <div class="px-4 py-3 bg-gradient-to-r from-indigo-700 to-blue-700 text-white flex items-center justify-between">
+                <div class="px-4 py-3 bg-gradient-to-r from-[#0053e2] to-[#1565ff] text-white flex items-center justify-between">
                     <div>
                         <h3 class="text-sm font-bold">🎬 Day Replay</h3>
-                        <p class="text-indigo-200 text-xs">Pick a day &amp; watch every candle unfold</p>
+                        <p class="text-blue-200 text-xs">Pick a day &amp; watch every candle unfold</p>
                     </div>
                     <span class="text-2xl">📅</span>
                 </div>
@@ -1651,7 +1653,7 @@
                             </select>
                         </div>
                         <button onclick="runDayReplay()" id="replay-btn"
-                            class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-bold transition">
+                            class="bg-[#0053e2] hover:bg-[#003db3] text-white px-5 py-2 rounded-lg text-sm font-bold transition">
                             🎬 Replay
                         </button>
                         <button onclick="replayInstantFull()" id="replay-full-btn"
@@ -1663,13 +1665,13 @@
                 </div>
                 <!-- Loading -->
                 <div id="replay-loading" class="hidden text-center py-6 space-y-3">
-                    <div class="inline-block animate-spin rounded-full h-7 w-7 border-4 border-indigo-600 border-t-transparent"></div>
+                    <div class="inline-block animate-spin rounded-full h-7 w-7 border-4 border-[#0053e2] border-t-transparent"></div>
                     <!-- SSE progress bar -->
                     <div id="replay-progress-wrap" class="hidden px-4">
                       <div id="replay-progress-label" class="text-xs text-gray-400 mb-1 text-left">Connecting…</div>
                       <div class="w-full bg-gray-800 rounded-full h-3 overflow-hidden">
                         <div id="replay-progress-bar"
-                             class="h-3 rounded-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all duration-200"
+                             class="h-3 rounded-full bg-gradient-to-r from-[#0053e2] to-cyan-400 transition-all duration-200"
                              style="width:0%"></div>
                       </div>
                     </div>
@@ -1680,18 +1682,18 @@
                     <div id="replay-summary" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
                     <!-- Price Chart -->
                     <div>
-                        <h4 class="text-xs font-bold text-gray-700 mb-1">📈 Price Action — <span id="replay-date-label" class="text-indigo-600"></span></h4>
+                        <h4 class="text-xs font-bold text-gray-700 mb-1">📈 Price Action — <span id="replay-date-label" class="text-[#0053e2]"></span></h4>
                         <div style="height:250px;"><canvas id="replay-price-chart"></canvas></div>
                     </div>
                     <!-- Progress -->
                     <div class="flex items-center gap-3">
                         <span class="text-xs font-semibold text-gray-500" id="replay-progress-label">Candle 0 / 0</span>
                         <div class="flex-1 bg-gray-200 rounded-full h-2">
-                            <div id="replay-progress-bar" class="bg-indigo-600 h-2 rounded-full transition-all" style="width:0%"></div>
+                            <div id="replay-progress-bar" class="bg-[#0053e2] h-2 rounded-full transition-all" style="width:0%"></div>
                         </div>
                         <div class="flex gap-1">
                             <button onclick="replayPrev()" class="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-xs font-bold" title="Previous candle">◀</button>
-                            <button onclick="replayPauseResume()" id="replay-pause-btn" class="px-3 py-1 rounded bg-indigo-100 hover:bg-indigo-200 text-indigo-700 text-xs font-bold">⏸</button>
+                            <button onclick="replayPauseResume()" id="replay-pause-btn" class="px-3 py-1 rounded bg-blue-100 hover:bg-blue-100 text-[#003db3] text-xs font-bold">⏸</button>
                             <button onclick="replayNext()" class="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-xs font-bold" title="Next candle">▶</button>
                         </div>
                     </div>
@@ -1701,7 +1703,7 @@
                             <div class="flex items-center gap-2">
                                 <span id="rc-time" class="font-black text-xl">--:--</span>
                                 <span id="rc-state-badge" class="px-2 py-0.5 rounded-full text-xs font-bold"></span>
-                                <span id="rc-regime" class="px-2 py-0.5 rounded text-xs bg-indigo-100 text-indigo-700 font-semibold"></span>
+                                <span id="rc-regime" class="px-2 py-0.5 rounded text-xs bg-blue-100 text-[#003db3] font-semibold"></span>
                             </div>
                             <div id="rc-signal" class="text-sm font-bold"></div>
                         </div>
@@ -1772,9 +1774,9 @@
             <!-- ====== PAGE: Learn Strategies ====== -->
             <div id="page-learn" class="page-section">
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-                    <div class="px-4 py-3 bg-gradient-to-r from-indigo-700 to-purple-700 text-white">
+                    <div class="px-4 py-3 bg-gradient-to-r from-[#003db3] to-[#0053e2] text-white">
                         <h3 class="text-sm font-bold">📚 Strategy Library</h3>
-                        <p class="text-indigo-200 text-xs">Learn every strategy with examples and visuals</p>
+                        <p class="text-blue-200 text-xs">Learn every strategy with examples and visuals</p>
                     </div>
                     <!-- Category filter tabs -->
                     <div class="px-4 py-2 bg-gray-50 border-b flex gap-2 flex-wrap">
@@ -1787,7 +1789,7 @@
                     </div>
                     <div id="learn-strategies-container" class="p-4 space-y-4">
                         <div class="text-center py-8 text-gray-400">
-                            <div class="animate-spin inline-block h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full"></div>
+                            <div class="animate-spin inline-block h-6 w-6 border-2 border-[#0053e2] border-t-transparent rounded-full"></div>
                             <p class="mt-2 text-sm">Loading strategies...</p>
                         </div>
                     </div>
@@ -2322,7 +2324,7 @@
                   <!-- Auto-exit time -->
                   <div class="bg-gray-900/40 rounded-lg p-2 text-center">
                     <span class="text-[10px] text-gray-500">⏰ Auto-Exit</span>
-                    <span id="ct-exit-time" class="ml-2 text-xs font-bold text-purple-400">--</span>
+                    <span id="ct-exit-time" class="ml-2 text-xs font-bold text-blue-300">--</span>
                   </div>
                 </div>
               </div>
@@ -2339,11 +2341,11 @@
               </div>
 
               <!-- ═══ SIGNAL STATUS (moved to bottom) ═══════════════════════════ -->
-              <div class="bg-gradient-to-r from-indigo-900 to-purple-900 border border-indigo-700 rounded-xl p-4 mb-3 shadow-lg">
+              <div class="bg-gradient-to-r from-gray-900 to-[#001a6e] border border-[#003db3] rounded-xl p-4 mb-3 shadow-lg">
                 <div class="flex items-center gap-3">
                   <div class="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-xl">📡</div>
                   <div class="flex-1">
-                    <div class="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-1">Latest Signal</div>
+                    <div class="text-xs font-bold text-blue-200 uppercase tracking-wider mb-1">Latest Signal</div>
                     <div id="crude-signal" class="text-sm text-white font-medium leading-relaxed">--</div>
                   </div>
                 </div>
@@ -2354,7 +2356,7 @@
               <div id="crude-pattern-charts" class="hidden mb-3">
                 <div class="bg-gray-900 border border-gray-700 rounded-xl p-4">
                   <h3 class="text-sm font-bold mb-3 flex items-center gap-2">
-                    <span class="w-6 h-6 rounded-lg bg-purple-600 flex items-center justify-center text-white text-xs">📊</span>
+                    <span class="w-6 h-6 rounded-lg bg-[#0053e2] flex items-center justify-center text-white text-xs">📊</span>
                     Chart Patterns
                   </h3>
                   <div id="crude-pattern-cards" class="space-y-2"></div>
@@ -2454,7 +2456,7 @@
 
                 <!-- Header -->
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-                  <div class="px-4 py-3 bg-gradient-to-r from-blue-700 to-indigo-700 text-white flex items-center justify-between">
+                  <div class="px-4 py-3 bg-gradient-to-r from-[#0053e2] to-[#1565ff] text-white flex items-center justify-between">
                     <div>
                       <h3 class="text-sm font-bold">📊 Trade Report &amp; Pattern Analysis</h3>
                       <p class="text-blue-200 text-xs" id="tr-source-label">Click 'Load Today's App Trades' or upload Zerodha CSV</p>
