@@ -378,12 +378,20 @@ def evaluate_all(df: pd.DataFrame, enabled_strategies: list[str] | None = None) 
                     current_price = rev_cont_detector.current_price
                     day_low = rev_cont_detector.day_low
                     day_range = rev_cont_detector.day_range
-                    
+
                     if (sig_long and current_price > day_low + day_range * 0.6):
                         rc_mult = 0.3  # 70% penalty for buying near top during reversal!
                     elif (not sig_long and current_price < day_low + day_range * 0.4):
                         rc_mult = 0.3  # 70% penalty for selling near bottom during reversal!
-            
+
+                    # 🐶 Strong-trend override: ADX > 40 means the "reversal"
+                    # signal is noise — the trend almost always continues.
+                    # Floor rc_mult at 0.8 so trend strategies aren't killed
+                    # by a phantom reversal call in a confirmed strong trend.
+                    # (ADX > 40 = very strong; ADX > 50 = extreme — both trust the trend.)
+                    if regime_result.adx > 40 and rc_mult < 0.8:
+                        rc_mult = 0.8
+
             elif strat.category in ("reversal", "scalping"):
                 # Boost reversal strategies during reversal!
                 rc_mult = 1.3  # 30% bonus!
