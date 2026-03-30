@@ -659,40 +659,37 @@ def _enter_trade(direction: Direction, price: float):
     # options only. Now we show HV info as warning but still trade options.
     df = fetch_crude_intraday_data('5minute', 5)  # 5 days for 90+ candles
     hv_rank = _get_hv_rank(df) if df is not None else 0.0
-    
+
     if hv_rank > HV_RANK_FUTURES_THRESHOLD:
         print(f"⚠️  HV rank {hv_rank:.0f}% > {HV_RANK_FUTURES_THRESHOLD}% — "
               f"options may be expensive (IV crush risk)")
-    
-    # ── Proceed with options flow ────────────────────────
+
+    # ── Fetch live Zerodha NET margin FIRST ────────────────────────────
+    # Must happen before get_crude_atm_option so we can pass the real
+    # available amount — that’s what drives mini vs full lot selection.
+    free, net, used = _fetch_available_margin()
+    if net is not None:
+        state.available_margin = net
+        print(f"💰 Zerodha margins: net ₹{net:,.0f} available "
+              f"| free ₹{free:,.0f} | used ₹{used:,.0f}")
+
+    # available = net margin, capped by optional user limit (0 = no cap)
+    available = state.available_margin if state.available_margin > 0 else state.capital
+    if state.capital > 0 and state.capital < available:
+        available = state.capital
+        print(f"💹 Capital cap applied: ₹{state.capital:,.0f} < net ₹{state.available_margin:,.0f}")
+
+    # ── Proceed with options flow ───────────────────────────────
+    # Pass available so get_crude_atm_option can auto-pick MINI when
+    # available < MCX_MINI_CAPITAL_THRESHOLD (₹1.2L).
     try:
         symbol, _token, lot_size = get_crude_atm_option(
-            price, direction.value, state.strike_offset, capital=state.capital
+            price, direction.value, state.strike_offset, capital=available
         )
     except RuntimeError as e:
         print(f"❌ Crude instrument lookup failed: {e}")
         state.last_block_reason = str(e)
         return
-
-    # ── Sync capital from Zerodha before every trade ─────────────
-    # ── Get live Zerodha net available margin ──────────────────
-    # NET = what Zerodha says you can actually trade with RIGHT NOW.
-    # FREE is the gross cash balance which includes margin already
-    # locked in open positions — NOT what we want for sizing.
-    # e.g. free=₹9.85L, net=₹56k, used=₹9.28L → size off ₹56k.
-    free, net, used = _fetch_available_margin()
-    if net is not None:
-        state.available_margin = net        # net = real spendable
-        print(f"💰 Zerodha margins: net ₹{net:,.0f} available "
-              f"| free ₹{free:,.0f} | used ₹{used:,.0f}")
-
-    # available = net available from Zerodha.
-    # If user has set a capital cap (> 0), honour it as a maximum.
-    # Set capital=0 in the UI to mean “no cap, use full net”.
-    available = state.available_margin if state.available_margin > 0 else state.capital
-    if state.capital > 0 and state.capital < available:
-        available = state.capital
-        print(f"💹 Capital cap applied: ₹{state.capital:,.0f} < net ₹{state.available_margin:,.0f}")
 
     real_ltp     = get_crude_option_ltp(symbol)
     desired_lots = _resolve_qty(price, real_ltp, lot_size=lot_size, symbol=symbol, available=available)
