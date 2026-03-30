@@ -200,7 +200,7 @@ const PATTERNS = {
 
   bullish_engulfing: {
     name:'Bullish Engulfing', cat:'candlestick', bias:'bullish', conf:'78–88%',
-    desc:'A large green candle completely engulfs the prior red candle's body. After a downtrend, this signals strong buyer conviction — the bulls overpowered the bears decisively.',
+    desc:'A large green candle completely engulfs the prior red candle body. After a downtrend, this signals strong buyer conviction — the bulls overpowered the bears decisively.',
     entry:'Buy at close of the engulfing green candle.',
     sl:'Below the low of the engulfing candle.',
     target:'Previous swing high.',
@@ -213,7 +213,7 @@ const PATTERNS = {
 
   bearish_engulfing: {
     name:'Bearish Engulfing', cat:'candlestick', bias:'bearish', conf:'76–86%',
-    desc:'A large red candle completely engulfs the prior green candle's body. After an uptrend, strong selling pressure overwhelms buyers — high-conviction reversal signal.',
+    desc:'A large red candle completely engulfs the prior green candle body. After an uptrend, strong selling pressure overwhelms buyers — high-conviction reversal signal.',
     entry:'Sell at close of the engulfing red candle.',
     sl:'Above the high of the engulfing candle.',
     target:'Previous swing low.',
