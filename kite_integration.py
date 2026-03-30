@@ -396,9 +396,9 @@ class KiteManager:
         self._crude_option_token = None
 
         def on_connect(ws, response):
-            # Always subscribe Nifty spot
-            ws.subscribe([NIFTY_INSTRUMENT_TOKEN])
-            ws.set_mode(ws.MODE_FULL, [NIFTY_INSTRUMENT_TOKEN])
+            # Always subscribe Nifty spot index for live price ticks
+            ws.subscribe([_NIFTY_SPOT_TOKEN])
+            ws.set_mode(ws.MODE_FULL, [_NIFTY_SPOT_TOKEN])
             self.is_streaming = True
             print("✅ Kite WebSocket connected — streaming Nifty 50 live!")
 
@@ -441,7 +441,7 @@ class KiteManager:
                     continue
 
                 # ── Nifty spot tick → existing behaviour ──────────────────
-                if token == NIFTY_INSTRUMENT_TOKEN:
+                if token == _NIFTY_SPOT_TOKEN:
                     self.latest_tick = {
                         "timestamp":  datetime.now().isoformat(),
                         "last_price": ltp,
