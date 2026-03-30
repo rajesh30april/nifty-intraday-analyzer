@@ -2205,20 +2205,21 @@
                       </select>
                     </div>
                     
-                    <!-- Capital / Trading Budget -->
+                    <!-- Max Cap / Trading Budget -->
                     <div>
                       <label class="text-[10px] text-gray-400 block mb-1" for="crude-capital">
-                        Trading Budget
+                        Max Cap
                         <span class="ml-1 text-green-400 font-bold">₹<span id="crude-capital-display">18,000</span></span>
                         <span class="ml-2 text-[9px] text-gray-500">
-                          (Zerodha free: <span id="crude-available-margin-display" class="text-blue-400 font-semibold">—</span>)
+                          (net available: <span id="crude-available-margin-display" class="text-blue-400 font-semibold">—</span>)
                         </span>
+                        <span class="ml-1 text-[9px] text-gray-600">| sizes off Zerodha net, cap optional</span>
                       </label>
-                      <input id="crude-capital" type="range" min="5000" max="200000" step="1000" value="18000"
+                      <input id="crude-capital" type="range" min="0" max="500000" step="1000" value="18000"
                         class="w-full accent-green-500"
                         oninput="document.getElementById('crude-capital-display').textContent = parseInt(this.value).toLocaleString('en-IN')">
                       <div class="flex justify-between text-[9px] text-gray-600 mt-0.5">
-                        <span>₹5k</span><span>₹50k</span><span>₹100k</span><span>₹200k</span>
+                        <span>no cap</span><span>₹50k</span><span>₹100k</span><span>₹500k</span>
                       </div>
                     </div>
                     

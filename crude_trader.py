@@ -675,21 +675,24 @@ def _enter_trade(direction: Direction, price: float):
         return
 
     # ── Sync capital from Zerodha before every trade ─────────────
-    # We store the live balance in `available_margin` but NEVER overwrite
-    # `capital` (the user's configured trading budget).  Sizing uses
-    # min(budget, live_balance) so we don't accidentally deploy the
-    # entire account when the user only wants to risk ₹30k.
+    # ── Get live Zerodha net available margin ──────────────────
+    # NET = what Zerodha says you can actually trade with RIGHT NOW.
+    # FREE is the gross cash balance which includes margin already
+    # locked in open positions — NOT what we want for sizing.
+    # e.g. free=₹9.85L, net=₹56k, used=₹9.28L → size off ₹56k.
     free, net, used = _fetch_available_margin()
-    if free is not None:
-        state.available_margin = free
-        print(f"💰 Zerodha balance: ₹{free:,.0f} free "
-              f"(net ₹{net:,.0f}, used ₹{used:,.0f}) | "
-              f"trading budget: ₹{state.capital:,.0f}")
+    if net is not None:
+        state.available_margin = net        # net = real spendable
+        print(f"💰 Zerodha margins: net ₹{net:,.0f} available "
+              f"| free ₹{free:,.0f} | used ₹{used:,.0f}")
 
-    # available = smaller of (budget, actual free cash) — cap both ways
-    available = state.capital
-    if state.available_margin > 0:
-        available = min(state.capital, state.available_margin)
+    # available = net available from Zerodha.
+    # If user has set a capital cap (> 0), honour it as a maximum.
+    # Set capital=0 in the UI to mean “no cap, use full net”.
+    available = state.available_margin if state.available_margin > 0 else state.capital
+    if state.capital > 0 and state.capital < available:
+        available = state.capital
+        print(f"💹 Capital cap applied: ₹{state.capital:,.0f} < net ₹{state.available_margin:,.0f}")
 
     real_ltp     = get_crude_option_ltp(symbol)
     desired_lots = _resolve_qty(price, real_ltp, lot_size=lot_size, symbol=symbol, available=available)
@@ -831,8 +834,11 @@ def _enter_trade_futures(direction: Direction, price: float, hv_rank: float):
     if free is not None:
         state.available_margin = free
 
-    # cap: trade budget vs actual free cash (whichever is lower)
-    _avail = min(state.capital, state.available_margin) if state.available_margin > 0 else state.capital
+    # Use NET available margin (real spendable), capped by optional capital limit
+    _net = state.available_margin if state.available_margin > 0 else 0
+    _avail = _net
+    if state.capital > 0 and state.capital < _avail:
+        _avail = state.capital
 
     # ── Lot sizing: start with 1 lot, check margin ─────────────────
     qty, required_margin = _validate_and_size(symbol, 1, _avail, ltp=None)
@@ -1297,14 +1303,13 @@ def start_crude_trader():
     if not kite_manager.is_authenticated and not state.is_paper_mode:
         return {'success': False, 'error': 'Not authenticated'}
     
-    # 🐶 Sync live Zerodha balance on startup — store in available_margin,
-    # NOT in capital.  capital = user’s trading budget (persisted setting).
+    # 🐶 Sync live Zerodha NET margin on startup — net = real spendable.
     free, net, used = _fetch_available_margin()
-    if free is not None:
-        state.available_margin = free
-        print(f"💰 Startup balance: ₹{free:,.0f} free (net ₹{net:,.0f}, used ₹{used:,.0f}) | "
-              f"trading budget: ₹{state.capital:,.0f}")
-        _log("💰", "Balance synced", f"₹{free:,.0f} free | budget ₹{state.capital:,.0f}")
+    if net is not None:
+        state.available_margin = net   # net = real spendable margin
+        _cap = f" | cap ₹{state.capital:,.0f}" if state.capital > 0 else " | no cap"
+        print(f"💰 Startup: net ₹{net:,.0f} available | free ₹{free:,.0f} | used ₹{used:,.0f}{_cap}")
+        _log("💰", "Balance synced", f"net ₹{net:,.0f} available | free ₹{free:,.0f}")
         save_crude_settings()  # persist synced value
     
     state.is_running   = True

@@ -157,15 +157,13 @@ async function syncCrudeCapital() {
             const used = Math.round(d.utilised || 0);
             const net  = Math.round(d.net || 0);
 
-            // Update the DISPLAY next to the budget slider (info only)
-            if (availDisplay) availDisplay.textContent = '\u20b9' + free.toLocaleString('en-IN');
+            // Show NET available (the real tradeable amount) in the display
+            if (availDisplay) availDisplay.textContent = '\u20b9' + net.toLocaleString('en-IN');
 
-            const detail = used > 0
-                ? `free \u20b9${free.toLocaleString('en-IN')} | used \u20b9${used.toLocaleString('en-IN')} | net \u20b9${net.toLocaleString('en-IN')}`
-                : `\u20b9${free.toLocaleString('en-IN')}`;
-            if (hint) hint.textContent = `\u2705 Zerodha balance: ${detail}`;
-            _crudeLog(`\ud83d\udcb0 Zerodha balance: \u20b9${free.toLocaleString('en-IN')} free | your budget stays at \u20b9${Math.round(parseFloat(document.getElementById('crude-capital')?.value)||0).toLocaleString('en-IN')}`, 'ok');
-            _crudeToast(`\ud83d\udcb0 Zerodha free: \u20b9${free.toLocaleString('en-IN')}`, 'ok');
+            const detail = `net \u20b9${net.toLocaleString('en-IN')} | free \u20b9${free.toLocaleString('en-IN')} | used \u20b9${used.toLocaleString('en-IN')}`;
+            if (hint) hint.textContent = `\u2705 Zerodha: ${detail}`;
+            _crudeLog(`\ud83d\udcb0 Zerodha net available: \u20b9${net.toLocaleString('en-IN')} (free \u20b9${free.toLocaleString('en-IN')}, used \u20b9${used.toLocaleString('en-IN')})`, 'ok');
+            _crudeToast(`\ud83d\udcb0 Net available: \u20b9${net.toLocaleString('en-IN')}`, 'ok');
         } else {
             const why = d.error || 'Could not fetch Zerodha balance';
             if (hint) hint.textContent = '\u26a0\ufe0f ' + why;
@@ -185,9 +183,10 @@ async function _syncCapitalFromZerodha() {
         const r = await fetch('/api/crude/margin');
         const d = await r.json();
         if (d.success && d.free > 0) {
+            const net = Math.round(d.net || 0);
             const free = Math.floor(d.free);
-            if (availDisplay) availDisplay.textContent = '\u20b9' + free.toLocaleString('en-IN');
-            console.log(`\ud83d\udcb0 [Balance] Zerodha free: \u20b9${free.toLocaleString('en-IN')}`);
+            if (availDisplay) availDisplay.textContent = '\u20b9' + net.toLocaleString('en-IN');
+            console.log(`\ud83d\udcb0 [Balance] Zerodha net: \u20b9${net.toLocaleString('en-IN')} | free: \u20b9${free.toLocaleString('en-IN')}`);
         } else {
             console.warn('\u26a0\ufe0f [Balance Sync] Failed:', d.error || 'No margin data');
         }
