@@ -197,18 +197,66 @@ def evaluate_chart_patterns(df: pd.DataFrame) -> StrategySignal:
         weight=1.0,
     ))
 
+    # ── Condition 4: VWAP alignment ───────────────────────────────
+    # Long: price should be above VWAP (buying with the institutional flow)
+    # Short: price should be below VWAP
+    try:
+        tp   = (today_df["high"] + today_df["low"] + today_df["close"]) / 3
+        vol_ = today_df.get("volume", None)
+        if vol_ is not None and float(vol_.sum()) > 0:
+            vwap = float((tp * vol_).cumsum().iloc[-1] / vol_.cumsum().iloc[-1])
+        else:
+            vwap = float(today_df["close"].mean())
+        current_price = float(today_df["close"].iloc[-1])
+        vwap_ok = (
+            (pattern_dir == "long"  and current_price > vwap) or
+            (pattern_dir == "short" and current_price < vwap)
+        )
+        vwap_pct = (current_price - vwap) / vwap * 100
+        vwap_detail = (
+            f"Price {'above' if current_price > vwap else 'below'} VWAP "
+            f"({vwap_pct:+.2f}%) — VWAP={vwap:.1f}"
+        )
+    except Exception:
+        vwap_ok, vwap_detail = True, "VWAP unavailable"
+
+    conditions.append(StrategyCondition(
+        name="VWAP alignment",
+        met=vwap_ok,
+        detail=vwap_detail,
+        weight=2.0,
+    ))
+
+    # ── Condition 5: EMA9/21 trend alignment ──────────────────────
+    # Pattern direction should agree with short-term momentum
+    ema_fast = float(df["close"].ewm(span=9).mean().iloc[-1])
+    ema_slow = float(df["close"].ewm(span=21).mean().iloc[-1])
+    ema_ok = (
+        (pattern_dir == "long"  and ema_fast >= ema_slow) or
+        (pattern_dir == "short" and ema_fast <= ema_slow)
+    )
+    conditions.append(StrategyCondition(
+        name="EMA9/21 trend",
+        met=ema_ok,
+        detail=f"EMA9={ema_fast:.1f} {'\u2265' if ema_fast >= ema_slow else '<'} EMA21={ema_slow:.1f}",
+        weight=1.5,
+    ))
+
     # ── Confidence score (improved with pattern detector confidence) ─
     total_w   = sum(c.weight for c in conditions)
     passed_w  = sum(c.weight for c in conditions if c.met)
     base_conf = passed_w / total_w * 100
-    
-    # Use the pattern's built-in confidence if available
+
+    # Use the pattern's built-in confidence; blend with conditions score
     if detected_pattern:
-        confidence = round(detected_pattern.confidence * 100, 1)
+        confidence = round(
+            detected_pattern.confidence * 100 * 0.7 + base_conf * 0.3, 1
+        )
     else:
         confidence = round(min(base_conf * strength / 1.5, 100.0), 1)
 
-    should_enter = time_ok and vol_ok
+    # Require time + VWAP alignment; volume and EMA are soft filters
+    should_enter = time_ok and vwap_ok
     direction    = Direction.LONG if pattern_dir == "long" else Direction.SHORT
     
     # Add targets and stop loss to reason if available
