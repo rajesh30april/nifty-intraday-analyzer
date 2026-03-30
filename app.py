@@ -3593,6 +3593,7 @@ async def auto_trader_reconcile():
     }
 
 
+@app.post("/api/auto-trader/discard-trade")
 async def discard_trade_api():
     """Remove active trade from app state only — no order sent to Zerodha."""
     return await asyncio.to_thread(discard_trade_from_app)

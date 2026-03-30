@@ -13,6 +13,7 @@ Set CRUDE_LIVE=true in .env to enable real orders.
 import os
 import json
 import threading
+from collections import deque
 from datetime import datetime, time as dt_time, timedelta
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,10 +34,25 @@ from crude_data import (
     estimate_crude_premium,
     get_crude_futures_token,   # ← for auto-switch to futures
 )
-from crude_strategy import evaluate_crude_best
+from crude_strategy import evaluate_crude_best  # Legacy - kept for fallback
+from crude_meta_router import evaluate_crude_meta  # Simplified meta router (like Nifty!)
 from strategy import Direction
 
 load_dotenv()
+
+# ── Event Log (for UI heartbeat display) ──────────────────────────
+_crude_event_log: deque[dict] = deque(maxlen=120)
+
+
+def _log(icon: str, label: str, detail: str = "") -> None:
+    """Append an event to the crude server-side log."""
+    _crude_event_log.append({
+        "ts":     datetime.now().strftime("%H:%M:%S"),
+        "icon":   icon,
+        "label":  label,
+        "detail": detail,
+    })
+
 
 # ── Config ────────────────────────────────────────────────────────
 HV_RANK_FUTURES_THRESHOLD = 85  # When HV rank > this, auto-switch to futures
@@ -67,6 +83,7 @@ _PERSIST_KEYS: tuple[str, ...] = (
     "sl_points", "trail_points", "rr_ratio", "capital",
     "strike_offset", "trail_mode", "atr_multiplier", "max_trades",
     "max_daily_loss",  # ← NEW: Daily loss limit (persisted)
+    "enabled_strategies",  # 🎯 NEW: Strategy selection (persisted)
 )
 
 
@@ -154,9 +171,14 @@ class CrudeTraderState:
     max_trades:     int   = CRUDE_MAX_TRADES   # UI-tunable, default from env
     max_daily_loss: float = CRUDE_MAX_LOSS     # ← NEW: Daily loss limit
 
-    # ── Trail mode: 'fixed' | 'atr' | 'supertrend' ───────────────
+    # ── Trail mode: 'fixed' | 'atr' | 'supertrend' ──────────────────
     trail_mode:      str   = 'fixed'  # default: fixed points
     atr_multiplier:  float = 1.5      # used when trail_mode='atr'
+
+    # 🎯 Strategy Selection (NEW!) ───────────────────────
+    # List of enabled strategy IDs. Empty list = all enabled (default)
+    # Example: ['supertrend', 'divergence'] = only these 2 active
+    enabled_strategies: list = field(default_factory=list)  # empty = all enabled
 
     # ── Live price tracking ───────────────────────────────────────
     last_crude_price:   float = 0.0
@@ -168,6 +190,11 @@ class CrudeTraderState:
     # ── Cached indicator values (updated on each candle close) ────
     last_atr:      float = 0.0   # latest ATR(14) of crude futures
     last_st_line:  float = 0.0   # latest Supertrend line value
+
+    # ── Meta router data (🆕 NEW: for multi-strategy scoring) ─────
+    meta_scores:       list = field(default_factory=list)  # all strategy scores
+    selected_strategy: str  = "None"   # winning strategy name
+    regime:            str  = ""       # market regime (Trending/Sideways/Volatile)
 
     # ── Entry SL reference (original, never changes) ─────────────
     entry_crude_sl: float = 0.0   # crude spot SL at the moment of entry
@@ -193,6 +220,7 @@ if _saved:
     print(f"💾  Crude settings loaded: {_saved}")
 
 _tick_lock = threading.Lock()
+_entry_lock = threading.Lock()  # 🐶 NEW: Prevents race condition on trade entry!
 
 
 # ── Snapshot ──────────────────────────────────────────────────────
@@ -507,9 +535,35 @@ def _validate_and_size(symbol: str, desired_lots: int, available: float,
     for lots in range(desired_lots, 0, -1):
         required = _query_zerodha_margin(symbol, lots, ltp=ltp)
         if required is None:
-            # API unavailable — block the trade: better to miss than to get rejected
-            print(f"⚠️  Margin API unavailable for {symbol} — blocking trade to avoid rejection")
-            return 0, 0.0
+            # Zerodha API returned None (zero response or exception).
+            # This happens for illiquid strikes or when both `total` and
+            # `option_premium` come back as 0.  For MCX option BUYERS,
+            # the margin is simply the option premium paid upfront.
+            # Fall back to premium estimate rather than blocking a
+            # perfectly affordable trade with a misleading error.
+            if ltp and ltp > 0:
+                lot_sz = MCX_CRUDE_LOT_SIZE  # 100 barrels
+                # try to infer mini vs full from symbol name
+                if 'CRUDEOILM' in symbol or 'MINI' in symbol.upper():
+                    lot_sz = MCX_CRUDE_MINI_LOT_SIZE
+                estimated = round(ltp * lot_sz * lots, 0)
+                print(
+                    f"⚠️  Margin API returned None for {symbol} {lots}L — "
+                    f"using LTP-based estimate \u20b9{estimated:,.0f} "
+                    f"(LTP \u20b9{ltp:.1f} × {lot_sz} × {lots} lots)"
+                )
+                if estimated <= usable:
+                    print(
+                        f"✅ Pre-flight OK (estimated): {lots}L ₹{estimated:,.0f} "
+                        f"≤ ₹{usable:,.0f} usable — proceeding (Zerodha will reject if wrong)"
+                    )
+                    return lots, estimated
+                print(f"⚠️  {lots}L estimate \u20b9{estimated:,.0f} > usable \u20b9{usable:,.0f} — trying {lots-1}L")
+            else:
+                # No LTP available at all — can’t estimate, block safely
+                print(f"⚠️  Margin API + LTP both unavailable for {symbol} — blocking to avoid rejection")
+                return 0, 0.0
+            continue
         if required <= usable:
             print(
                 f"✅ Pre-flight OK: {lots} lot(s) ₹{required:,.0f} ≤ ₹{usable:,.0f} "
@@ -630,21 +684,34 @@ def _enter_trade(direction: Direction, price: float):
     )
 
     if qty == 0:
-        # Even 1 lot rejected — pull the exact 1-lot cost for the error message
-        one_lot_cost = _query_zerodha_margin(symbol, 1) or round(
+        # Even 1 lot rejected — pull the exact 1-lot cost for the error message.
+        # _query_zerodha_margin may return None again (same API issue) so we always
+        # fall back to the LTP-based estimate for display.
+        one_lot_cost = _query_zerodha_margin(symbol, 1, ltp=real_ltp) or round(
             (real_ltp or estimate_crude_premium(price)) * lot_size, 0
         )
         is_mini = lot_size == MCX_CRUDE_MINI_LOT_SIZE
         usable  = available - MARGIN_SAFETY_BUFFER
         topup   = max(0.0, one_lot_cost - usable)
-        state.last_block_reason = (
-            f"⛔ Insufficient margin. "
-            f"1 {'mini' if is_mini else 'full'} lot ({symbol.replace('MCX:','')}) "
-            f"costs ₹{one_lot_cost:,.0f} but usable balance is ₹{usable:,.0f} "
-            f"(₹{available:,.0f} free − ₹{MARGIN_SAFETY_BUFFER:,.0f} safety buffer). "
-            f"Top up ₹{topup:,.0f} or set MARGIN_SAFETY_BUFFER lower."
-        )
-        print(f"🚫 {state.last_block_reason}")
+
+        if topup == 0 and one_lot_cost < usable:
+            # Money is fine — it was the margin API that failed, not the balance.
+            state.last_block_reason = (
+                f"⛔ Margin API error. "
+                f"Zerodha returned no margin data for {symbol.replace('MCX:','')} "
+                f"(LTP {real_ltp or '?'}). Estimated 1-lot cost \u20b9{one_lot_cost:,.0f} vs "
+                f"\u20b9{usable:,.0f} available — should be fine. "
+                f"Retry or check Zerodha connectivity."
+            )
+        else:
+            state.last_block_reason = (
+                f"\u26d4 Insufficient margin. "
+                f"1 {'mini' if is_mini else 'full'} lot ({symbol.replace('MCX:','')}) "
+                f"costs \u20b9{one_lot_cost:,.0f} but usable balance is \u20b9{usable:,.0f} "
+                f"(\u20b9{available:,.0f} free \u2212 \u20b9{MARGIN_SAFETY_BUFFER:,.0f} safety buffer). "
+                f"Top up \u20b9{topup:,.0f} or set MARGIN_SAFETY_BUFFER lower."
+            )
+        print(f"\U0001f6ab {state.last_block_reason}")
         return
 
     if qty < desired_lots:
@@ -662,7 +729,13 @@ def _enter_trade(direction: Direction, price: float):
 
     ep = real_ltp if isinstance(real_ltp, (int, float)) and real_ltp > 0 else estimate_crude_premium(price)
 
-    # ── Premium-based SL and target ──────────────────────────────
+    # 🐶 Calculate delta for premium SL/target estimation
+    # Extract strike from symbol (e.g., 'MCX:CRUDEOILM26APR8300PE' → 8300)
+    strike_price = _parse_strike_from_symbol(symbol)
+    is_put = symbol.endswith('PE')
+    delta = estimate_crude_delta(price, strike_price, is_put) if strike_price else _CRUDE_DELTA_ATM
+    
+    # ── Premium-based SL and target ────────────────────────────
     # For option buyers: SL premium = entry - sl_pts (trail below peak)
     #                    Tgt premium = entry + (sl_pts × rr)
     # Both derived directly from the option LTP — no delta estimation needed.
@@ -670,7 +743,7 @@ def _enter_trade(direction: Direction, price: float):
     crude_sl_pts    = abs(price - sl)                 # crude pts at risk
     # Use simple ratio: sl_prem_distance ≈ crude_sl_pts × (ep / price) × sensitivity
     # But keep it simple — just use trail_points directly in premium space
-    prem_sl_gap     = round(crude_sl_pts * _CRUDE_DELTA, 1)  # δ-adjusted
+    prem_sl_gap     = round(crude_sl_pts * delta, 1)  # δ-adjusted
     sl_prem         = round(ep - prem_sl_gap, 1)             # option LTP floor
     tgt_prem        = round(ep + prem_sl_gap * state.rr_ratio, 1) if target else None
 
@@ -712,7 +785,9 @@ def _enter_trade(direction: Direction, price: float):
         print(f"⚠️  WebSocket not streaming — exits via 5s REST poll")
 
     _save_snapshot()
-    print(f"🛢️  Trade opened: {direction.value.upper()} {symbol} @ ₹{price:.0f} | SL ₹{sl:.0f} | Tgt ₹{target:.0f}")
+    entry_msg = f"{direction.value.upper()} {symbol.replace('MCX:', '')} @ ₹{price:.0f} | SL ₹{sl:.0f} | Tgt ₹{target:.0f}"
+    print(f"🛢️  Trade opened: {entry_msg}")
+    _log("👉", "Trade OPENED", entry_msg)
 
 
 def _enter_trade_futures(direction: Direction, price: float, hv_rank: float):
@@ -869,7 +944,9 @@ def _exit_position(reason: str, price: float):
 
     emoji = "🟢" if pnl >= 0 else "🔴"
     mode  = "📝 PAPER" if trade.paper else "🟢 LIVE"
-    print(f"{emoji} [{mode}] Crude EXIT | {reason} | P&L ₹{pnl:+.0f}")
+    exit_msg = f"{reason} | P&L ₹{pnl:+.0f}"
+    print(f"{emoji} [{mode}] Crude EXIT | {exit_msg}")
+    _log("👈", "Trade EXITED", exit_msg)
 
     state.trades_today.append(trade)
     _save_log()
@@ -917,9 +994,15 @@ def _manage_trade_by_premium(ltp: float, source: str = "ltp_poll") -> None:
         _exit_position(f"🎯 Target hit [{source}] option ₹{ltp:.1f} ≥ ₹{tgt_prem:.1f}", crude)
         return
 
-    # ── Trailing SL (only when trader is running) ─────────────────
+    # ── Trailing SL (only when trader is running) ───────────────────
     if not state.is_running:
         return
+
+    # 🐶 Calculate delta for trailing SL conversion
+    strike_price = _parse_strike_from_symbol(trade.instrument)
+    is_put = trade.instrument.endswith('PE')
+    crude_price = state.last_crude_price or trade.entry_price
+    delta = estimate_crude_delta(crude_price, strike_price, is_put) if strike_price else _CRUDE_DELTA_ATM
 
     mode = state.trail_mode
 
@@ -927,9 +1010,9 @@ def _manage_trade_by_premium(ltp: float, source: str = "ltp_poll") -> None:
     if mode == 'supertrend' and state.last_st_line > 0 and state.last_crude_price > 0:
         # Convert ST-to-crude distance to premium distance via δ
         st_crude_dist = abs(state.last_crude_price - state.last_st_line)
-        trail_prem    = round(st_crude_dist * _CRUDE_DELTA, 1)
+        trail_prem    = round(st_crude_dist * delta, 1)
     elif mode == 'atr' and state.last_atr > 0:
-        trail_prem = round(state.last_atr * state.atr_multiplier * _CRUDE_DELTA, 1)
+        trail_prem = round(state.last_atr * state.atr_multiplier * delta, 1)
     else:
         trail_prem = state.trail_points   # fixed: treat as direct premium points
 
@@ -1053,6 +1136,8 @@ def evaluate_and_act_crude(df: pd.DataFrame, price: float):
         return
 
     # ── Manage existing trade ─────────────────────────────────────────
+    # 🐶 FIX: Check active_trade INSIDE lock to prevent race condition!
+    # Without lock: Thread A checks (None) → Thread B checks (None) → both enter!
     if state.active_trade:
         is_futures = state.active_trade.entry_premium == 0.0
         
@@ -1070,43 +1155,90 @@ def evaluate_and_act_crude(df: pd.DataFrame, price: float):
                 _manage_trade(price, source="candle")
         return
 
-    # ── Safety limits ──────────────────────────────────────
-    if state.total_pnl <= -abs(state.max_daily_loss):   # ← FIXED: use configured max_daily_loss
-        state.last_block_reason = f"Max daily loss hit (₹{state.total_pnl:.0f} / -₹{state.max_daily_loss:.0f})"
+    # 🐶 CRITICAL FIX: Wrap entry logic in lock to prevent race condition!
+    # Without lock: Multiple threads can check active_trade==None simultaneously
+    # and BOTH proceed to enter, causing duplicate trades!
+    
+    acquired = _entry_lock.acquire(blocking=False)
+    if not acquired:
+        # Another thread is already evaluating entry - skip this call
         return
-    if state.orders_placed >= state.max_trades:
-        state.last_block_reason = f"Max {state.max_trades} trades/day reached"
-        return
-
-    # ── Layer 1: directional signal (consensus from ≥2 strategies) ──
-    signal = evaluate_crude_best(df)
-    state.last_signal_reason = signal.reason
-    state.last_block_reason  = None if signal.should_enter else signal.reason
-
-    if not (signal.should_enter and signal.direction):
-        return
-
-    # ── Layer 2: options quality info (informational only, NOT blocking) ───────────
-    # Shows option quality score and warnings but doesn't prevent trades.
-    # User requested: remove gate blocks, show as information only.
+    
     try:
-        from crude_option_evaluator import evaluate_option_quality
-        opt_eval = evaluate_option_quality(df, signal.direction, price)
-        state.last_option_eval = opt_eval.summary   # expose for UI
-        print(f"  📊 Option quality: {opt_eval.summary}")
-        
-        if opt_eval.verdict == "SKIP":
-            print(f"  ⚠️  WARNING: Option quality suggests SKIP ({opt_eval.summary})")
-            print(f"      Proceeding anyway as per user preference (info only, not blocking)")
-        elif opt_eval.verdict == "WAIT":
-            print(f"  ⚠️  WARNING: Option quality suggests WAIT ({opt_eval.summary})")
-            print(f"      Proceeding anyway as per user preference (info only, not blocking)")
-        else:
-            print(f"  ✅ Option quality: {opt_eval.verdict}")
-    except Exception as e:
-        print(f"  ⚠️  Option evaluator error (proceeding): {e}")
+        # 🐶 DOUBLE-CHECK inside lock! State may have changed while waiting!
+        if state.active_trade:
+            return  # Trade entered by another thread - abort!
 
-    _enter_trade(signal.direction, price)
+        # ── Safety limits ──────────────────────────────────────────────
+        if state.total_pnl <= -abs(state.max_daily_loss):   # ← FIXED: use configured max_daily_loss
+            state.last_block_reason = f"Max daily loss hit (₹{state.total_pnl:.0f} / -₹{state.max_daily_loss:.0f})"
+            return
+        if state.orders_placed >= state.max_trades:
+            state.last_block_reason = f"Max {state.max_trades} trades/day reached"
+            return
+
+        # ── Layer 1: SIMPLIFIED META ROUTER (like Nifty!) ──
+        # 🐶 Simplified: just confidence-based scoring, no complex multipliers!
+        # 🎯 Pass enabled_strategies for filtering
+        meta_result = evaluate_crude_meta(
+            df, 
+            current_time=now_t, 
+            vix=16.0,
+            enabled_strategies=state.enabled_strategies  # 🎯 Strategy selection!
+        )
+        
+        # Extract signal from winning strategy
+        signal = meta_result.signal
+        state.last_signal_reason = meta_result.reason
+        state.last_block_reason  = None if signal.should_enter else meta_result.reason
+        
+        # Store meta scores for UI display
+        state.meta_scores = meta_result.scores  # type: ignore
+        state.selected_strategy = meta_result.selected_strategy  # type: ignore
+        state.regime = f"{meta_result.regime} (ADX={meta_result.adx:.1f})"  # type: ignore
+        
+        # 🐶 NEW: Log evaluation results like Nifty!
+        firing = sum(1 for s in meta_result.scores if s.get('should_enter'))
+        total_strats = len(meta_result.scores)
+        if firing > 0:
+            _log("🔍", f"Eval: {firing}/{total_strats} strategies firing 🚀", "")
+        else:
+            _log("🔍", f"Eval: {firing}/{total_strats} strategies — no entry", "")
+        
+        # Log the signal/reason
+        if signal.should_enter:
+            _log("📡", f"Signal: {meta_result.selected_strategy}", meta_result.reason[:100])
+        else:
+            _log("⚠️", "No valid setup", "")
+            _log("📡", f"Signal: {meta_result.reason}", "")
+
+        if not (signal.should_enter and signal.direction):
+            return
+
+        # ── Layer 2: options quality info (informational only, NOT blocking) ───────────
+        # Shows option quality score and warnings but doesn't prevent trades.
+        # User requested: remove gate blocks, show as information only.
+        try:
+            from crude_option_evaluator import evaluate_option_quality
+            opt_eval = evaluate_option_quality(df, signal.direction, price)
+            state.last_option_eval = opt_eval.summary   # expose for UI
+            print(f"  📊 Option quality: {opt_eval.summary}")
+            
+            if opt_eval.verdict == "SKIP":
+                print(f"  ⚠️  WARNING: Option quality suggests SKIP ({opt_eval.summary})")
+                print(f"      Proceeding anyway as per user preference (info only, not blocking)")
+            elif opt_eval.verdict == "WAIT":
+                print(f"  ⚠️  WARNING: Option quality suggests WAIT ({opt_eval.summary})")
+                print(f"      Proceeding anyway as per user preference (info only, not blocking)")
+            else:
+                print(f"  ✅ Option quality: {opt_eval.verdict}")
+        except Exception as e:
+            print(f"  ⚠️  Option evaluator error (proceeding): {e}")
+
+        _enter_trade(signal.direction, price)
+    
+    finally:
+        _entry_lock.release()
 
 
 # ── Tick guard (real-time SL/target on every WebSocket tick) ──────
@@ -1143,16 +1275,28 @@ def start_crude_trader():
         return {'success': False, 'error': 'Already running'}
     if not kite_manager.is_authenticated and not state.is_paper_mode:
         return {'success': False, 'error': 'Not authenticated'}
+    
+    # 🐶 Sync capital from Zerodha on startup
+    free, net, used = _fetch_available_margin()
+    if free is not None:
+        old_cap = state.capital
+        state.capital = free
+        print(f"💰 Capital synced on startup: ₹{old_cap:,.0f} → ₹{free:,.0f} (net=₹{net:,.0f}, used=₹{used:,.0f})")
+        _log("💰", "Capital synced", f"₹{free:,.0f} free (net ₹{net:,.0f}, used ₹{used:,.0f})")
+        save_crude_settings()  # persist synced value
+    
     state.is_running   = True
     state.kill_switch  = False
     mode = "LIVE" if not state.is_paper_mode else "PAPER"
     print(f"🛢️  Crude auto-trader STARTED [{mode}]")
+    _log("▶", "Crude trader STARTED", f"Mode: {mode}")
     return {'success': True, 'mode': mode}
 
 
 def stop_crude_trader():
     state.is_running = False
     print("🛢️  Crude auto-trader STOPPED")
+    _log("⏸️", "Crude trader STOPPED", "")
     return {'success': True}
 
 
@@ -1163,11 +1307,60 @@ def kill_crude_trader():
         price = state.last_crude_price or state.active_trade.entry_price
         _exit_position("🚨 Kill switch", price)
     print("🛢️  Crude auto-trader KILLED")
+    _log("🚨", "Crude trader KILLED", "Emergency stop")
     return {'success': True}
 
 
-# ATM crude option delta ≈ 0.45 (close enough for SL/target premium display)
-_CRUDE_DELTA = 0.45
+def _parse_strike_from_symbol(symbol: str) -> float | None:
+    """
+    Extract strike price from crude option symbol.
+    Example: 'MCX:CRUDEOILM26APR8450PE' → 8450.0
+    """
+    import re
+    # Match 4-5 digit strike before CE/PE
+    match = re.search(r'(\d{4,5})(?:CE|PE)$', symbol)
+    if match:
+        return float(match.group(1))
+    return None
+
+
+# Dynamic delta estimation based on moneyness (strike vs spot)
+# ATM options: delta ~0.5
+# ITM options: delta increases toward 1.0 as you go deeper ITM
+# OTM options: delta decreases toward 0.0 as you go farther OTM
+def estimate_crude_delta(spot: float, strike: float, is_put: bool) -> float:
+    """
+    Estimate option delta based on moneyness.
+    
+    For PUTs:
+      - Spot < Strike = ITM → delta closer to 1.0 (higher sensitivity)
+      - Spot = Strike = ATM → delta ~0.5
+      - Spot > Strike = OTM → delta closer to 0.0 (lower sensitivity)
+    
+    Returns absolute value (0.0 to 1.0) since we use magnitude for premium SL calcs.
+    """
+    moneyness = (strike - spot) if is_put else (spot - strike)
+    
+    # For crude oil, each 50-point move is roughly 1 strike increment
+    strikes_itm = moneyness / 50.0
+    
+    if strikes_itm >= 2.0:   # Deep ITM (2+ strikes)
+        return 0.85
+    elif strikes_itm >= 1.0: # 1-2 strikes ITM
+        return 0.70
+    elif strikes_itm >= 0.5: # 0.5-1 strike ITM (near ATM)
+        return 0.60
+    elif strikes_itm >= -0.5: # ATM range (±0.5 strikes)
+        return 0.50
+    elif strikes_itm >= -1.0: # 0.5-1 strike OTM
+        return 0.40
+    elif strikes_itm >= -2.0: # 1-2 strikes OTM
+        return 0.30
+    else:                     # Deep OTM (2+ strikes)
+        return 0.20
+
+
+_CRUDE_DELTA_ATM = 0.50  # Fallback for when we can't determine strike
 
 
 def add_lots_to_trade(extra_lots: int) -> dict:
@@ -1253,8 +1446,15 @@ def _estimate_sl_premium(trade: CrudeTrade) -> float | None:
     """Approx option premium if crude hits the current SL level."""
     if not trade or not trade.entry_premium:
         return None
+    
+    # Calculate delta from trade instrument
+    strike_price = _parse_strike_from_symbol(trade.instrument)
+    is_put = trade.instrument.endswith('PE')
+    crude_price = state.last_crude_price or trade.entry_price
+    delta = estimate_crude_delta(crude_price, strike_price, is_put) if strike_price else _CRUDE_DELTA_ATM
+    
     sl_pts    = abs(trade.entry_price - trade.stop_loss)
-    estimated = trade.entry_premium - sl_pts * _CRUDE_DELTA
+    estimated = trade.entry_premium - sl_pts * delta
     return round(max(estimated, 0.5), 1)
 
 
@@ -1262,8 +1462,15 @@ def _estimate_target_premium(trade: CrudeTrade) -> float | None:
     """Approx option premium if crude hits the target level."""
     if not trade or not trade.entry_premium or not trade.target:
         return None
+    
+    # Calculate delta from trade instrument
+    strike_price = _parse_strike_from_symbol(trade.instrument)
+    is_put = trade.instrument.endswith('PE')
+    crude_price = state.last_crude_price or trade.entry_price
+    delta = estimate_crude_delta(crude_price, strike_price, is_put) if strike_price else _CRUDE_DELTA_ATM
+    
     tgt_pts   = abs(trade.entry_price - trade.target)
-    estimated = trade.entry_premium + tgt_pts * _CRUDE_DELTA
+    estimated = trade.entry_premium + tgt_pts * delta
     return round(estimated, 1)
 
 
@@ -1343,11 +1550,18 @@ def get_crude_status() -> dict:
         'max_daily_loss': state.max_daily_loss,  # ← NEW: expose to UI
         'trail_mode':    state.trail_mode,
         'atr_multiplier': state.atr_multiplier,
+        'strike_offset': state.strike_offset,  # 🐶 MISSING! Now added
         'last_atr':      round(state.last_atr, 2) if state.last_atr else None,
         'last_st_line':  round(state.last_st_line, 2) if state.last_st_line else None,
         'exit_time':     CRUDE_EXIT_TIME.strftime('%H:%M'),
         # Margin info — helps diagnose order rejections
         'margin_info': _crude_margin_info(),
+        # 🆕 NEW: Meta router data (multi-strategy scoring)
+        'meta_scores':       state.meta_scores,
+        'selected_strategy': state.selected_strategy,
+        'regime':            state.regime,
+        # 🔔 NEW: Event log (for live heartbeat display)
+        'event_log':         list(reversed(list(_crude_event_log)))[:40],
     }
 
 
