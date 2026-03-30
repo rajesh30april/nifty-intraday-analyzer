@@ -138,38 +138,62 @@ function _applyCrudeTrailMode(mode) {
 }
 
 
-// ── Capital Sync from Zerodha ────────────────────────────────────
+// ── Capital Sync from Zerodha ────────────────────────────────
+// This shows live Zerodha balance for REFERENCE only.
+// It does NOT change the Trading Budget slider.
+// The budget is what the user deliberately configured — we should
+// never auto-overwrite it with the full account balance.
 async function syncCrudeCapital() {
-    const btn   = document.getElementById('crude-capital-sync-btn');
-    const input = document.getElementById('crude-capital');
-    const hint  = document.getElementById('crude-capital-hint');
-    if (!input) return;
+    const btn         = document.getElementById('crude-capital-sync-btn');
+    const availDisplay = document.getElementById('crude-available-margin-display');
+    const hint        = document.getElementById('crude-capital-hint');
 
     if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
     try {
         const r = await fetch('/api/crude/margin');
         const d = await r.json();
         if (d.success && d.free > 0) {
-            const free  = Math.floor(d.free);     // FREE margin — not gross net
-            const used  = Math.round(d.utilised || 0);
-            const net   = Math.round(d.net || 0);
-            input.value = free;
+            const free = Math.floor(d.free);
+            const used = Math.round(d.utilised || 0);
+            const net  = Math.round(d.net || 0);
+
+            // Update the DISPLAY next to the budget slider (info only)
+            if (availDisplay) availDisplay.textContent = '\u20b9' + free.toLocaleString('en-IN');
+
             const detail = used > 0
-                ? `free ₹${free.toLocaleString('en-IN')} | utilised ₹${used.toLocaleString('en-IN')} | net ₹${net.toLocaleString('en-IN')}`
-                : `₹${free.toLocaleString('en-IN')}`;
-            if (hint) hint.textContent = `✅ Zerodha: ${detail}`;
-            _crudeLog(`💰 Capital synced → ₹${free.toLocaleString('en-IN')} free (net ₹${net.toLocaleString('en-IN')}, used ₹${used.toLocaleString('en-IN')})`, 'ok');
-            _crudeToast(`💰 Free margin: ₹${free.toLocaleString('en-IN')}`, 'ok');
-            await saveCrudeConfig();      // push to server state immediately
+                ? `free \u20b9${free.toLocaleString('en-IN')} | used \u20b9${used.toLocaleString('en-IN')} | net \u20b9${net.toLocaleString('en-IN')}`
+                : `\u20b9${free.toLocaleString('en-IN')}`;
+            if (hint) hint.textContent = `\u2705 Zerodha balance: ${detail}`;
+            _crudeLog(`\ud83d\udcb0 Zerodha balance: \u20b9${free.toLocaleString('en-IN')} free | your budget stays at \u20b9${Math.round(parseFloat(document.getElementById('crude-capital')?.value)||0).toLocaleString('en-IN')}`, 'ok');
+            _crudeToast(`\ud83d\udcb0 Zerodha free: \u20b9${free.toLocaleString('en-IN')}`, 'ok');
         } else {
             const why = d.error || 'Could not fetch Zerodha balance';
-            if (hint) hint.textContent = '⚠️ ' + why;
-            _crudeToast('⚠️ ' + why, 'error');
+            if (hint) hint.textContent = '\u26a0\ufe0f ' + why;
+            _crudeToast('\u26a0\ufe0f ' + why, 'error');
         }
     } catch (e) {
-        if (hint) hint.textContent = '❌ ' + e.message;
+        if (hint) hint.textContent = '\u274c ' + e.message;
+        console.error('\u274c [Capital Sync] Failed:', e);
     }
-    if (btn) { btn.textContent = '🔄 Sync'; btn.disabled = false; }
+    if (btn) { btn.textContent = '\ud83d\udd04 Sync'; btn.disabled = false; }
+}
+
+// 🐶 HELPER: Silent balance sync (info only — no toast, no slider change)
+async function _syncCapitalFromZerodha() {
+    const availDisplay = document.getElementById('crude-available-margin-display');
+    try {
+        const r = await fetch('/api/crude/margin');
+        const d = await r.json();
+        if (d.success && d.free > 0) {
+            const free = Math.floor(d.free);
+            if (availDisplay) availDisplay.textContent = '\u20b9' + free.toLocaleString('en-IN');
+            console.log(`\ud83d\udcb0 [Balance] Zerodha free: \u20b9${free.toLocaleString('en-IN')}`);
+        } else {
+            console.warn('\u26a0\ufe0f [Balance Sync] Failed:', d.error || 'No margin data');
+        }
+    } catch (e) {
+        console.error('\u274c [Balance Sync] Error:', e);
+    }
 }
 
 
@@ -527,11 +551,14 @@ async function applyCrudeSettings() {
     }
     
     try {
+        // Save config settings
         await saveCrudeConfig();
+        // 🎯 Save strategy selection
+        await saveCrudeStrategies();
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.className = 'w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-2 rounded-lg transition';
+            btn.className = 'w-full bg-[#0053e2] hover:bg-[#0046c7] text-white font-bold py-2 rounded-lg transition';
             btn.textContent = '✅ Applied!';
             setTimeout(() => {
                 btn.textContent = '✅ Apply Settings';
@@ -543,37 +570,53 @@ async function applyCrudeSettings() {
 async function saveCrudeConfig() {
     console.log('💾 [Settings] Starting save...');
     
+    // Read all values from UI
     const sl        = parseFloat(document.getElementById('crude-sl')?.value);
-    const trail     = parseFloat(document.getElementById('crude-trail-points')?.value);  // ✅ FIX: was 'crude-trail'
+    const trail     = parseFloat(document.getElementById('crude-trail-points')?.value || '25');
     const rr        = parseFloat(document.getElementById('crude-rr')?.value);
     const capital   = parseFloat(document.getElementById('crude-capital')?.value);
     const maxTrades = parseInt(document.getElementById('crude-max-trades')?.value || '4', 10);
     const maxLoss   = parseFloat(document.getElementById('crude-max-loss')?.value || '5000');
-    const trailMode = document.getElementById('crude-trail-mode')?.value || 'off';  // ✅ FIX: was querySelector for radio
-    const strikeOffset = parseInt(document.getElementById('crude-strike-offset')?.value || '0', 10);
-    const atrMult   = 1.5;  // ✅ FIX: hardcoded since input doesn't exist in UI
+    const trailMode = window._crudeTrailMode || 'atr1.5';
+    const strikeOffset = window._crudeStrikeOffset !== undefined ? window._crudeStrikeOffset : 0;
+    
+    // Extract ATR multiplier from mode (backend will parse this)
+    let atrMult = 1.5;  // default
+    if (trailMode === 'atr0.4') atrMult = 0.4;
+    else if (trailMode === 'atr0.7') atrMult = 0.7;
+    else if (trailMode === 'atr1.5') atrMult = 1.5;
+    else if (trailMode === 'atr2') atrMult = 2.0;
 
-    console.log('📊 [Settings] Values:', { sl, trail, rr, capital, maxTrades, maxLoss, trailMode, strikeOffset, atrMult });
+    console.log('📊 [Settings] RAW VALUES FROM UI:');
+    console.log('  - SL input value:', document.getElementById('crude-sl')?.value);
+    console.log('  - Trail input value:', document.getElementById('crude-trail-points')?.value);
+    console.log('  - R:R select value:', document.getElementById('crude-rr')?.value);
+    console.log('  - Capital slider value:', document.getElementById('crude-capital')?.value);
+    console.log('  - Max Trades slider value:', document.getElementById('crude-max-trades')?.value);
+    console.log('  - Max Loss slider value:', document.getElementById('crude-max-loss')?.value);
+    console.log('  - Trail Mode (from window):', window._crudeTrailMode);
+    console.log('  - Strike Offset (from window):', window._crudeStrikeOffset);
+    console.log('');
+    console.log('📊 [Settings] PARSED VALUES:');
+    console.log('  sl:', sl, 'trail:', trail, 'rr:', rr, 'capital:', capital);
+    console.log('  maxTrades:', maxTrades, 'maxLoss:', maxLoss);
+    console.log('  trailMode:', trailMode, 'strikeOffset:', strikeOffset, 'atrMult:', atrMult);
 
+    // Validation
     if ([sl, rr, capital].some(isNaN)) {
         _crudeToast('⚠️ Invalid settings — check all fields', 'warn');
-        console.error('❌ [Settings] Validation failed: NaN values');
+        console.error('❌ [Settings] Validation failed: NaN values', { sl, rr, capital });
         return;
     }
     if (isNaN(maxTrades) || maxTrades < 1 || maxTrades > 20) {
         _crudeToast('⚠️ Max Trades must be between 1 and 20', 'warn');
-        console.error('❌ [Settings] Validation failed: maxTrades out of range');
-        return;
-    }
-    if (trailMode === 'fixed' && (isNaN(trail) || trail >= sl)) {
-        _crudeToast('⚠️ Fixed trail must be a number smaller than SL', 'warn');
-        console.error('❌ [Settings] Validation failed: trail >= sl');
+        console.error('❌ [Settings] Validation failed: maxTrades out of range', maxTrades);
         return;
     }
 
     const params = new URLSearchParams({
         sl_points: sl, 
-        trail_points: trail || 25, 
+        trail_points: trail, 
         rr_ratio: rr, 
         capital,
         trail_mode: trailMode, 
@@ -591,12 +634,28 @@ async function saveCrudeConfig() {
         const data = await resp.json();
         console.log('📊 [Settings] Response data:', data);
         if (data.success) {
-            const modeLabel = { fixed: `Fixed ₹${trail}`, atr: `ATR×${atrMult}`, supertrend: 'Supertrend', off: 'Off' };
-            const msg = `✅ Saved — SL:₹${sl}  Trail:${modeLabel[trailMode] || trailMode}  R:R 1:${rr}  Max:${maxTrades}/day`;
+            const modeLabel = { 
+                'off': 'Off',
+                'atr0.4': 'ATR×0.4',
+                'atr0.7': 'ATR×0.7',
+                'atr1.5': 'ATR×1.5',
+                'atr2': 'ATR×2',
+                'premium': 'Premium%',
+                'atr': 'ATR×1.5'  // fallback
+            };
+            const msg = `✅ Saved — SL:₹${sl}  Trail:${modeLabel[trailMode] || trailMode}  R:R 1:${rr}  Cap:₹${capital.toLocaleString('en-IN')}  Max:${maxTrades}/day`;
             _crudeToast(msg, 'ok');
+            // 🐶 ADD EVENT LOG!
+            _crudeLog(`⚙️ Settings saved: SL ₹${sl} | Trail ${modeLabel[trailMode]} | R:R 1:${rr} | Capital ₹${capital.toLocaleString('en-IN')} | Max ${maxTrades}/day | Strike ${strikeOffset === 0 ? 'ATM' : strikeOffset > 0 ? `ATM+${strikeOffset}` : `ATM${strikeOffset}`}`, 'ok');
             console.log('✅ [Settings] Settings saved successfully!');
+            
+            // 🐶 CRITICAL FIX: Reload settings from API response to update UI!
+            console.log('🔄 [Settings] Reloading UI from API response...');
+            await loadCrudeSettings();
+            console.log('✅ [Settings] UI updated with saved values!');
         } else {
             _crudeToast('❌ Save failed', 'error');
+            _crudeLog('❌ Settings save failed', 'error');
             console.error('❌ [Settings] API returned success=false:', data);
         }
     } catch (e) {
@@ -604,6 +663,125 @@ async function saveCrudeConfig() {
         console.error('❌ [Settings] Exception:', e);
     }
 }
+
+// ▼▼▼ 🎯 STRATEGY SELECTION FUNCTIONS (NEW!) ▼▼▼
+
+async function loadCrudeStrategies() {
+    console.log('🎯 [Strategies] Loading strategy list...');
+    try {
+        const resp = await fetch('/api/crude/strategies');
+        const data = await resp.json();
+        
+        if (!data.success) {
+            console.error('❌ [Strategies] Failed to load:', data);
+            return;
+        }
+        
+        const container = document.getElementById('crude-strategy-checkboxes');
+        const countBadge = document.getElementById('crude-strategy-count-badge');
+        
+        if (!container) {
+            console.error('❌ [Strategies] Container not found!');
+            return;
+        }
+        
+        // Build checkbox grid
+        container.innerHTML = data.strategies.map(s => `
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-gray-800/80 border border-gray-700 hover:border-[#0053e2] transition cursor-pointer group">
+                <input type="checkbox" 
+                    id="strategy-${s.id}" 
+                    data-strategy-id="${s.id}"
+                    class="crude-strategy-checkbox w-4 h-4 rounded border-gray-600 text-[#0053e2] focus:ring-2 focus:ring-[#0053e2] focus:ring-offset-0 cursor-pointer"
+                    ${s.enabled ? 'checked' : ''}
+                    onchange="updateCrudeStrategyCount()">
+                <div class="flex-1">
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-sm">${s.emoji}</span>
+                        <span class="text-[11px] font-bold text-white group-hover:text-[#ffc220] transition">${s.name}</span>
+                        <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-700 text-gray-300">${s.category}</span>
+                    </div>
+                    <div class="text-[9px] text-gray-500 mt-0.5">Win rate: ${s.win_rate}%</div>
+                </div>
+            </label>
+        `).join('');
+        
+        // Update count badge
+        const enabledCount = data.strategies.filter(s => s.enabled).length;
+        const totalCount = data.strategies.length;
+        if (countBadge) {
+            countBadge.textContent = data.all_enabled ? `${totalCount}/${totalCount} Active` : `${enabledCount}/${totalCount} Active`;
+            countBadge.className = enabledCount === totalCount 
+                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-600 text-white'
+                : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#0053e2] text-white';
+        }
+        
+        console.log(`✅ [Strategies] Loaded ${enabledCount}/${totalCount} strategies`);
+        
+    } catch (e) {
+        console.error('❌ [Strategies] Load error:', e);
+    }
+}
+
+function updateCrudeStrategyCount() {
+    const checkboxes = document.querySelectorAll('.crude-strategy-checkbox');
+    const enabledCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+    const totalCount = checkboxes.length;
+    
+    const countBadge = document.getElementById('crude-strategy-count-badge');
+    if (countBadge) {
+        countBadge.textContent = `${enabledCount}/${totalCount} Active`;
+        countBadge.className = enabledCount === totalCount
+            ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-600 text-white'
+            : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#0053e2] text-white';
+    }
+}
+
+function crudeSelectAllStrategies(selectAll) {
+    const checkboxes = document.querySelectorAll('.crude-strategy-checkbox');
+    checkboxes.forEach(cb => cb.checked = selectAll);
+    updateCrudeStrategyCount();
+    
+    const action = selectAll ? '🟢 All strategies enabled' : '⚪ None selected';
+    _crudeToast(action, selectAll ? 'ok' : 'warn');
+}
+
+async function saveCrudeStrategies() {
+    console.log('🎯 [Strategies] Saving selection...');
+    const checkboxes = document.querySelectorAll('.crude-strategy-checkbox');
+    const enabledStrategies = Array.from(checkboxes)
+        .filter(cb => cb.checked)
+        .map(cb => cb.dataset.strategyId);
+    
+    console.log('🎯 [Strategies] Enabled:', enabledStrategies);
+    
+    try {
+        const resp = await fetch('/api/crude/strategies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled_strategies: enabledStrategies })
+        });
+        
+        const data = await resp.json();
+        
+        if (data.success) {
+            const count = data.enabled_count;
+            const total = data.total_count;
+            const msg = data.all_enabled 
+                ? `✅ All ${total} strategies enabled` 
+                : `✅ ${count}/${total} strategies enabled`;
+            _crudeToast(msg, 'ok');
+            console.log('✅ [Strategies] Saved:', data);
+        } else {
+            _crudeToast(`❌ ${data.error}`, 'error');
+            console.error('❌ [Strategies] Save failed:', data);
+        }
+    } catch (e) {
+        _crudeToast(`❌ ${e.message}`, 'error');
+        console.error('❌ [Strategies] Save error:', e);
+    }
+}
+
+// ▲▲▲ END STRATEGY SELECTION ▲▲▲
 
 async function crudeResetDaily() {
     if (!confirm('Reset today’s trade counter?\nThis lets the trader take new entries again.\nActive positions are NOT affected.')) return;
@@ -782,6 +960,43 @@ function renderCrudeStatus(d) {
     
     // Exit time display
     _setText('crude-exit-time-display', d.exit_time ?? '23:25');
+
+    // 🐶 NEW: Render backend event_log (contains heartbeats + evals!)
+    if (d.event_log && Array.isArray(d.event_log)) {
+        const logEl = document.getElementById('crude-event-log');
+        if (logEl) {
+            // Clear and repopulate (server event log is authoritative)
+            logEl.innerHTML = '';
+            
+            // Render up to 50 most recent events
+            const events = d.event_log.slice(0, 50);
+            for (const evt of events) {
+                const row = document.createElement('div');
+                row.className = 'flex gap-2 items-start';
+                
+                // Color based on icon/label
+                let color = 'text-gray-400';
+                const icon = evt.icon || '';
+                const label = evt.label || '';
+                
+                if (icon.includes('💓') || label.includes('Heartbeat')) color = 'text-pink-400';
+                else if (icon.includes('🔍') || label.includes('Eval')) color = 'text-blue-400';
+                else if (icon.includes('📡') || label.includes('Signal')) color = 'text-cyan-400';
+                else if (icon.includes('⚠️') || label.includes('No valid')) color = 'text-yellow-400';
+                else if (icon.includes('👉') || label.includes('OPENED')) color = 'text-spark-100';
+                else if (icon.includes('👈') || label.includes('EXITED')) color = 'text-green-400';
+                
+                const detail = evt.detail || '';
+                const fullText = detail ? `${icon} ${label}: ${detail}` : `${icon} ${label}`;
+                
+                row.innerHTML = `
+                    <span class="text-gray-600 shrink-0">${evt.ts || ''}</span>
+                    <span class="${color} break-all">${fullText}</span>
+                `;
+                logEl.appendChild(row);
+            }
+        }
+    }
 
     // ── Sync trail mode UI + live indicator values ────────────────────
     if (d.trail_mode) _applyCrudeTrailMode(d.trail_mode);
@@ -1090,59 +1305,91 @@ async function loadCrudeSettings() {
         const resp = await fetch('/api/crude/status');
         const data = await resp.json();
         
-        console.log('📊 [Settings] API data:', {
-            sl: data.sl_points,
-            trail: data.trail_points,
-            rr: data.rr_ratio,
-            capital: data.capital,
-            max_trades: data.max_trades,
-            max_loss: data.max_daily_loss,
-            trail_mode: data.trail_mode,
-            strike_offset: data.strike_offset
-        });
+        console.log('📊 [Settings] API data:', data);
         
-        // Populate input fields (only if not currently being edited)
+        // Populate SL input
         const slInput = document.getElementById('crude-sl');
-        if (slInput && document.activeElement !== slInput && data.sl_points != null) {
+        if (slInput && data.sl_points != null) {
             slInput.value = data.sl_points;
+            console.log('🔄 [Settings] Set SL to:', data.sl_points);
         }
         
+        // Populate Trail Points input
         const trailInput = document.getElementById('crude-trail-points');
-        if (trailInput && document.activeElement !== trailInput && data.trail_points != null) {
+        if (trailInput && data.trail_points != null) {
             trailInput.value = data.trail_points;
+            console.log('🔄 [Settings] Set Trail Points to:', data.trail_points);
         }
         
+        // Populate R:R select
         const rrInput = document.getElementById('crude-rr');
-        if (rrInput && document.activeElement !== rrInput && data.rr_ratio != null) {
+        if (rrInput && data.rr_ratio != null) {
             rrInput.value = data.rr_ratio;
+            console.log('🔄 [Settings] Set R:R to:', data.rr_ratio);
         }
         
+        // 🐶 Populate Capital (trading budget) slider
         const capInput = document.getElementById('crude-capital');
-        if (capInput && document.activeElement !== capInput && data.capital != null) {
+        const capDisplay = document.getElementById('crude-capital-display');
+        if (capInput && data.capital != null) {
             capInput.value = Math.round(data.capital);
+            if (capDisplay) capDisplay.textContent = Math.round(data.capital).toLocaleString('en-IN');
+            console.log('🔄 [Settings] Set Capital to:', data.capital);
+        }
+        // Show live Zerodha balance next to budget so user sees both at a glance
+        const availDisplay = document.getElementById('crude-available-margin-display');
+        if (availDisplay && data.available_margin != null && data.available_margin > 0) {
+            availDisplay.textContent = '\u20b9' + Math.round(data.available_margin).toLocaleString('en-IN');
         }
         
+        // 🐶 Populate Max Trades slider
         const maxTradesInput = document.getElementById('crude-max-trades');
-        if (maxTradesInput && document.activeElement !== maxTradesInput && data.max_trades != null) {
+        const maxTradesBadge = document.getElementById('crude-max-trades-badge');
+        if (maxTradesInput && data.max_trades != null) {
             maxTradesInput.value = data.max_trades;
+            if (maxTradesBadge) maxTradesBadge.textContent = data.max_trades;
+            console.log('🔄 [Settings] Set Max Trades to:', data.max_trades);
         }
         
+        // 🐶 Populate Max Loss slider
         const maxLossInput = document.getElementById('crude-max-loss');
-        if (maxLossInput && document.activeElement !== maxLossInput && data.max_daily_loss != null) {
+        const maxLossDisplay = document.getElementById('crude-max-loss-display');
+        if (maxLossInput && data.max_daily_loss != null) {
             maxLossInput.value = data.max_daily_loss;
+            if (maxLossDisplay) maxLossDisplay.textContent = Math.round(data.max_daily_loss).toLocaleString('en-IN');
+            console.log('🔄 [Settings] Set Max Loss to:', data.max_daily_loss);
         }
         
-        const trailModeSelect = document.getElementById('crude-trail-mode');
-        if (trailModeSelect && data.trail_mode) {
-            trailModeSelect.value = data.trail_mode;
+        // 🐶 Set Trail Mode buttons - map 'atr' to specific multiplier
+        let trailMode = data.trail_mode || 'atr1.5';
+        // If backend returns old 'atr' format, convert based on atr_multiplier
+        if (trailMode === 'atr') {
+            const mult = data.atr_multiplier || 1.5;
+            if (mult === 0.4) trailMode = 'atr0.4';
+            else if (mult === 0.7) trailMode = 'atr0.7';
+            else if (mult === 1.5) trailMode = 'atr1.5';
+            else if (mult === 2) trailMode = 'atr2';
+            else trailMode = 'atr1.5';  // default
+        }
+        setCrudeTrailMode(trailMode);
+        console.log('🔄 [Settings] Set Trail Mode to:', trailMode);
+        
+        // 🐶 Set Strike Offset buttons
+        if (data.strike_offset != null) {
+            setCrudeStrike(data.strike_offset);
+            console.log('🔄 [Settings] Set Strike Offset to:', data.strike_offset);
+        } else {
+            setCrudeStrike(0);  // default ATM
+            console.log('🔄 [Settings] Set Strike Offset to: 0 (default ATM)');
         }
         
-        const strikeOffsetSelect = document.getElementById('crude-strike-offset');
-        if (strikeOffsetSelect && data.strike_offset != null) {
-            strikeOffsetSelect.value = data.strike_offset;
-        }
+        console.log('✅ [Settings] All settings loaded successfully!');
         
-        console.log('✅ [Settings] Loaded successfully');
+        // 🐶 AUTO-SYNC CAPITAL FROM ZERODHA AFTER LOADING SETTINGS!
+        console.log('💰 [Settings] Auto-syncing capital from Zerodha...');
+        await _syncCapitalFromZerodha();  // Updates UI only, doesn't save
+        console.log('✅ [Settings] Capital synced (UI updated, not saved)');
+        
     } catch (e) {
         console.error('❌ [Settings] Failed to load:', e);
     }
@@ -1227,20 +1474,104 @@ async function loadCrudeHistory() {
     }
 }
 
-// ── Lifecycle (called by dashboard.js switchPage) ─────────────
+// ── Lifecycle (called by dashboard.js switchPage) ─────────
 function onCrudeTraderTabOpen() {
+    console.log('👀 [Crude] Tab opened - loading settings...');
     _crudeLog('👁 Crude trader tab opened', 'info');
     pollCrudeStatus();        // This loads settings via renderCrudeStatus
-    loadCrudeSettings();      // ✅ NEW: Explicitly load settings into UI inputs
+    loadCrudeSettings();      // ✅ Loads settings + auto-syncs capital from Zerodha!
+    loadCrudeStrategies();    // 🎯 Load strategy checkboxes
     loadCrudeHistory();
-    syncCrudeCapital();       // auto-sync Zerodha balance on tab open
+    // syncCrudeCapital() removed - loadCrudeSettings() now does it automatically!
     refreshCrudeMargin();     // show margin + lot affordability immediately
     _crudePoller = setInterval(pollCrudeStatus, 5000);
+    console.log('✅ [Crude] Tab opened - poller started');
 }
 
 function onCrudeTraderTabClose() {
     clearInterval(_crudePoller);
     _crudePoller = null;
+}
+
+// 🐶 Explicitly expose functions to window for onclick handlers
+window.applyCrudeSettings = applyCrudeSettings;
+window.toggleCrudeSettings = toggleCrudeSettings;
+window.setCrudeStrike = setCrudeStrike;  // 🐶 NEW!
+window.setCrudeTrailMode = setCrudeTrailMode;  // 🐶 NEW!
+window.crudeSelectAllStrategies = crudeSelectAllStrategies;  // 🎯 NEW!
+window.updateCrudeStrategyCount = updateCrudeStrategyCount;  // 🎯 NEW!
+window.crudeTrade = crudeTrade;
+window.crudeManualEvaluate = crudeManualEvaluate;
+window.crudeForceEntry = crudeForceEntry;
+window.crudeForceExit = crudeForceExit;
+window.crudeSyncPositions = crudeSyncPositions;
+window.crudeResetDaily = crudeResetDaily;
+window.crudeAddLots = crudeAddLots;
+window.syncCrudeCapital = syncCrudeCapital;
+window.refreshCrudeMargin = refreshCrudeMargin;
+window.onCrudeTraderTabOpen = onCrudeTraderTabOpen;  // 🐛 CRITICAL FIX!
+window.onCrudeTraderTabClose = onCrudeTraderTabClose;  // 🐛 CRITICAL FIX!
+
+// ── Strike Offset Picker ──────────────────────────────
+function setCrudeStrike(offset) {
+    // Store value for later use in applyCrudeSettings
+    window._crudeStrikeOffset = offset;
+    
+    // Update button styles
+    document.querySelectorAll('.crude-strike-btn').forEach(btn => {
+        const btnOffset = parseInt(btn.getAttribute('data-offset'));
+        if (btnOffset === offset) {
+            btn.className = 'crude-strike-btn flex-1 text-[10px] px-1 py-2 font-bold border border-gray-600 bg-[#0053e2] text-white transition';
+        } else {
+            btn.className = 'crude-strike-btn flex-1 text-[10px] px-1 py-2 font-bold border border-gray-600 bg-gray-700 text-gray-300 transition hover:bg-gray-600';
+        }
+        // Add border-radius to first/last
+        if (btnOffset === -1) btn.classList.add('rounded-l-lg');
+        if (btnOffset === 1) btn.classList.add('rounded-r-lg');
+    });
+}
+
+// ── Trail Mode Picker ───────────────────────────────
+function setCrudeTrailMode(mode) {
+    // Store value
+    window._crudeTrailMode = mode;
+    
+    // Update button styles
+    document.querySelectorAll('.crude-trail-pill').forEach(btn => {
+        const btnMode = btn.getAttribute('data-trail');
+        if (btnMode === mode) {
+            btn.className = 'crude-trail-pill flex-1 text-[11px] py-1 rounded border-2 border-[#0053e2] bg-[#0053e2] text-white font-bold transition';
+        } else {
+            btn.className = 'crude-trail-pill flex-1 text-[11px] py-1 rounded border border-gray-600 text-gray-400 hover:bg-gray-700 transition';
+        }
+    });
+    
+    // Update description
+    const descEl = document.getElementById('crude-trail-desc');
+    const trailRow = document.getElementById('crude-trail-points-row');
+    
+    if (mode === 'off') {
+        descEl.textContent = 'No trailing - SL stays fixed at entry level';
+        if (trailRow) trailRow.classList.add('hidden');
+    } else if (mode === 'atr0.4') {
+        descEl.textContent = 'Trail 0.4× ATR - tight, prevents whipsaw (RECOMMENDED)';
+        if (trailRow) trailRow.classList.add('hidden');
+    } else if (mode === 'atr0.7') {
+        descEl.textContent = 'Trail 0.7× ATR - balanced, medium volatility';
+        if (trailRow) trailRow.classList.add('hidden');
+    } else if (mode === 'atr1.5') {
+        descEl.textContent = 'Trail 1.5× ATR - loose, high volatility';
+        if (trailRow) trailRow.classList.add('hidden');
+    } else if (mode === 'atr2') {
+        descEl.textContent = 'Trail 2× ATR - very loose, maximize profit';
+        if (trailRow) trailRow.classList.add('hidden');
+    } else if (mode === 'premium') {
+        descEl.textContent = 'Trail based on premium % change';
+        if (trailRow) trailRow.classList.remove('hidden');
+    } else {
+        descEl.textContent = 'ATR-based dynamic trailing';
+        if (trailRow) trailRow.classList.add('hidden');
+    }
 }
 
 // Register with switchPage

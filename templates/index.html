@@ -2205,11 +2205,14 @@
                       </select>
                     </div>
                     
-                    <!-- Capital -->
+                    <!-- Capital / Trading Budget -->
                     <div>
                       <label class="text-[10px] text-gray-400 block mb-1" for="crude-capital">
-                        Capital
+                        Trading Budget
                         <span class="ml-1 text-green-400 font-bold">₹<span id="crude-capital-display">18,000</span></span>
+                        <span class="ml-2 text-[9px] text-gray-500">
+                          (Zerodha free: <span id="crude-available-margin-display" class="text-blue-400 font-semibold">—</span>)
+                        </span>
                       </label>
                       <input id="crude-capital" type="range" min="5000" max="200000" step="1000" value="18000"
                         class="w-full accent-green-500"

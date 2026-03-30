@@ -181,6 +181,12 @@ class CrudeTraderState:
     enabled_strategies: list = field(default_factory=list)  # empty = all enabled
 
     # ── Live price tracking ───────────────────────────────────────
+    # Live Zerodha account balance — updated on every pre-trade sync.
+    # SEPARATE from `capital` (user's configured trading BUDGET).
+    # Sizing uses min(capital, available_margin) so we never exceed
+    # either the user's intended allocation OR the actual account cash.
+    available_margin: float = 0.0
+
     last_crude_price:   float = 0.0
     last_option_ltp:    float = 0.0
     last_signal_reason: str   = ""
@@ -577,14 +583,18 @@ def _validate_and_size(symbol: str, desired_lots: int, available: float,
 
 def _resolve_qty(spot: float, real_premium: float | None = None,
                  lot_size: int = MCX_CRUDE_LOT_SIZE,
-                 symbol: str = "") -> int:
+                 symbol: str = "",
+                 available: float | None = None) -> int:
     """Estimate order quantity in LOTS from available capital.
 
+    `available` should be min(user_budget, live_zerodha_balance) — the
+    caller (_enter_trade) computes this so we never touch state directly.
+    Falls back to state.capital if not provided (paper mode / tests).
     This is just the INITIAL ESTIMATE for sizing — the real gatekeeper
     is _validate_and_size() which calls Zerodha for the exact number.
-    We keep this fast (no exchange call) so it can run without auth.
     """
-    available = state.capital   # use full available balance; _validate_and_size guards the rest
+    if available is None or available <= 0:
+        available = state.capital  # fallback for paper mode / unit tests
 
     # Try to get per-lot margin from Zerodha (fast — 1-lot check)
     # Pass LTP so Zerodha doesn't return zeros for commodity options
@@ -665,16 +675,24 @@ def _enter_trade(direction: Direction, price: float):
         return
 
     # ── Sync capital from Zerodha before every trade ─────────────
+    # We store the live balance in `available_margin` but NEVER overwrite
+    # `capital` (the user's configured trading budget).  Sizing uses
+    # min(budget, live_balance) so we don't accidentally deploy the
+    # entire account when the user only wants to risk ₹30k.
     free, net, used = _fetch_available_margin()
     if free is not None:
-        if abs(free - state.capital) > 100:
-            print(f"💰 Capital synced: ₹{state.capital:,.0f} → ₹{free:,.0f} "
-                  f"(net=₹{net:,.0f}, utilised=₹{used:,.0f})")
-        state.capital = free   # always use FREE margin, not net
+        state.available_margin = free
+        print(f"💰 Zerodha balance: ₹{free:,.0f} free "
+              f"(net ₹{net:,.0f}, used ₹{used:,.0f}) | "
+              f"trading budget: ₹{state.capital:,.0f}")
+
+    # available = smaller of (budget, actual free cash) — cap both ways
+    available = state.capital
+    if state.available_margin > 0:
+        available = min(state.capital, state.available_margin)
 
     real_ltp     = get_crude_option_ltp(symbol)
-    available    = state.capital          # full live balance after sync
-    desired_lots = _resolve_qty(price, real_ltp, lot_size=lot_size, symbol=symbol)
+    desired_lots = _resolve_qty(price, real_ltp, lot_size=lot_size, symbol=symbol, available=available)
 
     # ── Pre-flight: ask Zerodha for EXACT margin for our lot count ─
     # This is the real gatekeeper — walks down lots until Zerodha says OK.
@@ -811,17 +829,20 @@ def _enter_trade_futures(direction: Direction, price: float, hv_rank: float):
     # ── Sync capital ──────────────────────────────────────────────
     free, net, used = _fetch_available_margin()
     if free is not None:
-        state.capital = free
-    
-    # ── Lot sizing: start with 1 lot, check margin ─────────────────────
-    qty, required_margin = _validate_and_size(symbol, 1, state.capital, ltp=None)
-    
+        state.available_margin = free
+
+    # cap: trade budget vs actual free cash (whichever is lower)
+    _avail = min(state.capital, state.available_margin) if state.available_margin > 0 else state.capital
+
+    # ── Lot sizing: start with 1 lot, check margin ─────────────────
+    qty, required_margin = _validate_and_size(symbol, 1, _avail, ltp=None)
+
     if qty == 0:
         one_lot_margin = _query_zerodha_margin(symbol, 1) or 5000  # fallback estimate
         state.last_block_reason = (
-            f"⛔ Insufficient margin for FUTURES. "
-            f"1 lot ({symbol_raw}) requires ~₹{one_lot_margin:,.0f} margin "
-            f"but available is ₹{state.capital:,.0f}"
+            f"\u26d4 Insufficient margin for FUTURES. "
+            f"1 lot ({symbol_raw}) requires ~\u20b9{one_lot_margin:,.0f} margin "
+            f"but available is \u20b9{_avail:,.0f}"
         )
         print(f"🚫 {state.last_block_reason}")
         return
@@ -1276,13 +1297,14 @@ def start_crude_trader():
     if not kite_manager.is_authenticated and not state.is_paper_mode:
         return {'success': False, 'error': 'Not authenticated'}
     
-    # 🐶 Sync capital from Zerodha on startup
+    # 🐶 Sync live Zerodha balance on startup — store in available_margin,
+    # NOT in capital.  capital = user’s trading budget (persisted setting).
     free, net, used = _fetch_available_margin()
     if free is not None:
-        old_cap = state.capital
-        state.capital = free
-        print(f"💰 Capital synced on startup: ₹{old_cap:,.0f} → ₹{free:,.0f} (net=₹{net:,.0f}, used=₹{used:,.0f})")
-        _log("💰", "Capital synced", f"₹{free:,.0f} free (net ₹{net:,.0f}, used ₹{used:,.0f})")
+        state.available_margin = free
+        print(f"💰 Startup balance: ₹{free:,.0f} free (net ₹{net:,.0f}, used ₹{used:,.0f}) | "
+              f"trading budget: ₹{state.capital:,.0f}")
+        _log("💰", "Balance synced", f"₹{free:,.0f} free | budget ₹{state.capital:,.0f}")
         save_crude_settings()  # persist synced value
     
     state.is_running   = True
@@ -1543,14 +1565,15 @@ def get_crude_status() -> dict:
         'active_trade':  trade_dict,
         'trades_today':  len(state.trades_today),
         'sl_points':     state.sl_points,
-        'trail_points':  state.trail_points,
-        'rr_ratio':      state.rr_ratio,
-        'capital':       state.capital,
-        'max_trades':    state.max_trades,
-        'max_daily_loss': state.max_daily_loss,  # ← NEW: expose to UI
-        'trail_mode':    state.trail_mode,
-        'atr_multiplier': state.atr_multiplier,
-        'strike_offset': state.strike_offset,  # 🐶 MISSING! Now added
+        'trail_points':    state.trail_points,
+        'rr_ratio':         state.rr_ratio,
+        'capital':          state.capital,          # user's trading BUDGET
+        'available_margin': state.available_margin, # live Zerodha free cash
+        'max_trades':       state.max_trades,
+        'max_daily_loss':   state.max_daily_loss,
+        'trail_mode':       state.trail_mode,
+        'atr_multiplier':   state.atr_multiplier,
+        'strike_offset':    state.strike_offset,
         'last_atr':      round(state.last_atr, 2) if state.last_atr else None,
         'last_st_line':  round(state.last_st_line, 2) if state.last_st_line else None,
         'exit_time':     CRUDE_EXIT_TIME.strftime('%H:%M'),
