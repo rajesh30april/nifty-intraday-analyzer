@@ -126,6 +126,41 @@ def get_crude_lot_size(tradingsymbol: str) -> int:
     return MCX_CRUDE_MINI_LOT_SIZE if "CRUDEOILM" in tradingsymbol else MCX_CRUDE_LOT_SIZE
 
 
+# Minimum open-interest to consider an option liquid enough to trade.
+# Crude mini options can be thin — we refuse to enter below this.
+_MIN_OI_CRUDE = 50   # contracts; 0 = completely dead market
+
+
+def _check_crude_option_liquidity(symbol: str, token: int) -> dict:
+    """Return liquidity info for a crude option via kite.quote().
+
+    Returns dict with keys: oi, bid_qty, ask_qty, ltp, liquid (bool).
+    Falls back gracefully if quote fails.
+    """
+    result = {'oi': 0, 'bid_qty': 0, 'ask_qty': 0, 'ltp': 0.0, 'liquid': False}
+    if not kite_manager.is_authenticated:
+        result['liquid'] = True   # can't check — allow and warn
+        return result
+    try:
+        quote = kite_manager.kite.quote([symbol])
+        data  = quote.get(symbol, {})
+        oi       = int(data.get('oi', 0) or 0)
+        depth    = data.get('depth', {})
+        bids     = depth.get('buy',  [])
+        asks     = depth.get('sell', [])
+        bid_qty  = sum(b.get('quantity', 0) for b in bids[:3])
+        ask_qty  = sum(a.get('quantity', 0) for a in asks[:3])
+        ltp      = float(data.get('last_price', 0) or 0)
+        liquid   = oi >= _MIN_OI_CRUDE and (bid_qty > 0 or ask_qty > 0)
+        result.update(oi=oi, bid_qty=bid_qty, ask_qty=ask_qty, ltp=ltp, liquid=liquid)
+        print(f"  💧 Liquidity [{symbol}] OI={oi} bid_qty={bid_qty} ask_qty={ask_qty} "
+              f"LTP=₹{ltp:.1f} → {'OK' if liquid else 'ILLIQUID ❌'}")
+    except Exception as e:
+        print(f"  ⚠️  Liquidity check failed for {symbol}: {e} — allowing with warning")
+        result['liquid'] = True   # fail-open with warning
+    return result
+
+
 def get_crude_atm_option(
     spot: float,
     direction: str,
@@ -134,41 +169,77 @@ def get_crude_atm_option(
 ) -> tuple[str, int, int]:
     """Return (full_symbol, instrument_token, lot_size_barrels).
 
-    direction: 'long'  → buy CE  'short' → buy PE
-    strike_offset: 0=ATM, 1=OTM1, -1=ITM1 (units of STRIKE_STEP)
+    direction: 'long'  → buy CE  |  'short' → buy PE
+    strike_offset: 0=ATM, positive=OTM (lower premium), negative=ITM
+      For PE (short): offset +1 → one strike BELOW ATM (OTM put)
+      For CE (long):  offset +1 → one strike ABOVE ATM (OTM call)
     capital: when < MCX_MINI_CAPITAL_THRESHOLD, auto-picks CRUDEOILM mini
-             (1/10th the cost of the full contract).
-    """
-    option_type  = 'CE' if direction == 'long' else 'PE'
-    atm_strike   = round(spot / MCX_CRUDE_STRIKE_STEP) * MCX_CRUDE_STRIKE_STEP
-    target_strike = atm_strike + strike_offset * MCX_CRUDE_STRIKE_STEP
-    use_mini     = capital > 0 and capital < MCX_MINI_CAPITAL_THRESHOLD
 
+    Performs a LIVE LIQUIDITY CHECK (OI + bid depth) before returning.
+    Falls back to ATM if the target strike is illiquid.
+    Raises RuntimeError if no liquid option can be found.
+    """
+    option_type = 'CE' if direction == 'long' else 'PE'
+    atm_strike  = round(spot / MCX_CRUDE_STRIKE_STEP) * MCX_CRUDE_STRIKE_STEP
+
+    # Strike offset convention:
+    #   CE long:  positive offset → higher strike (OTM) ✔
+    #   PE short: positive offset → LOWER strike (OTM for put) ✔
+    # Without this correction, offset +2 on PE picks a deep-ITM put — illiquid!
+    direction_sign = 1 if option_type == 'CE' else -1
+    target_strike  = atm_strike + direction_sign * strike_offset * MCX_CRUDE_STRIKE_STEP
+
+    use_mini = capital > 0 and capital < MCX_MINI_CAPITAL_THRESHOLD
     instruments = _get_mcx_instruments()
     today = date.today()
 
-    # Try preferred contract type first; fall back to the other.
-    for name in ([MCX_CRUDE_MINI_NAME, MCX_CRUDE_NAME] if use_mini
-                 else [MCX_CRUDE_NAME, MCX_CRUDE_MINI_NAME]):
-        opts = [
-            i for i in instruments
-            if i.get('name') == name
-            and i.get('instrument_type') == option_type
-            and i.get('strike') == float(target_strike)
-            and i.get('expiry') and i['expiry'] >= today
-        ]
-        if opts:
+    # Build candidate strikes to try: target first, then fall back toward ATM
+    strike_candidates = [target_strike]
+    for step in range(1, 5):          # try up to 4 nearby strikes
+        strike_candidates.append(atm_strike + direction_sign * max(0, strike_offset - step) * MCX_CRUDE_STRIKE_STEP)
+        strike_candidates.append(atm_strike)   # ATM always in the fallback list
+    # Deduplicate while preserving order
+    seen, unique_strikes = set(), []
+    for s in strike_candidates:
+        if s not in seen:
+            seen.add(s)
+            unique_strikes.append(s)
+
+    for candidate_strike in unique_strikes:
+        is_fallback = candidate_strike != target_strike
+        for name in ([MCX_CRUDE_MINI_NAME, MCX_CRUDE_NAME] if use_mini
+                     else [MCX_CRUDE_NAME, MCX_CRUDE_MINI_NAME]):
+            opts = [
+                i for i in instruments
+                if i.get('name') == name
+                and i.get('instrument_type') == option_type
+                and i.get('strike') == float(candidate_strike)
+                and i.get('expiry') and i['expiry'] >= today
+            ]
+            if not opts:
+                continue
             opts.sort(key=lambda x: x['expiry'])
-            best    = opts[0]
-            symbol  = f"MCX:{best['tradingsymbol']}"
-            lot_sz  = get_crude_lot_size(best['tradingsymbol'])
-            tag     = 'MINI' if use_mini else 'FULL'
-            print(f"🛢️  Option resolved [{tag}]: {symbol} "
-                  f"(strike={target_strike}, lot={lot_sz} bbl)")
+            best   = opts[0]
+            symbol = f"MCX:{best['tradingsymbol']}"
+            lot_sz = get_crude_lot_size(best['tradingsymbol'])
+            tag    = 'MINI' if use_mini else 'FULL'
+
+            if is_fallback:
+                print(f"  ⚠️  Strike {int(target_strike)} illiquid — trying fallback {int(candidate_strike)}")
+
+            # ✅ LIQUIDITY GATE: refuse illiquid strikes
+            liq = _check_crude_option_liquidity(symbol, best['instrument_token'])
+            if not liq['liquid']:
+                print(f"  ❌ Skipping {symbol} — OI={liq['oi']} bid={liq['bid_qty']} (illiquid)")
+                continue
+
+            print(f"  ✅ [{tag}] Selected {symbol} "
+                  f"(strike={int(candidate_strike)}, lot={lot_sz} bbl, OI={liq['oi']})")
             return symbol, best['instrument_token'], lot_sz
 
     raise RuntimeError(
-        f"No MCX CRUDEOIL {option_type} at strike {target_strike} found"
+        f"No liquid MCX CRUDEOIL {option_type} option found near strike {int(target_strike)}. "
+        f"Check market hours and option chain liquidity."
     )
 
 

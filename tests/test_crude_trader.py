@@ -80,7 +80,9 @@ class TestCrudeData:
              'strike': strike, 'expiry': near,
              'tradingsymbol': f'CRUDEOIL{near}6500PE', 'instrument_token': 1},
         ]
-        with patch('crude_data._get_mcx_instruments', return_value=fake_instruments):
+        _liq_ok = {'oi': 500, 'bid_qty': 10, 'ask_qty': 10, 'ltp': 100.0, 'liquid': True}
+        with patch('crude_data._get_mcx_instruments', return_value=fake_instruments), \
+             patch('crude_data._check_crude_option_liquidity', return_value=_liq_ok):
             sym, token, lot_sz = get_crude_atm_option(spot, 'short')
         assert token == 1, 'Should pick nearer expiry first'
         assert 'PE' in sym
@@ -95,7 +97,9 @@ class TestCrudeData:
             'strike': 6500.0, 'expiry': expiry,
             'tradingsymbol': 'CRUDEOIL6500CE', 'instrument_token': 99,
         }]
-        with patch('crude_data._get_mcx_instruments', return_value=fake):
+        _liq_ok = {'oi': 500, 'bid_qty': 10, 'ask_qty': 10, 'ltp': 100.0, 'liquid': True}
+        with patch('crude_data._get_mcx_instruments', return_value=fake), \
+             patch('crude_data._check_crude_option_liquidity', return_value=_liq_ok):
             sym, token, lot_sz = get_crude_atm_option(6500.0, 'long')
         assert 'CE' in sym
         assert token == 99

@@ -18,7 +18,10 @@ let _crudeLastSL      = null;   // track trailing SL changes
 
 // ── Toast ─────────────────────────────────────────────────────────
 function _crudeToast(msg, type = 'info') {
-    const container = document.getElementById('crude-toasts');
+    // 'crude-toasts' never existed in HTML — fall back to the shared
+    // fixed-position toast container used by the rest of the app.
+    const container = document.getElementById('crude-toasts')
+                   ?? document.getElementById('at-toasts');
     if (!container) return;
     const colors = {
         info:  'bg-blue-800 border-blue-400',
@@ -291,7 +294,7 @@ async function crudeForceEntry(direction) {
     
     try {
         console.log(`🌐 [Force Entry] Sending ${direction} request to API...`);
-        const resp = await fetch(`/api/crude/force-entry?direction=${direction}`, { method: 'POST' });
+        const resp = await fetch(`/api/crude/force-entry?direction=${direction}&confirmed=true`, { method: 'POST' });
         const data = await resp.json();
         
         console.log('📡 [Force Entry] API Response:', data);

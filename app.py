@@ -3060,8 +3060,21 @@ async def crude_evaluate():
 
 
 @app.post("/api/crude/force-entry")
-async def crude_force_entry(direction: str = Query(...)):
-    """Manually force a Crude trade entry (LONG or SHORT) bypassing signal check."""
+async def crude_force_entry(
+    direction: str = Query(...),
+    confirmed: bool = Query(False),    # MUST be true — prevents accidental CLI/curl fires
+):
+    """Manually force a Crude trade entry (LONG or SHORT) bypassing signal check.
+
+    Requires ?confirmed=true to prevent accidental CLI/curl calls from
+    placing real orders. The UI always sends this; raw curl without it fails.
+    """
+    if not confirmed:
+        return JSONResponse({
+            "success": False,
+            "error": "Safety guard: add ?confirmed=true to acknowledge this places a LIVE order."
+        }, status_code=400)
+
     from crude_trader import state as crude_state, _enter_trade, get_crude_status
     from crude_data import fetch_crude_intraday_data, get_crude_spot
     from strategy import Direction
