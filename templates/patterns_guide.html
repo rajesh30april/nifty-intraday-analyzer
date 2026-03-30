@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pattern Strategy Guide — Inevitable</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; background:#0f172a; color:#e2e8f0; }
+    .active-tab { background:#0053e2 !important; color:#fff !important; }
+    .bias-bull { background:#052e16; border:1px solid #166534; color:#86efac; }
+    .bias-bear { background:#450a0a; border:1px solid #991b1b; color:#fca5a5; }
+    .bias-neut { background:#1c1917; border:1px solid #44403c; color:#d6d3d1; }
+    .pattern-card { transition: transform .15s, box-shadow .15s; }
+    .pattern-card:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,83,226,.25); }
+    canvas { display:block; border-radius:8px; }
+    .legend-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+    #pattern-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:1rem; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- Header -->
+<div class="border-b border-gray-800 bg-gray-900/80 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <a href="/" class="text-gray-400 hover:text-white transition text-sm">← Dashboard</a>
+      <span class="text-gray-600">|</span>
+      <h1 class="text-lg font-bold text-white">📊 Pattern Strategy Guide</h1>
+      <span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full">21 Patterns</span>
+    </div>
+    <p class="text-xs text-gray-500 hidden sm:block">How every pattern your auto-trader uses actually works</p>
+  </div>
+</div>
+
+<!-- Intro banner -->
+<div class="max-w-7xl mx-auto px-4 pt-6 pb-2">
+  <div class="bg-gray-800/50 border border-gray-700 rounded-xl p-4 text-sm text-gray-400">
+    <span class="text-yellow-400 font-semibold">📖 How to read these charts:</span>
+    Green candles = bullish close. Red candles = bearish close.
+    <span class="text-yellow-300">Gold dashed</span> = neckline / breakout level.
+    <span class="text-red-400">Red dashed</span> = stop loss.
+    <span class="text-blue-400">Blue dashed</span> = target.
+    Each chart shows an idealized version of the real pattern.
+  </div>
+</div>
+
+<!-- Category Tabs -->
+<div class="max-w-7xl mx-auto px-4 py-4">
+  <div class="flex flex-wrap gap-2" id="tabs">
+    <button class="cat-tab active-tab px-4 py-1.5 rounded-lg text-sm font-medium bg-gray-700 text-gray-200 transition" data-cat="all">All (21)</button>
+    <button class="cat-tab px-4 py-1.5 rounded-lg text-sm font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 transition" data-cat="candlestick">🕯 Candlestick (6)</button>
+    <button class="cat-tab px-4 py-1.5 rounded-lg text-sm font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 transition" data-cat="reversal">↩ Reversal (6)</button>
+    <button class="cat-tab px-4 py-1.5 rounded-lg text-sm font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 transition" data-cat="continuation">➡ Continuation (7)</button>
+    <button class="cat-tab px-4 py-1.5 rounded-lg text-sm font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 transition" data-cat="divergence">〰️ Divergence (2)</button>
+  </div>
+</div>
+
+<!-- Pattern Grid (JS-rendered) -->
+<div class="max-w-7xl mx-auto px-4 pb-12">
+  <div id="pattern-grid"></div>
+  <div class="mt-8 bg-gray-900 border border-gray-700 rounded-xl p-4 text-center">
+    <p class="text-sm text-gray-400">💡 <span class="text-white font-semibold">Pro tip:</span> No pattern works alone. Your auto-trader stacks multiple pattern signals with VIX, RSI, VWAP, volume, and meta-regime scoring for higher confidence entries.</p>
+  </div>
+</div>
+
+<script src="/static/patterns-guide.js"></script>
+</body>
+</html>
