@@ -1518,6 +1518,36 @@ def _estimate_target_premium(trade: CrudeTrade) -> float | None:
     estimated = trade.entry_premium + tgt_pts * delta
     return round(estimated, 1)
 
+def clear_ghost_position(reason: str = "Manual ghost clear") -> dict:
+    """Wipe a phantom position that exists in state but NOT in Zerodha.
+
+    Does NOT place any order. Only call this when you have confirmed
+    the position is not in Zerodha's order/position book.
+    """
+    if not state.active_trade:
+        return {"success": False, "error": "No active trade to clear"}
+
+    t = state.active_trade
+    _log("👻", "Ghost position cleared",
+         f"{t.instrument} {t.direction} | order {t.order_id} | reason: {reason}")
+    print(f"👻 GHOST CLEAR: wiping {t.instrument} {t.direction} "
+          f"entry ₹{t.entry_premium} (order {t.order_id}) — {reason}")
+
+    # Record a ₹0 PnL trade in history so the session isn’t silently missing it
+    t.status      = "ghost_cleared"
+    t.exit_reason = reason
+    t.pnl         = 0.0
+    state.trades_today.append(t)
+
+    # Wipe live state
+    state.active_trade   = None
+    state.last_option_ltp = 0.0
+    CRUDE_SNAP_FILE.unlink(missing_ok=True)
+    kite_manager.unsubscribe_crude_option()
+    _save_log()
+
+    return {"success": True, "message": f"Ghost position cleared: {t.instrument}"}
+
 
 def get_crude_status() -> dict:
     """Return full status dict — consumed by /api/crude/status endpoint."""

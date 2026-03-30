@@ -365,6 +365,35 @@ async function crudeForceExit() {
     }
 }
 
+// Clear Ghost - Wipe a phantom position NOT in Zerodha (no order placed)
+// ──────────────────────────────────────────────────────────────────────
+async function crudeClearGhost() {
+    const btn = document.getElementById('crude-btn-clear-ghost');
+    if (!confirm(
+        '👻 Clear ghost position?\n\n' +
+        'Only use this if the position shows here but is NOT in Zerodha.\n' +
+        'This does NOT place any order — it just wipes the local state.\n\n' +
+        'Continue?'
+    )) return;
+
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Clearing...'; }
+    try {
+        const resp = await fetch('/api/crude/clear-ghost', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            _crudeToast('👻 Ghost position cleared — system is clean', 'ok');
+            _crudeLog('👻 Ghost wiped: position was not in Zerodha', 'warn');
+            await pollCrudeStatus();
+        } else {
+            _crudeToast(`❌ ${data.error}`, 'error');
+        }
+    } catch (e) {
+        _crudeToast(`❌ ${e.message}`, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '👻 Clear Ghost'; }
+    }
+}
+
 // ── ✨ NEW: Load crude oil pattern charts inline after evaluation
 async function loadCrudePatternCharts(container, cardsDiv) {
     try {
@@ -1051,15 +1080,18 @@ function renderCrudeStatus(d) {
     const btnForceExit = document.getElementById('crude-btn-force-exit');
     const btnForceLong = document.getElementById('crude-btn-force-long');
     const btnForceShort = document.getElementById('crude-btn-force-short');
-    
+    const btnClearGhost  = document.getElementById('crude-btn-clear-ghost');
+
     if (at) {
-        // Position open: show Force Exit, hide Force Long/Short
-        if (btnForceExit) btnForceExit.classList.remove('hidden');
-        if (btnForceLong) btnForceLong.classList.add('hidden');
+        // Position open: show Force Exit + Clear Ghost, hide Force Long/Short
+        if (btnForceExit)  btnForceExit.classList.remove('hidden');
+        if (btnClearGhost) btnClearGhost.classList.remove('hidden');
+        if (btnForceLong)  btnForceLong.classList.add('hidden');
         if (btnForceShort) btnForceShort.classList.add('hidden');
     } else {
-        // No position: hide Force Exit, show Force Long/Short
-        if (btnForceExit) btnForceExit.classList.add('hidden');
+        // No position: hide Force Exit + Clear Ghost, show Force Long/Short
+        if (btnForceExit)  btnForceExit.classList.add('hidden');
+        if (btnClearGhost) btnClearGhost.classList.add('hidden');
         if (btnForceLong) btnForceLong.classList.remove('hidden');
         if (btnForceShort) btnForceShort.classList.remove('hidden');
     }

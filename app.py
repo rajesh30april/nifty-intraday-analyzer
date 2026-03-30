@@ -3101,6 +3101,21 @@ async def crude_force_exit():
         return JSONResponse({"success": False, "error": str(e)})
 
 
+@app.post("/api/crude/clear-ghost")
+async def crude_clear_ghost():
+    """Wipe a phantom position that exists in the UI but NOT in Zerodha.
+
+    Safe to call when you’ve confirmed Zerodha has no matching position.
+    Does NOT place any order — just clears the local state + snapshot.
+    """
+    from crude_trader import clear_ghost_position
+    try:
+        result = await asyncio.to_thread(clear_ghost_position, "Manual ghost clear via UI")
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+
+
 @app.post("/api/crude/sync-positions")
 async def crude_sync_positions():
     """Sync existing crude option positions from Zerodha into the trader.
