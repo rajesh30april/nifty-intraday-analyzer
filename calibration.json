@@ -20,14 +20,15 @@
     "avg_loss_pts": 12.0
   },
   "orb": {
-    "trades": 83,
-    "winners": 39,
-    "losers": 44,
-    "win_rate": 47.0,
-    "profit_factor": 3.1,
-    "trades_per_day": 1.8,
-    "avg_win_pts": 42.0,
-    "avg_loss_pts": 18.0
+    "win_rate": 73.1,
+    "total_trades": 26,
+    "profit_factor": 3.81,
+    "avg_win_pts": 36.1,
+    "avg_loss_pts": -25.7,
+    "trades_per_day": 0.6,
+    "max_drawdown_pts": 60.0,
+    "source": "zerodha_60d_futures_backtest",
+    "note": "Fixed critical bug: was re-firing on every candle above ORB high (11/day). Now uses first-break detection (prev candle inside range, current breaks out). 0.6 signals/day is correct for ORB."
   },
   "supertrend": {
     "trades": 71,
@@ -108,5 +109,16 @@
     "trades_per_day": 0.9,
     "source": "zerodha_60d_futures_backtest",
     "note": "60d test (Jan-Mar 2026) \u2014 a sustained bear crash period (26K\u219222.8K). 3-gate strategy: VWAP cross + 0.05% conviction + time window. Volume is soft confidence only. PF=1.28, still accumulating data."
+  },
+  "vwap_reversion": {
+    "win_rate": 74.0,
+    "total_trades": 123,
+    "profit_factor": 3.48,
+    "avg_win_pts": 35.6,
+    "avg_loss_pts": -29.1,
+    "trades_per_day": 2.9,
+    "max_drawdown_pts": 95.4,
+    "source": "zerodha_60d_futures_backtest",
+    "note": "60d test (Jan-Mar 2026 bear crash). ADX<25 gate effectively selects intraday range sessions even within a macro downtrend. Shorts dominated (bear market bias). Re-test in bull market needed."
   }
 }

@@ -107,17 +107,24 @@ def evaluate_orb(
         ),
     ))
 
-    # ── 2. Breakout detection ──────────────────────
-    breakout_long = price > orb_high
-    breakout_short = price < orb_low
-    breakout_ok = breakout_long or breakout_short
-    direction = Direction.LONG if breakout_long else Direction.SHORT if breakout_short else None
+    # ── 2. Breakout detection — FIRST break only ─────────────────
+    # Bug fix: without prev-candle check, every candle above ORB high
+    # would re-fire — giving 10+ signals per day on trending days.
+    # We only want the FIRST candle that crosses the ORB level.
+    prev      = df.iloc[-2] if len(df) >= 2 else df.iloc[-1]
+    prev_close = float(prev["close"])
+
+    breakout_long  = prev_close <= orb_high and price > orb_high
+    breakout_short = prev_close >= orb_low  and price < orb_low
+    breakout_ok    = breakout_long or breakout_short
+    direction      = Direction.LONG if breakout_long else Direction.SHORT if breakout_short else None
 
     conditions.append(StrategyCondition(
         name="Price Breakout",
         met=breakout_ok,
         detail=(
-            f"Close {price:.0f} {'> ORB high ' + str(orb_high) if breakout_long else '< ORB low ' + str(orb_low) if breakout_short else 'inside ORB range'}"
+            f"FIRST break: prev {prev_close:.0f} → now {price:.0f} "
+            f"{'> ORB high ' + f'{orb_high:.0f}' if breakout_long else '< ORB low ' + f'{orb_low:.0f}' if breakout_short else 'still inside ORB'}"
         ),
     ))
 
