@@ -1310,8 +1310,7 @@ def start_crude_trader():
         _cap = f" | cap ₹{state.capital:,.0f}" if state.capital > 0 else " | no cap"
         print(f"💰 Startup: net ₹{net:,.0f} available | free ₹{free:,.0f} | used ₹{used:,.0f}{_cap}")
         _log("💰", "Balance synced", f"net ₹{net:,.0f} available | free ₹{free:,.0f}")
-        save_crude_settings()  # persist synced value
-    
+
     state.is_running   = True
     state.kill_switch  = False
     mode = "LIVE" if not state.is_paper_mode else "PAPER"
