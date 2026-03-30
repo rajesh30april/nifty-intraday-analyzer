@@ -334,12 +334,14 @@ def _recover_state(snapshot_file: Path | None = None):
                 # Count all trades (including fills) from today's log
                 state.orders_placed = len(log_data.get("trades", []))
             else:
-                state.orders_placed = snap.get("orders_placed", 0)
+                # Log is from a previous day — reset counter for new day
+                print(f"📅 [RECOVERY] trade_log is from {log_today}, resetting orders_placed to 0 for new day")
+                state.orders_placed = 0
         else:
-            state.orders_placed = snap.get("orders_placed", 0)
+            state.orders_placed = 0
     except Exception:
-        state.orders_placed = snap.get("orders_placed", 0)
-    print(f"♻️  orders_placed restored from log: {state.orders_placed}")
+        state.orders_placed = 0
+    print(f"♻️  orders_placed restored: {state.orders_placed}")
 
     # Restore cooldown so a restart mid-cooldown doesn't bypass the filter
     last_exit_raw = snap.get("last_exit_time")
@@ -377,6 +379,13 @@ def _recover_state(snapshot_file: Path | None = None):
     if restored_dupes:
         print(f"⚠️  [RECOVERY] Removed {restored_dupes} duplicate trade(s) from snapshot")
     for t in _seen.values():
+        # ── Only restore trades that belong to TODAY ──────────────────────────
+        # If the server ran across midnight, the snapshot carries yesterday's
+        # trades. We must NOT load them into today's state or P&L will be wrong.
+        trade_date = (t.get("timestamp") or "")[:10]
+        if trade_date and trade_date != today:
+            print(f"⏭  [RECOVERY] Skipping trade {t['id']} from {trade_date} (not today)")
+            continue
         state.trades_today.append(Trade(
             id=t["id"], timestamp=t["timestamp"],
             direction=t["direction"], instrument=t["instrument"],
@@ -2111,12 +2120,13 @@ def refresh_active_option_ltp() -> float | None:
 
 
 def _realized_pnl_from_log() -> float:
-    """Read realized P&L directly from trade_log.json as source of truth.
+    """Read realized P&L for TODAY directly from trade_log.json.
 
+    Filters by today's date so a stale log from a previous session
+    never inflates the day's P&L after a server restart.
     Falls back to state.total_pnl if the file is missing or unreadable.
-    This prevents stale in-memory values from showing wrong totals after
-    a manual trade-log patch or a crash-recovery discrepancy.
     """
+    today = datetime.now().strftime("%Y-%m-%d")
     try:
         if TRADE_LOG_FILE.exists():
             data = json.loads(TRADE_LOG_FILE.read_text(encoding="utf-8"))
@@ -2124,7 +2134,9 @@ def _realized_pnl_from_log() -> float:
             realized = sum(
                 t.get("pnl", 0) or 0
                 for t in trades
-                if t.get("status") == "exited" and t.get("exit_premium") is not None
+                if t.get("status") == "exited"
+                and t.get("exit_premium") is not None
+                and (t.get("timestamp") or "")[:10] == today
             )
             return round(realized, 2)
     except Exception:

@@ -3747,13 +3747,17 @@ async def auto_trader_update_sl_premium(premium_sl: float = Query(...)):
 
 @app.get("/api/auto-trader/history")
 async def auto_trader_history():
-    """Return completed trade history from trade log.
+    """Return TODAY's completed trade history from trade log.
 
+    Filters by today's date so yesterday's trades never pollute
+    the day P&L or trade history after a server restart.
     Filters out ghost trades (status=filled with no exit_premium)
     so they don't pollute the history or P&L totals.
     """
     from pathlib import Path
     import json as _json
+    from datetime import datetime as _dt
+    today = _dt.now().strftime("%Y-%m-%d")
     log_file = Path(__file__).parent / "trade_log.json"
     if not log_file.exists():
         return {"success": True, "trades": [], "total_pnl": 0}
@@ -3761,20 +3765,20 @@ async def auto_trader_history():
         data   = _json.loads(log_file.read_text())
         trades = data.get("trades", [])
 
-        # Dedup by trade ID (last occurrence wins) — guards against
-        # any duplicate that slipped past the auto_trader write layer.
+        # Dedup by trade ID (last occurrence wins)
         seen: dict = {}
         for t in trades:
             seen[t["id"]] = t
         trades = list(seen.values())
 
-        # Only include properly exited trades
+        # Only today's properly exited trades
         completed = [
             t for t in trades
-            if t.get("status") == "exited" and t.get("exit_premium") is not None
+            if t.get("status") == "exited"
+            and t.get("exit_premium") is not None
+            and (t.get("timestamp") or "")[:10] == today
         ]
 
-        # Recompute realized P&L from completed trades only (ignore ghost fills)
         realized_pnl = round(sum(t.get("pnl", 0) or 0 for t in completed), 2)
 
         # Include unrealized P&L of any currently open trade
@@ -3785,13 +3789,17 @@ async def auto_trader_history():
             ltp = at_state.last_option_ltp
             unrealized_pnl = round((ltp - t.entry_premium) * t.quantity, 2)
 
+        # Ghost trades for today only
+        today_trades = [t for t in trades if (t.get("timestamp") or "")[:10] == today]
+        ghost_count  = len([t for t in today_trades if t.get("status") != "exited" or t.get("exit_premium") is None])
+
         return {
             "success":        True,
             "trades":         completed,
             "total_pnl":      realized_pnl,
             "unrealized_pnl": unrealized_pnl,
             "day_total_pnl":  round(realized_pnl + unrealized_pnl, 2),
-            "ghost_trades":   len(trades) - len(completed),  # for debugging
+            "ghost_trades":   ghost_count,
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
