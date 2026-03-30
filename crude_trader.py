@@ -1052,6 +1052,10 @@ def _manage_trade_by_premium(ltp: float, source: str = "ltp_poll") -> None:
 
     mode = state.trail_mode
 
+    # Fixed SL — set once at entry, never trail. Done.
+    if mode == 'fixed':
+        return
+
     # Supertrend: use ST line as proxy for trail amount in premium space
     if mode == 'supertrend' and state.last_st_line > 0 and state.last_crude_price > 0:
         # Convert ST-to-crude distance to premium distance via δ

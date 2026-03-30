@@ -232,6 +232,8 @@ class TestCrudeTraderState:
         ct.state.is_running    = True
         ct.state.kill_switch   = False
         ct.state.trail_points  = 10.0   # 10 prem pts trail
+        ct.state.trail_mode    = 'atr'  # ATR mode; last_atr=0 falls back to trail_points
+        ct.state.last_atr      = 0.0    # forces fall-through to trail_points path
         trade = ct.CrudeTrade(
             id='trail-test', timestamp='2026-03-12T10:00:00',
             direction='short', instrument='MCX:CRUDEOILM25APR6500PE',

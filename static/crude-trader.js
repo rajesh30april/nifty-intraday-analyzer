@@ -130,11 +130,8 @@ function onCrudeTrailModeChange(mode) {
 }
 
 function _applyCrudeTrailMode(mode) {
-    // Sync radio buttons to match server state
-    document.querySelectorAll('input[name="crude-trail-mode"]').forEach(r => {
-        r.checked = (r.value === mode);
-    });
-    onCrudeTrailModeChange(mode);
+    // Normalize backend 'atr' + multiplier combo into pill format
+    setCrudeTrailMode(mode);  // pill buttons + description
 }
 
 
@@ -607,13 +604,15 @@ async function saveCrudeConfig() {
     const maxLoss   = parseFloat(document.getElementById('crude-max-loss')?.value || '5000');
     const trailMode = window._crudeTrailMode || 'atr1.5';
     const strikeOffset = window._crudeStrikeOffset !== undefined ? window._crudeStrikeOffset : 0;
-    
+
     // Extract ATR multiplier from mode (backend will parse this)
     let atrMult = 1.5;  // default
     if (trailMode === 'atr0.4') atrMult = 0.4;
     else if (trailMode === 'atr0.7') atrMult = 0.7;
     else if (trailMode === 'atr1.5') atrMult = 1.5;
     else if (trailMode === 'atr2') atrMult = 2.0;
+    // 'fixed' and 'premium' modes pass trail_mode as-is to backend
+    // (backend returns early for 'fixed'; 'premium' uses trail_points %)
 
     console.log('📊 [Settings] RAW VALUES FROM UI:');
     console.log('  - SL input value:', document.getElementById('crude-sl')?.value);
@@ -1593,8 +1592,11 @@ function setCrudeTrailMode(mode) {
     const descEl = document.getElementById('crude-trail-desc');
     const trailRow = document.getElementById('crude-trail-points-row');
     
-    if (mode === 'off') {
-        descEl.textContent = 'No trailing - SL stays fixed at entry level';
+    if (mode === 'fixed') {
+        descEl.textContent = '📌 Fixed SL — set once at entry via SL Points, never moves. Discipline over drama.';
+        if (trailRow) trailRow.classList.add('hidden');
+    } else if (mode === 'off') {
+        descEl.textContent = 'No trailing — SL stays fixed at entry level';
         if (trailRow) trailRow.classList.add('hidden');
     } else if (mode === 'atr0.4') {
         descEl.textContent = 'Trail 0.4× ATR - tight, prevents whipsaw (RECOMMENDED)';

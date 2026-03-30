@@ -2666,7 +2666,7 @@ async def crude_config(
     rr_ratio:       float | None = None,
     capital:        float | None = None,
     strike_offset:  int   | None = None,
-    trail_mode:     str   | None = None,   # 'off' | 'atr0.4' | 'atr0.7' | 'atr1.5' | 'atr2' | 'premium'
+    trail_mode:     str   | None = None,   # 'fixed' | 'atr0.4' | 'atr0.7' | 'atr1.5' | 'atr2' | 'premium'
     atr_multiplier: float | None = None,
     max_trades:     int   | None = None,   # max entries per day (1-20)
     max_daily_loss: float | None = None,
@@ -2682,7 +2682,7 @@ async def crude_config(
     if strike_offset  is not None: cs.strike_offset  = strike_offset
     if trail_mode     is not None:
         # Parse ATR multiplier from trail mode
-        valid_modes = ('off', 'atr0.4', 'atr0.7', 'atr1.5', 'atr2', 'premium', 'atr')  # 'atr' for backwards compat
+        valid_modes = ('fixed', 'off', 'atr0.4', 'atr0.7', 'atr1.5', 'atr2', 'premium', 'atr')
         if trail_mode in valid_modes:
             # Extract multiplier from mode string
             if trail_mode == 'atr0.4':
@@ -2702,6 +2702,8 @@ async def crude_config(
                 # Keep existing multiplier or default to 1.5
                 if atr_multiplier is None:
                     cs.atr_multiplier = 1.5
+            elif trail_mode == 'fixed':
+                cs.trail_mode = 'fixed'  # SL set at entry, never trails
             else:
                 cs.trail_mode = trail_mode  # 'off' or 'premium'
             print(f"✅ [API] Trail mode set to: {cs.trail_mode} (mult={cs.atr_multiplier})")
