@@ -29,10 +29,11 @@ Removed (overlapping or redundant):
   - price_rejection   → covered by obv_divergence
   - macd_momentum     → covered by supertrend
   - bb_squeeze        → covered by orb + volume_spike
-  - candlestick_patt  → high noise, low edge alone
-  - chart_patterns    → too similar to orb + volume_spike
   - pdhl_breakout     → covered by volume_profile HVN
   - first_candle_range→ covered by orb
+
+Active VWAP strategy (NEW):
+  - vwap_breakout     → VWAP cross with institutional volume (genuinely new edge)
 """
 
 # ── Time-gated strategies ─────────────────────────────────────────────────
@@ -54,3 +55,6 @@ import strategies.camarilla_pivots     # noqa: F401 — pivot level plays
 # ── Chart & Candlestick patterns ─────────────────────────────────────────
 import strategies.chart_patterns       # noqa: F401 — flag, triangle, double top/bottom
 import strategies.candlestick_patterns # noqa: F401 — engulfing, hammer, star, harami
+
+# ── VWAP ─────────────────────────────────────────────────────────────────
+import strategies.vwap_breakout        # noqa: F401 — VWAP cross with institutional volume

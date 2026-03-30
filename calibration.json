@@ -98,5 +98,15 @@
     "trades_per_day": 3.0,
     "source": "zerodha_60d_backtest",
     "note": "Real backtest 2026-01 to 2026-03, 5m candles, SL=30 Trail=15 RR=2.0"
+  },
+  "vwap_breakout": {
+    "win_rate": 58.0,
+    "total_trades": 7,
+    "profit_factor": 0.8,
+    "avg_win_pts": 32.2,
+    "avg_loss_pts": -30.0,
+    "trades_per_day": 0.17,
+    "source": "zerodha_60d_backtest_conservative",
+    "note": "SMALL SAMPLE (7 trades). Tested in Jan-Mar 2026 bear crash (26K->22.8K). Long VWAP crosses fail in sustained downtrends \u2014 unfair test. Conservative calibration at 58% pending more data."
   }
 }

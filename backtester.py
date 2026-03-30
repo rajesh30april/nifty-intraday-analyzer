@@ -86,15 +86,37 @@ def _fetch_data(data_source: str, interval: str, period: str) -> tuple[pd.DataFr
         from kite_integration import kite_manager
         if not kite_manager.is_authenticated:
             raise ValueError("Zerodha not logged in. Please login via the Auto-Trader tab first.")
-        # Convert period to days
-        period_days = {
-            "5d": 5, "30d": 30, "60d": 60, "90d": 60,  # Zerodha max is 60 days
-            "6mo": 60, "1y": 60,
+
+        # Zerodha historical data limits (calendar days, not trading days):
+        #   minute:              60 days
+        #   3min / 5min:        100 days
+        #   15min:              200 days
+        #   30min / 60min:      400 days
+        #   day:               2000 days (full history)
+        _interval_max_days = {
+            "1m":  60,  "3m": 100, "5m": 100,
+            "15m": 200, "30m": 400, "1h": 400,
+            "day": 2000,
         }
-        days = period_days.get(period, 30)
-        # Convert interval to Zerodha format
-        interval_map = {"1m": "minute", "3m": "3minute", "5m": "5minute",
-                        "15m": "15minute", "30m": "30minute", "1h": "60minute"}
+        _max_days = _interval_max_days.get(interval, 100)
+
+        period_days = {
+            "5d":  5,   "30d": 30,  "60d": 60,
+            "90d": 90,  "6mo": 180, "1y":  365,
+            "2y":  730, "3y": 1095, "5y": 1825,
+        }
+        requested = period_days.get(period, 30)
+        days = min(requested, _max_days)
+        if days < requested:
+            print(f"⚠️  Zerodha caps {interval} at {_max_days} days (requested {requested}d → using {days}d)")
+
+        # Interval mapping: our keys → Zerodha keys
+        interval_map = {
+            "1m":  "minute",    "3m":  "3minute",
+            "5m":  "5minute",   "15m": "15minute",
+            "30m": "30minute",  "1h":  "60minute",
+            "day": "day",
+        }
         kite_interval = interval_map.get(interval, "5minute")
         raw = kite_manager.get_historical_data(interval=kite_interval, days=days)
         if not raw:
@@ -123,6 +145,11 @@ def run_backtest(
     strategy_id: str = "smart_router",
     data_source: str = "yahoo",
     quantity: int = QUANTITY,
+    enabled_strategies: list[str] | None = None,  # 🎯 NEW! Strategy filter
+    strike_offset: int = 0,  # ⚡ NEW! Strike offset (ITM/OTM)
+    trail_mode: str = "fixed",  # 🎯 NEW! Trail mode (fixed, atr0.4, atr0.7, etc.)
+    max_daily_loss: float = 0.0,  # 🚫 NEW! Max daily loss limit
+    cooldown_minutes: int = 0,  # ⏳ NEW! Cooldown after exit (in minutes)
     on_progress: Callable[[dict], None] | None = None,
     _cached_df=None,   # pre-fetched DataFrame — skips network call
 ) -> BacktestResult:
@@ -136,6 +163,7 @@ def run_backtest(
         rr_ratio: Risk-reward ratio.
         max_trades_per_day: Max trades allowed per day.
         data_source: 'yahoo' | 'zerodha' | 'truedata'
+        enabled_strategies: List of strategy IDs to test (None = all). 🎯 NEW!
 
     Returns:
         BacktestResult with all trades and stats.
@@ -144,11 +172,25 @@ def run_backtest(
         if on_progress:
             on_progress(payload)
 
-    # '1d' = yesterday only — fetch 5d then filter to last completed trading day
-    fetch_period = "5d" if period == "1d" else period
+    # '1d' = yesterday only, '0d' = today only — fetch 5d then filter
+    fetch_period = "5d" if period in ["1d", "0d"] else period
+    
+    day_label = "today" if period == "0d" else "yesterday" if period == "1d" else period
 
-    _emit({"phase": "fetching", "pct": 0, "msg": f"Fetching {'yesterday' if period == '1d' else period} of {interval} data…"})
+    _emit({"phase": "fetching", "pct": 0, "msg": f"Fetching {day_label} of {interval} data…"})
     print(f"\n🔬 Fetching {fetch_period} of {interval} data from {data_source}...")
+    
+    # 🎯 Log enabled strategies
+    if strategy_id == "smart_router" and enabled_strategies:
+        print(f"🎯 [Backtest] Testing only: {', '.join(enabled_strategies)}")
+    elif strategy_id == "smart_router":
+        print(f"🎯 [Backtest] Testing ALL strategies")
+    
+    # 📦 Log NEW parameters
+    print(f"⚡ [Backtest] Strike Offset: {strike_offset} | Trail Mode: {trail_mode}")
+    print(f"🚫 [Backtest] Max Daily Loss: ₹{max_daily_loss:,.0f} | Cooldown: {cooldown_minutes}m")
+    print(f"🎯 [Backtest] SL: {sl_points}pts | Trail: {trailing_sl}pts | R:R: {rr_ratio}:1")
+    
     if _cached_df is not None and not _cached_df.empty:
         df, source_label = _cached_df, f"{data_source}(cached)"
     else:
@@ -160,20 +202,43 @@ def run_backtest(
     # Save full historical data for lookback
     full_historical_df = df.copy()
     
-    # Filter to yesterday only
-    if period == "1d":
+    # Filter to specific day (today or yesterday)
+    if period in ["0d", "1d"]:
         from datetime import date, timedelta
-        today      = date.today()
-        yesterday  = today - timedelta(days=1)
-        # Walk back to last weekday (skip weekends)
-        while yesterday.weekday() >= 5:
-            yesterday -= timedelta(days=1)
+        
+        target_date = date.today()
+        
+        # For yesterday, walk back one day
+        if period == "1d":
+            target_date = target_date - timedelta(days=1)
+            # Skip weekends (walk back to last weekday)
+            while target_date.weekday() >= 5:
+                target_date -= timedelta(days=1)
+        
         print(f"🔍 [DEBUG] Before filter: {len(df)} candles, first={df.index[0]}, last={df.index[-1]}")
-        print(f"🔍 [DEBUG] Filtering for date: {yesterday}")
-        df = df[df.index.date == yesterday]
+        print(f"🔍 [DEBUG] Filtering for date: {target_date} ({'today' if period == '0d' else 'yesterday'})")
+        
+        # Filter to target date
+        df = df[df.index.date == target_date]
+        
         if df.empty:
-            raise ValueError(f"No data for yesterday ({yesterday}) — market may have been closed")
-        print(f"✅ Filtered to yesterday: {yesterday} — {len(df)} candles")
+            # For yesterday, try to find the last available trading day
+            if period == "1d":
+                print(f"⚠️ No data for {target_date}, searching for last available trading day...")
+                # Get all unique dates in the data
+                available_dates = sorted(set(full_historical_df.index.date))
+                if available_dates:
+                    # Use the most recent date (last trading day)
+                    last_trading_day = available_dates[-1]
+                    df = full_historical_df[full_historical_df.index.date == last_trading_day]
+                    print(f"✅ Using last trading day: {last_trading_day} — {len(df)} candles")
+                else:
+                    raise ValueError(f"No trading data available in last 5 days")
+            else:
+                raise ValueError(f"No data for today ({target_date}) — market may not be open yet")
+        else:
+            print(f"✅ Filtered to {target_date} ({'today' if period == '0d' else 'yesterday'}) — {len(df)} candles")
+        
         if len(df) > 0:
             print(f"🔍 [DEBUG] After filter: first={df.index[0].strftime('%H:%M')}, last={df.index[-1].strftime('%H:%M')}")
             print(f"🔍 [DEBUG] Full historical data: {len(full_historical_df)} candles for lookback")
@@ -206,6 +271,10 @@ def run_backtest(
             use_router=use_router,
             strategy_id=strategy_id,
             quantity=quantity,
+            enabled_strategies=enabled_strategies,  # 🎯 Pass filter!
+            trail_mode=trail_mode,  # 🎯 NEW!
+            max_daily_loss=max_daily_loss,  # 🚫 NEW!
+            cooldown_minutes=cooldown_minutes,  # ⏳ NEW!
         )
         pct = 5 + int(90 * (idx + 1) / total_days)
         _emit({"phase": "running", "pct": pct,
@@ -228,6 +297,10 @@ def _backtest_day(
     use_router: bool = True,
     strategy_id: str = "smart_router",
     quantity: int = QUANTITY,
+    enabled_strategies: list[str] | None = None,  # 🎯 Strategy filter
+    trail_mode: str = "fixed",  # 🎯 Trail mode
+    max_daily_loss: float = 0.0,  # 🚫 Max daily loss
+    cooldown_minutes: int = 0,  # ⏳ Cooldown after exit
 ):
     """Backtest a single trading day."""
     print(f"\n🔍 [DEBUG] _backtest_day for {date_str}")
@@ -283,17 +356,61 @@ def _backtest_day(
 
         # If in trade — manage SL / target
         if in_trade:
-            # Trailing SL
+            # ── UPDATE HIGHEST/LOWEST (used for trailing activation gate) ──
+            highest = max(highest, high)
+            lowest = min(lowest, low)
+            
+            # ── TRAILING SL LOGIC (MATCHES LIVE TRADER!) ──
+            # Critical: Trail only activates AFTER price moves trailing_sl in our favor
+            # This protects the initial SL buffer and prevents premature stops
+            MIN_SL_DISTANCE = 30  # Minimum 30 Nifty points (safety check)
+            
+            new_sl = None
+            if trail_mode == "fixed":
+                # Fixed mode: Requires activation gate (same as live trader!)
+                if direction == "long":
+                    activated = highest >= entry_price + trailing_sl
+                    new_sl = (highest - trailing_sl) if activated else None
+                else:
+                    activated = lowest <= entry_price - trailing_sl
+                    new_sl = (lowest + trailing_sl) if activated else None
+            elif trail_mode in ("atr0.4", "atr0.7", "atr1.5", "atr2.0"):
+                # ATR-based trailing (extract multiplier)
+                multiplier = float(trail_mode.replace("atr", ""))
+                atr_val = full_df["atr"].iloc[-1] if "atr" in full_df.columns else 0
+                if atr_val > 0:
+                    trail_distance = atr_val * multiplier
+                    if direction == "long":
+                        activated = highest >= entry_price + trail_distance
+                        new_sl = (highest - trail_distance) if activated else None
+                    else:
+                        activated = lowest <= entry_price - trail_distance
+                        new_sl = (lowest + trail_distance) if activated else None
+            elif trail_mode == "supertrend":
+                # Supertrend-based trailing (use supertrend line as SL)
+                if "supertrend" in full_df.columns:
+                    st_val = full_df["supertrend"].iloc[-1]
+                    if direction == "long" and st_val < price:
+                        new_sl = st_val
+                    elif direction == "short" and st_val > price:
+                        new_sl = st_val
+            
+            # Apply SL move with safety checks (same as live trader!)
+            if new_sl is not None:
+                current_distance = abs(price - new_sl)
+                # Safety check: Don't allow SL closer than MIN_SL_DISTANCE
+                if current_distance >= MIN_SL_DISTANCE:
+                    if direction == "long" and new_sl > stop_loss:
+                        stop_loss = new_sl
+                    elif direction == "short" and new_sl < stop_loss:
+                        stop_loss = new_sl
+            
+            # Check SL hit
             if direction == "long":
-                highest = max(highest, high)
-                new_sl = highest - trailing_sl
-                if new_sl > stop_loss:
-                    stop_loss = new_sl
-                # Check SL hit
                 if low <= stop_loss:
                     exit_price = stop_loss
                     pnl_pts = _calc_pnl(direction, entry_price, exit_price)
-                    reason = "Trailing SL" if new_sl > entry_price - sl_points else "SL"
+                    reason = "Trailing SL" if stop_loss > entry_price - sl_points else "SL"
                     trade = _make_trade(
                         date_str, direction, entry_time,
                         df.index[i].strftime("%H:%M"),
@@ -322,14 +439,11 @@ def _backtest_day(
                     last_exit_ts = i
                     continue
             else:  # short
-                lowest = min(lowest, low)
-                new_sl = lowest + trailing_sl
-                if new_sl < stop_loss:
-                    stop_loss = new_sl
+                # Check SL hit
                 if high >= stop_loss:
                     exit_price = stop_loss
                     pnl_pts = _calc_pnl(direction, entry_price, exit_price)
-                    reason = "Trailing SL" if new_sl < entry_price + sl_points else "SL"
+                    reason = "Trailing SL" if stop_loss < entry_price + sl_points else "SL"
                     trade = _make_trade(
                         date_str, direction, entry_time,
                         df.index[i].strftime("%H:%M"),
@@ -342,6 +456,7 @@ def _backtest_day(
                     in_trade = False
                     last_exit_ts = i
                     continue
+                # Check target hit
                 if low <= target:
                     pnl_pts = _calc_pnl(direction, entry_price, target)
                     trade = _make_trade(
@@ -362,13 +477,22 @@ def _backtest_day(
         if trades_today >= max_trades:
             continue  # Max trades hit, skip evaluation
 
-        # Cooldown check — 5-min candles, 1 candle = 5 min
+        # ⏳ Cooldown check — 5-min candles, cooldown_minutes converted to candles
         current_ts = df.index[i]
-        if last_exit_ts is not None:
+        if last_exit_ts is not None and cooldown_minutes > 0:
             elapsed_candles = i - last_exit_ts
-            if elapsed_candles < 1:   # minimum 1 candle gap (= 5 min)
+            required_candles = cooldown_minutes // 5  # Convert minutes to 5-min candles
+            if elapsed_candles < required_candles:
                 if i < 5:  # Only log early skips
-                    print(f"⏭️  [SKIP] {df.index[i].strftime('%H:%M')} - Cooldown ({elapsed_candles} candles since last exit)")
+                    print(f"⏭️  [SKIP] {df.index[i].strftime('%H:%M')} - Cooldown ({elapsed_candles * 5}m / {cooldown_minutes}m)")
+                continue
+        
+        # 🚫 Max daily loss check — block new entries if loss exceeds limit
+        if max_daily_loss > 0:
+            daily_pnl = sum(t.pnl_rupees for t in result.trades if t.date == date_str)
+            if daily_pnl < -max_daily_loss:
+                if i < 5:  # Only log once
+                    print(f"🚫 [BLOCKED] Max daily loss hit: ₹{daily_pnl:,.0f} / ₹{-max_daily_loss:,.0f} limit")
                 continue
         lookback_df = full_df[full_df.index <= current_ts]
 
@@ -377,7 +501,7 @@ def _backtest_day(
         if strategy_id == "smart_router" or strategy_id == "meta_router":
             # ── Smart router / Meta router (evaluate all strategies) ────
             from strategy_meta_router import evaluate_all  # noqa: PLC0415
-            meta_result = evaluate_all(lookback_df)
+            meta_result = evaluate_all(lookback_df, enabled_strategies=enabled_strategies)  # 🎯 Pass filter!
             signal = meta_result.signal
         elif strategy_id == "old_router":
             # ── Old winner-takes-all via route_strategy ─────────
@@ -544,6 +668,7 @@ def replay_day(
     max_trades: int = 3,
     data_source: str = "yahoo",
     quantity: int = QUANTITY,
+    enabled_strategies: list[str] | None = None,  # 🎯 NEW!
     on_progress: Callable[[dict], None] | None = None,
 ) -> dict:
     """Replay a single trading day candle-by-candle.
@@ -634,7 +759,7 @@ def replay_day(
             # Regime from meta router (best effort)
             if strategy_id == "smart_router":
                 from strategy_meta_router import evaluate_all
-                meta = evaluate_all(lookback_df)
+                meta = evaluate_all(lookback_df, enabled_strategies=enabled_strategies)  # 🎯 Pass filter!
                 regime_str  = meta.regime
                 strat_name  = meta.selected_strategy or strat_name
                 strat_emoji = meta.selected_emoji or strat_emoji

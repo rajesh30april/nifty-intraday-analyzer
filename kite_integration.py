@@ -24,11 +24,56 @@ API_SECRET = os.getenv("KITE_API_SECRET", "")
 # So we explicitly set NO proxy for Kite requests.
 NO_PROXY_FOR_KITE = {"http": None, "https": None}
 
-# Nifty 50 instrument token (NSE index)
-NIFTY_INSTRUMENT_TOKEN = 256265
+# Nifty 50 SPOT index token (NSE) — volumes are always 0 for indices!
+# Used only as a fallback when futures lookup fails.
+_NIFTY_SPOT_TOKEN = 256265
 
 # File to persist session token across restarts
 SESSION_FILE = Path(__file__).parent / ".kite_session.json"
+
+# Cache for futures token so we don't hammer the instruments API
+_NIFTY_FUT_TOKEN_CACHE: dict = {"token": None, "fetched_on": None}
+
+
+def _get_nifty_futures_token(kite: "KiteConnect") -> int:
+    """Return the nearest-expiry Nifty futures instrument token.
+
+    Nifty futures have real volume data; the spot index does NOT.
+    Result is cached for the trading day to avoid repeated API calls.
+    """
+    from datetime import date
+
+    today = date.today()
+    cache = _NIFTY_FUT_TOKEN_CACHE
+
+    if cache["token"] and cache["fetched_on"] == today:
+        return cache["token"]
+
+    try:
+        instruments = kite.instruments("NFO")
+        nifty_futs = [
+            i for i in instruments
+            if i.get("name") == "NIFTY"
+            and i.get("instrument_type") == "FUT"
+            and i.get("segment") == "NFO-FUT"
+        ]
+        if not nifty_futs:
+            print("⚠️  No Nifty futures found — falling back to spot index (no volume)")
+            return _NIFTY_SPOT_TOKEN
+
+        # Pick nearest upcoming expiry
+        near = min(nifty_futs, key=lambda x: x["expiry"])
+        token = near["instrument_token"]
+        expiry = near["expiry"]
+        print(f"📅 Nifty futures token: {token} (expiry {expiry}, {near['tradingsymbol']})")
+
+        cache["token"] = token
+        cache["fetched_on"] = today
+        return token
+
+    except Exception as e:
+        print(f"⚠️  Futures token lookup failed ({e}) — using spot index (no volume)")
+        return _NIFTY_SPOT_TOKEN
 
 
 def _make_timeout_request(session, timeout: int):
@@ -248,22 +293,49 @@ class KiteManager:
         self,
         interval: str = "5minute",
         days: int = 5,
+        use_futures: bool | None = None,
     ) -> list[dict]:
         """Fetch historical candle data from Kite.
 
+        Strategy:
+          - Intraday intervals (1m/3m/5m/15m/30m/60m) → Nifty FUTURES
+            → Real volume, up to ~100-400 days depending on interval.
+          - Daily candles → Nifty SPOT INDEX
+            → Volume is 0 for the index but OHLC goes back 2000+ days.
+            → Use for long-term strategy testing where volume isn't critical.
+
+        You can override with use_futures=True/False.
+
+        Zerodha intraday limits:
+          minute:            60 days
+          3min/5min:        100 days
+          15min:            200 days
+          30min/60min:      400 days
+          day:             2000 days
+
         Args:
-            interval: 'minute', '3minute', '5minute', '15minute', '30minute', '60minute', 'day'
-            days: Number of days of history.
+            interval:     Kite interval string.
+            days:         Number of calendar days to go back.
+            use_futures:  Override auto-selection of instrument.
         """
         if not self.is_authenticated:
             return []
 
-        to_date = datetime.now()
+        # Auto-select: futures for intraday (volume!), spot for daily (history!)
+        _intraday = interval not in ("day", "week")
+        if use_futures is None:
+            use_futures = _intraday
+
+        token = _get_nifty_futures_token(self.kite) if use_futures else _NIFTY_SPOT_TOKEN
+        if not use_futures and interval == "day":
+            print(f"📅 Daily candles: using Nifty SPOT index (full 2-year history, no volume)")
+
+        to_date   = datetime.now()
         from_date = to_date - timedelta(days=days)
 
         try:
             data = self.kite.historical_data(
-                instrument_token=NIFTY_INSTRUMENT_TOKEN,
+                instrument_token=token,
                 from_date=from_date,
                 to_date=to_date,
                 interval=interval,
