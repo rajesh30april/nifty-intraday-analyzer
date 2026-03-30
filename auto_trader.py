@@ -750,6 +750,7 @@ def _is_market_hours() -> bool:
 
 # CAPITAL moved to line 39 as DEFAULT_CAPITAL; LOT_SIZE consolidated below
 LOT_SIZE = int(os.getenv("LOT_SIZE", "65"))  # Nifty lot size (65 as of Apr 2025 SEBI revision)
+NSE_FREEZE_QTY = 1690  # NSE per-order freeze quantity for Nifty options (26 lots × 65)
 
 
 # Cache instruments to avoid repeated API calls
@@ -887,7 +888,13 @@ def _get_option_symbol(
 
 def _place_order(symbol: str, direction: Direction,
                  quantity: int, price: float) -> str | None:
-    """Place order via Zerodha or simulate in paper mode."""
+    """Place order via Zerodha or simulate in paper mode.
+
+    Automatically splits into multiple orders if quantity exceeds
+    NSE_FREEZE_QTY (1690 units = 26 lots). NSE rejects any single
+    order above this limit. Returns the first order ID as the
+    primary tracking ID.
+    """
     if state.is_paper_mode:
         order_id = f"PAPER-{datetime.now().strftime('%H%M%S')}"
         print(f"📝 [PAPER] {direction.value.upper()} {quantity}x {symbol} @ ₹{price:.2f}")
@@ -901,29 +908,47 @@ def _place_order(symbol: str, direction: Direction,
     except Exception:
         available = 0  # proceed, order will fail at exchange if insufficient
 
+    # ── Split into NSE freeze-quantity chunks if needed ────────
+    # NSE rejects any single F&O order above NSE_FREEZE_QTY units.
+    # We fire multiple orders and return the first order ID.
+    chunks: list[int] = []
+    remaining = quantity
+    while remaining > 0:
+        chunks.append(min(remaining, NSE_FREEZE_QTY))
+        remaining -= NSE_FREEZE_QTY
+
+    if len(chunks) > 1:
+        print(f"📦 Qty {quantity} > freeze limit {NSE_FREEZE_QTY} — splitting into {len(chunks)} orders: {chunks}")
+
     # LIVE ORDER via Kite Connect
     # LONG = BUY CE option  (bullish: buying a call)
     # SHORT = BUY PE option (bearish: buying a put)
     # Both directions are OPTION BUYER entries — always BUY at entry.
     # The direction only controls WHICH option we buy (CE vs PE),
     # resolved in _get_option_symbol BEFORE this function is called.
-    try:
-        order_id = kite_manager.kite.place_order(
-            variety=kite_manager.kite.VARIETY_REGULAR,
-            exchange="NFO",
-            tradingsymbol=symbol,   # already clean — no "NFO:" prefix
-            transaction_type=kite_manager.kite.TRANSACTION_TYPE_BUY,
-            quantity=quantity,
-            product=kite_manager.kite.PRODUCT_MIS,   # Intraday MIS
-            order_type=kite_manager.kite.ORDER_TYPE_MARKET,
-            validity="DAY",
-        )
-        print(f"✅ [LIVE] BUY {quantity}x {symbol} | ID: {order_id}")
-        return str(order_id)
-    except Exception as e:
-        print(f"❌ [LIVE] Order failed: {e}")
-        state.last_signal_reason = f"❌ Order failed: {e}"
-        return None
+    first_order_id: str | None = None
+    for i, chunk_qty in enumerate(chunks, 1):
+        try:
+            order_id = kite_manager.kite.place_order(
+                variety=kite_manager.kite.VARIETY_REGULAR,
+                exchange="NFO",
+                tradingsymbol=symbol,   # already clean — no "NFO:" prefix
+                transaction_type=kite_manager.kite.TRANSACTION_TYPE_BUY,
+                quantity=chunk_qty,
+                product=kite_manager.kite.PRODUCT_MIS,   # Intraday MIS
+                order_type=kite_manager.kite.ORDER_TYPE_MARKET,
+                validity="DAY",
+            )
+            print(f"✅ [LIVE] BUY chunk {i}/{len(chunks)}: {chunk_qty}x {symbol} | ID: {order_id}")
+            if first_order_id is None:
+                first_order_id = str(order_id)
+        except Exception as e:
+            print(f"❌ [LIVE] Order chunk {i}/{len(chunks)} failed: {e}")
+            state.last_signal_reason = f"❌ Order chunk {i} failed: {e}"
+            # Return whatever we have — partial fill is better than nothing
+            return first_order_id
+
+    return first_order_id
 
 
 def _estimate_option_sl_trigger(sl_points: float, entry_premium: float) -> float:
@@ -945,11 +970,15 @@ def _estimate_option_sl_trigger(sl_points: float, entry_premium: float) -> float
 
 
 def _place_sl_order(trade: "Trade", sl_trigger_price: float) -> str | None:
-    """Place a Stop-Loss Market (SL-M) order at the exchange.
+    """Place a Stop-Loss (SL-L) backstop order at the exchange.
 
     This is a CRASH BACKSTOP — placed once at entry, never updated.
     The tick guard handles all active SL management (no API calls).
     This only fires if the app dies and the exchange holds the order.
+
+    Automatically splits into NSE_FREEZE_QTY chunks if quantity > 1690.
+    Multiple SL order IDs are stored comma-separated in trade.sl_order_id
+    so _cancel_sl_order can cancel ALL chunks on exit.
     """
     if trade.paper:
         fake_id = f"SL-PAPER-{datetime.now().strftime('%H%M%S')}"
@@ -971,29 +1000,46 @@ def _place_sl_order(trade: "Trade", sl_trigger_price: float) -> str | None:
         sl_trigger_price = _snap(sl_trigger_price)
         sl_limit_price   = _snap(max(0.5, sl_trigger_price - 3.0))
 
-        order_id = kite_manager.kite.place_order(
-            variety=kite_manager.kite.VARIETY_REGULAR,
-            exchange="NFO",
-            tradingsymbol=clean,
-            transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
-            quantity=trade.quantity,
-            product=kite_manager.kite.PRODUCT_MIS,
-            order_type=kite_manager.kite.ORDER_TYPE_SL,
-            trigger_price=sl_trigger_price,
-            price=sl_limit_price,
-            validity="DAY",
-        )
-        print(f"🛡 [LIVE] SL backstop placed @ trigger=₹{sl_trigger_price:.2f} limit=₹{sl_limit_price:.2f} | ID: {order_id}")
-        return str(order_id)
+        # Split into freeze-qty chunks
+        chunks: list[int] = []
+        remaining = trade.quantity
+        while remaining > 0:
+            chunks.append(min(remaining, NSE_FREEZE_QTY))
+            remaining -= NSE_FREEZE_QTY
+
+        if len(chunks) > 1:
+            print(f"📦 SL qty {trade.quantity} > freeze limit — splitting into {len(chunks)} SL orders: {chunks}")
+
+        order_ids: list[str] = []
+        for i, chunk_qty in enumerate(chunks, 1):
+            order_id = kite_manager.kite.place_order(
+                variety=kite_manager.kite.VARIETY_REGULAR,
+                exchange="NFO",
+                tradingsymbol=clean,
+                transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
+                quantity=chunk_qty,
+                product=kite_manager.kite.PRODUCT_MIS,
+                order_type=kite_manager.kite.ORDER_TYPE_SL,
+                trigger_price=sl_trigger_price,
+                price=sl_limit_price,
+                validity="DAY",
+            )
+            print(f"🛡 [LIVE] SL chunk {i}/{len(chunks)}: {chunk_qty}x @ trigger=₹{sl_trigger_price:.2f} limit=₹{sl_limit_price:.2f} | ID: {order_id}")
+            order_ids.append(str(order_id))
+
+        # Store all IDs comma-separated — _cancel_sl_order handles splitting
+        return ",".join(order_ids)
+
     except Exception as e:
-        print(f"⚠️  SL-M order failed (tick guard still protects): {e}")
+        print(f"⚠️  SL order failed (tick guard still protects): {e}")
         return None
 
 
 def _cancel_sl_order(trade: "Trade") -> None:
-    """Cancel the standing SL-M backstop order before placing an exit.
+    """Cancel ALL standing SL backstop orders before placing an exit.
 
     MUST be called before any exit order to prevent double-fill.
+    Handles comma-separated IDs for chunked orders (qty > NSE_FREEZE_QTY).
     """
     if not trade.sl_order_id or trade.paper:
         trade.sl_order_id = None
@@ -1001,16 +1047,19 @@ def _cancel_sl_order(trade: "Trade") -> None:
     if trade.sl_order_id.startswith("SL-PAPER"):
         trade.sl_order_id = None
         return
-    try:
-        kite_manager.kite.cancel_order(
-            variety=kite_manager.kite.VARIETY_REGULAR,
-            order_id=trade.sl_order_id,
-        )
-        print(f"🗑 SL-M backstop {trade.sl_order_id} cancelled")
-    except Exception as e:
-        print(f"⚠️  Could not cancel SL-M {trade.sl_order_id}: {e}")
-    finally:
-        trade.sl_order_id = None
+
+    # Support comma-separated IDs from chunked SL placement
+    order_ids = [oid.strip() for oid in trade.sl_order_id.split(",") if oid.strip()]
+    for oid in order_ids:
+        try:
+            kite_manager.kite.cancel_order(
+                variety=kite_manager.kite.VARIETY_REGULAR,
+                order_id=oid,
+            )
+            print(f"🗑 SL backstop {oid} cancelled")
+        except Exception as e:
+            print(f"⚠️  Could not cancel SL {oid}: {e}")
+    trade.sl_order_id = None
 
 
 def _compute_option_trigger_for_nifty_sl(nifty_sl: float) -> float:
@@ -1130,18 +1179,28 @@ def _exit_position(reason: str, current_price: float):
     )
 
     if not state.is_paper_mode:
+        # Split exit into NSE freeze-qty chunks if needed
+        exit_chunks: list[int] = []
+        _rem = trade.quantity
+        while _rem > 0:
+            exit_chunks.append(min(_rem, NSE_FREEZE_QTY))
+            _rem -= NSE_FREEZE_QTY
+        if len(exit_chunks) > 1:
+            print(f"📦 Exit qty {trade.quantity} > freeze limit — splitting into {len(exit_chunks)} exit orders")
         try:
-            # Option buyer: always SELL to close the long option position.
-            kite_manager.kite.place_order(
-                variety=kite_manager.kite.VARIETY_REGULAR,
-                exchange="NFO",
-                tradingsymbol=sym_clean,
-                transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
-                quantity=trade.quantity,
-                product=kite_manager.kite.PRODUCT_MIS,
-                order_type=kite_manager.kite.ORDER_TYPE_MARKET,
-                validity="DAY",
-            )
+            for _i, _chunk in enumerate(exit_chunks, 1):
+                # Option buyer: always SELL to close the long option position.
+                kite_manager.kite.place_order(
+                    variety=kite_manager.kite.VARIETY_REGULAR,
+                    exchange="NFO",
+                    tradingsymbol=sym_clean,
+                    transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
+                    quantity=_chunk,
+                    product=kite_manager.kite.PRODUCT_MIS,
+                    order_type=kite_manager.kite.ORDER_TYPE_MARKET,
+                    validity="DAY",
+                )
+                print(f"✅ [EXIT] Chunk {_i}/{len(exit_chunks)}: SELL {_chunk}x {sym_clean}")
         except Exception as e:
             err_str = str(e).lower()
 
