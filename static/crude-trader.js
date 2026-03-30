@@ -1189,6 +1189,18 @@ function _renderCrudePositionBanner(at, d) {
     _setText('ct-tgt',       at.target      != null ? `₹${at.target}`     : '--');
     _setText('ct-qty',       qty != null ? `${qty} lot${qty !== 1 ? 's' : ''}` : '--');
     _setText('ct-exit-time', d.exit_time ?? '--');
+
+    // ✅ Order ID — lets user cross-check against Zerodha order book
+    const oidEl = document.getElementById('at-order-id');
+    if (oidEl) {
+        const oid = at.order_id;
+        oidEl.textContent = oid ? oid : (at.paper ? 'PAPER' : 'not found');
+        oidEl.title       = oid ? `Zerodha order ID: ${oid}` : 'No order ID — may have been placed before tracking';
+        oidEl.className   = oid
+            ? 'text-[9px] font-mono text-blue-400 truncate w-full text-center cursor-pointer'
+            : 'text-[9px] font-mono text-yellow-500 truncate w-full text-center';
+        if (oid) oidEl.onclick = () => navigator.clipboard?.writeText(oid).then(() => _crudeToast(`📋 Order ID copied: ${oid}`, 'ok'));
+    }
 }
 
 function _setText(id, val, cls = '') {

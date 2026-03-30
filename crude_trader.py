@@ -267,10 +267,32 @@ def _recover_snapshot():
         # tgt_premium: None is valid (no target set)
         trade = CrudeTrade(**trade_data)
         state.active_trade        = trade
-        state.entry_crude_sl      = data.get('entry_crude_sl', trade.stop_loss)  # fallback to current SL
+        state.entry_crude_sl      = data.get('entry_crude_sl', trade.stop_loss)
         state.highest_since_entry = data.get('highest_since_entry', trade.entry_price)
         state.lowest_since_entry  = data.get('lowest_since_entry',  trade.entry_price)
-        print(f"🛢️  [Recovery] Crude trade restored: {trade.instrument} {trade.direction} | orig SL ₹{state.entry_crude_sl}")
+
+        # ✅ FIX 1: Restore is_running so the trader loop resumes immediately.
+        # Without this, the snapshot restores the trade position but the loop
+        # never runs — LTP never updates, SL never trails, exits never happen.
+        if data.get('is_running', False):
+            state.is_running  = True
+            state.kill_switch = False
+
+        # ✅ FIX 2: Fetch current option LTP right now via REST so P&L is
+        # immediately correct, not frozen at entry price until next tick.
+        try:
+            ltp = get_crude_option_ltp(trade.instrument)
+            if ltp and ltp > 0:
+                state.last_option_ltp = ltp
+                trade.peak_ltp = max(trade.peak_ltp or ep, ltp)
+                print(f"💹 [Recovery] Option LTP: ₹{ltp:.1f} (entry ₹{ep:.1f})")
+        except Exception:
+            pass  # non-fatal — tick loop will update on next cycle
+
+        oid = trade.order_id or '(not stored)'
+        print(f"🛢️  [Recovery] Crude trade restored: {trade.instrument} "
+              f"{trade.direction} | orig SL ₹{state.entry_crude_sl} "
+              f"| order {oid} | running={state.is_running}")
     except Exception as e:
         print(f"⚠️  Crude snapshot recovery failed: {e}")
 
@@ -1525,6 +1547,7 @@ def get_crude_status() -> dict:
             'entry_price': at.entry_price, 'entry_premium': at.entry_premium,
             'quantity': at.quantity, 'stop_loss': at.stop_loss,
             'target': at.target, 'paper': at.paper, 'status': at.status,
+            'order_id': at.order_id,                   # ✅ FIX 3: expose for Zerodha verification
             'pnl_unrealized': pnl,
             'last_ltp': ltp if ltp > 0 else None,
             # ── extra fields for the Nifty-style position banner ──

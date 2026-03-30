@@ -1108,10 +1108,12 @@
                       <div class="text-[10px] text-gray-500">Auto-Exit</div>
                       <div id="at-exit-time-badge" class="text-xs font-bold text-blue-300">--</div>
                     </div>
-                    <div class="bg-gray-900/60 rounded-lg p-2 flex items-center justify-center">
+                    <div class="bg-gray-900/60 rounded-lg p-2 flex flex-col items-center justify-center gap-1">
+                      <div class="text-[9px] text-gray-500">Zerodha Order</div>
+                      <div id="at-order-id" class="text-[9px] font-mono text-blue-400 truncate w-full text-center" title="Zerodha order ID">--</div>
                       <button onclick="syncFromZerodha()" title="Order placed in Zerodha but not showing here? Click to sync."
-                        class="text-[9px] font-bold text-gray-400 hover:text-[#ffc220] border border-gray-600 hover:border-[#ffc220] rounded px-2 py-1 transition-all leading-tight text-center">
-                        🔗 Sync<br>Zerodha
+                        class="text-[9px] font-bold text-gray-400 hover:text-[#ffc220] border border-gray-600 hover:border-[#ffc220] rounded px-2 py-0.5 transition-all leading-tight">
+                        🔗 Sync
                       </button>
                     </div>
                   </div>
