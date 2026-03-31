@@ -1585,21 +1585,22 @@ def _resolve_quantity(nifty_price: float, real_premium: float | None = None) -> 
         premium = _estimate_premium_fallback(nifty_price)
         source  = f"estimated ₹{premium:.1f} (0.35% of spot — Kite unavailable)"
 
-    # 🔧 FIX: Apply 2x safety margin for option margin requirements
-    MARGIN_MULTIPLIER = 2.0  # Zerodha margin ≈ 2× premium for options
-    
-    cost_per_lot = premium * LOT_SIZE * MARGIN_MULTIPLIER
-    lots = int(state.capital / cost_per_lot)  # Floor division, no max()!
-    
+    # Option BUYING on Zerodha: you pay exactly premium × quantity upfront.
+    # NO margin multiplier — that only applies to option SELLING/writing.
+    # The balance page (/api/auto-trader/zerodha-balance) also uses 1×.
+    # A 2× multiplier here was cutting lots in HALF — fixed.
+    cost_per_lot = premium * LOT_SIZE          # e.g. ₹100 × 65 = ₹6,500 per lot
+    lots = int(state.capital / cost_per_lot)   # floor division
+
     # Prevent trading if insufficient capital for even 1 lot
     if lots < 1:
-        print(f"⚠️  Insufficient capital: need ₹{cost_per_lot:,.0f}/lot (with {MARGIN_MULTIPLIER}x margin), "
+        print(f"⚠️  Insufficient capital: need ₹{cost_per_lot:,.0f}/lot, "
               f"have ₹{state.capital:,.0f} → SKIPPING TRADE")
         return (0, cost_per_lot)
-    
-    qty  = lots * LOT_SIZE
+
+    qty = lots * LOT_SIZE
     print(f"📐 Capital mode: ₹{state.capital:,.0f} ÷ "
-          f"(₹{cost_per_lot:.0f}/lot via {source} × {MARGIN_MULTIPLIER}x margin) = {lots} lots → {qty} units")
+          f"₹{cost_per_lot:.0f}/lot (via {source}) = {lots} lots → {qty} units")
     return (qty, cost_per_lot)
 
 
