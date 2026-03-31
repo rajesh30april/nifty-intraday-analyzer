@@ -30,7 +30,7 @@
 .difficulty-advanced { background: #fce7f3; color: #9d174d; }
         /* Sidebar */
         .sidebar { width: 240px; min-height: calc(100vh - 120px); transition: width 0.2s; background: white; }
-        .sidebar-item { display: flex; align-items: center; gap: 12px; padding: 12px 20px; cursor: pointer;
+        .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; cursor: pointer;
                         border-left: 3px solid transparent; color: #6b7280; font-weight: 600; font-size: 14px; 
                         transition: all 0.2s ease; margin: 2px 8px; border-radius: 8px; }
         .sidebar-item:hover { background: linear-gradient(to right, #eff4ff, #f9fafb); color: #0053e2; }
@@ -39,6 +39,12 @@
         .sidebar-item .badge { font-size: 10px; padding: 2px 7px; border-radius: 9999px; font-weight: 700; }
         .page-section { display: none; }
         .page-section.active { display: block; animation: slide-in 0.3s ease-out; }
+        /* ── Sub-tab active states (Crude + Patterns) ───────────────── */
+        .crude-subtab-active, .pat-subtab-active {
+            background: #0053e2; color: #fff;
+            box-shadow: 0 2px 8px rgba(0,83,226,0.25);
+        }
+        .crude-subtab-active:hover, .pat-subtab-active:hover { background: #0047c7; }
         .ph-filter { cursor:pointer;border:1px solid #e5e7eb;padding:4px 12px;border-radius:9999px;
                      font-size:11px;font-weight:600;background:white;color:#374151;transition:all .2s;
                      box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
@@ -245,103 +251,82 @@
         <!-- Sidebar -->
         <nav class="sidebar border-r border-gray-200 shadow-sm flex-shrink-0 sticky top-[120px] self-start" aria-label="Main navigation">
             <div class="py-4">
-                <div class="px-5 mb-4">
-                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Navigation</p>
+
+                <!-- ─ Market ──────────────────────────────────────── -->
+                <div class="px-5 mb-2 mt-1">
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Market</p>
                 </div>
                 <div class="sidebar-item active" data-page="overview" onclick="switchPage('overview')">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                    </svg>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
                     <span>Overview</span>
                 </div>
                 <div class="sidebar-item" data-page="trend-health" onclick="switchPage('trend-health')">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
-                    </svg>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
                     <span>Trend Health</span>
                     <span id="sidebar-trend-badge" class="badge bg-gray-200 text-gray-500">--</span>
                 </div>
                 <div class="sidebar-item" data-page="charts" onclick="switchPage('charts')">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
-                    </svg>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
                     <span>Charts</span>
                 </div>
                 <div class="sidebar-item" data-page="trade-signal" onclick="switchPage('trade-signal')">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                    </svg>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                     <span>Trade Signal</span>
                     <span id="sidebar-signal-badge" class="badge bg-gray-200 text-gray-500">--</span>
                 </div>
-                
-                <div class="px-5 mt-6 mb-4">
-                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Automation</p>
+
+                <!-- ─ Trading ──────────────────────────────────────── -->
+                <div class="px-5 mb-2 mt-5">
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Trading</p>
                 </div>
                 <div class="sidebar-item" data-page="auto-trader" onclick="switchPage('auto-trader')">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-                    </svg>
-                    <span>Auto-Trader</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                    <span>Nifty Auto-Trader</span>
                     <span id="sidebar-at-badge" class="badge bg-gray-200 text-gray-500">⏸</span>
                 </div>
                 <div class="sidebar-item" data-page="crude-trader" onclick="switchPage('crude-trader')">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
-                    </svg>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
                     <span>Crude Oil AT</span>
                     <span id="sidebar-crude-badge" class="badge bg-gray-200 text-gray-500">⏸</span>
                 </div>
-                <div class="sidebar-item" data-page="crude-chart" onclick="switchPage('crude-chart'); initCrudeChart()">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                    </svg>
-                    <span>Crude Live Chart</span>
-                </div>
-                <div class="sidebar-item" data-page="live-monitor" onclick="switchPage('live-monitor')">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                    </svg>
-                    <span>Live Monitor</span>
-                    <span id="lm-sidebar-dot" class="ml-auto w-2 h-2 rounded-full bg-gray-300"></span>
-                </div>
-                
-                <div class="px-5 mt-6 mb-4">
-                    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Tools</p>
-                </div>
-                <div class="sidebar-item" data-page="backtester" onclick="switchPage('backtester')">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                    </svg>
-                    <span>Backtester</span>
-                </div>
-                <div class="sidebar-item" data-page="learn" onclick="switchPage('learn')">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
-                    </svg>
-                    <span>Learn</span>
+
+                <!-- ─ Research ─────────────────────────────────────── -->
+                <div class="px-5 mb-2 mt-5">
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Research</p>
                 </div>
                 <div class="sidebar-item" data-page="patterns" onclick="switchPage('patterns')">
-                    <span>📊</span><span>Pattern Finder</span>
-                    <span class="ml-auto text-[9px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.5 rounded">60d</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    <span>Patterns</span>
+                    <span class="ml-auto text-[9px] bg-[#e8eefb] text-[#0053e2] font-bold px-1.5 py-0.5 rounded">60d</span>
                 </div>
-                <a href="/pattern-charts" target="_blank" class="sidebar-item" style="text-decoration: none;">
-                    <span>📈</span><span>Pattern Charts</span>
-                    <span class="ml-auto text-[9px] bg-blue-100 text-[#003db3] font-bold px-1.5 py-0.5 rounded">VISUAL</span>
-                </a>
-                <a href="/patterns-guide" target="_blank" class="sidebar-item" style="text-decoration: none;">
-                    <span>🎓</span><span>Pattern Guide</span>
-                    <span class="ml-auto text-[9px] bg-yellow-100 text-yellow-700 font-bold px-1.5 py-0.5 rounded">HOW</span>
-                </a>
-                <div class="sidebar-item" data-page="paper-trader" onclick="switchPage('paper-trader'); loadPaperTrader()">
-                    <span>📋</span><span>Paper Trader</span>
-                    <span id="paper-open-badge" class="ml-auto hidden text-[9px] bg-green-100 text-green-700 font-bold px-1.5 py-0.5 rounded">0</span>
+                <div class="sidebar-item" data-page="backtester" onclick="switchPage('backtester')">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                    <span>Backtester</span>
+                </div>
+
+                <!-- ─ Reports ──────────────────────────────────────── -->
+                <div class="px-5 mb-2 mt-5">
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Reports</p>
                 </div>
                 <div class="sidebar-item" data-page="trade-report" onclick="switchPage('trade-report'); loadTradeReport()">
-                    <span>📊</span><span>Trade Report</span>
-                    <span class="ml-auto text-[9px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.5 rounded">NEW</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    <span>Trade Report</span>
                 </div>
+                <div class="sidebar-item" data-page="paper-trader" onclick="switchPage('paper-trader'); loadPaperTrader()">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                    <span>Paper Trader</span>
+                    <span id="paper-open-badge" class="ml-auto hidden text-[9px] bg-green-100 text-green-700 font-bold px-1.5 py-0.5 rounded">0</span>
+                </div>
+
+                <!-- ─ Learn ────────────────────────────────────────── -->
+                <div class="px-5 mb-2 mt-5">
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Learn</p>
+                </div>
+                <div class="sidebar-item" data-page="learn" onclick="switchPage('learn')">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                    <span>Learn</span>
+                </div>
+
             </div>
             <!-- Sidebar footer: quick stats -->
             <div class="border-t border-gray-200 p-3 mt-2">
@@ -350,6 +335,8 @@
                     <div class="bg-gray-50 rounded p-1.5 text-center"><div class="text-gray-400">Bias</div><div id="sidebar-bias" class="font-bold text-gray-600">--</div></div>
                     <div class="bg-gray-50 rounded p-1.5 text-center"><div class="text-gray-400">Conf</div><div id="sidebar-conf" class="font-bold text-gray-600">--</div></div>
                 </div>
+                <!-- Live monitor dot kept for JS compatibility -->
+                <span id="lm-sidebar-dot" class="hidden"></span>
             </div>
         </nav>
 
@@ -1857,6 +1844,30 @@
             <!-- ====== PAGE: Pattern Finder ====== -->
             <div id="page-patterns" class="page-section">
 
+              <!-- ── Sub-tab bar ─────────────────────────────────────────── -->
+              <div class="flex gap-1 mb-4 bg-white border border-gray-200 rounded-xl p-1 shadow-sm" role="tablist" aria-label="Patterns sub-tabs">
+                <button id="pat-subtab-btn-finder" onclick="switchPatternsTab('finder')"
+                  class="flex-1 px-3 py-2 rounded-lg text-sm font-bold transition pat-subtab-active"
+                  role="tab" aria-selected="true">
+                  <svg class="inline w-4 h-4 mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                  Finder
+                </button>
+                <button id="pat-subtab-btn-charts" onclick="switchPatternsTab('charts')"
+                  class="flex-1 px-3 py-2 rounded-lg text-sm font-bold transition text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                  role="tab" aria-selected="false">
+                  <svg class="inline w-4 h-4 mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+                  Visual Charts
+                </button>
+                <button id="pat-subtab-btn-guide" onclick="switchPatternsTab('guide')"
+                  class="flex-1 px-3 py-2 rounded-lg text-sm font-bold transition text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                  role="tab" aria-selected="false">
+                  <svg class="inline w-4 h-4 mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                  Guide
+                </button>
+              </div>
+
+              <!-- ── Finder body (existing content) ───────────────────────── -->
+              <div id="patterns-body-finder">
                 <!-- ── VIEW A: LIST ──────────────────────────────────── -->
                 <div id="ph-list-view">
 
@@ -1994,6 +2005,18 @@
 
                 </div><!-- /ph-detail-view -->
 
+              </div><!-- /patterns-body-finder -->
+
+              <!-- ── Visual Charts body (iframe) ─────────────────────── -->
+              <div id="patterns-body-charts" class="hidden">
+                <iframe id="pattern-charts-iframe" src="/pattern-charts" class="w-full rounded-xl border border-gray-200 shadow-sm" style="height:82vh; min-height:540px;" title="Pattern Visual Charts"></iframe>
+              </div>
+
+              <!-- ── Guide body (iframe) ──────────────────────────────── -->
+              <div id="patterns-body-guide" class="hidden">
+                <iframe id="patterns-guide-iframe" src="/patterns-guide" class="w-full rounded-xl border border-gray-200 shadow-sm" style="height:82vh; min-height:540px;" title="Pattern Trading Guide"></iframe>
+              </div>
+
             </div><!-- /page-patterns -->
 
 
@@ -2001,7 +2024,27 @@
             <!-- CRUDE OIL AUTO-TRADER                                   -->
             <!-- ═══════════════════════════════════════════════════════ -->
             <div id="page-crude-trader" class="page-section">
-              <!-- ═══ HEADER ══════════════════════════════════════════════════════ -->
+
+              <!-- ── Sub-tab bar ─────────────────────────────────────────── -->
+              <div class="flex gap-1 mb-4 bg-white border border-gray-200 rounded-xl p-1 shadow-sm" role="tablist" aria-label="Crude Oil sub-tabs">
+                <button id="crude-subtab-btn-trading" onclick="switchCrudeTab('trading')"
+                  class="flex-1 px-3 py-2 rounded-lg text-sm font-bold transition crude-subtab-active"
+                  role="tab" aria-selected="true">
+                  <svg class="inline w-4 h-4 mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                  Trading
+                </button>
+                <button id="crude-subtab-btn-chart" onclick="switchCrudeTab('chart')"
+                  class="flex-1 px-3 py-2 rounded-lg text-sm font-bold transition text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                  role="tab" aria-selected="false">
+                  <svg class="inline w-4 h-4 mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                  Live Chart
+                </button>
+              </div>
+
+              <!-- ── Trading body ─────────────────────────────────────────── -->
+              <div id="crude-body-trading">
+              <!-- ── original crude header starts here ── -->
+              <!-- ═ HEADER ════════════════════════════════════════════════════════════ -->
               <div class="bg-gradient-to-br from-gray-800 to-gray-900 border-2 border-gray-700 rounded-xl p-4 mb-3 shadow-lg">
                 <div class="flex items-center justify-between flex-wrap gap-3">
                   <div class="flex items-center gap-3">
@@ -2441,6 +2484,11 @@
                 <div id="crude-margin-2lot"></div>
                 <div id="crude-margin-shortfall"></div>
                 <div id="crude-margin-icon"></div>
+              </div><!-- /crude-body-trading -->
+
+              <!-- ── Live Chart body (hidden by default) ─────────────────── -->
+              <div id="crude-body-chart" class="hidden">
+                <iframe id="crude-chart-iframe" src="/crude-chart" class="w-full rounded-xl border border-gray-200 shadow-sm" style="height:82vh; min-height:540px;" title="Crude Oil Live Chart"></iframe>
               </div>
 
             </div><!-- /page-crude-trader -->

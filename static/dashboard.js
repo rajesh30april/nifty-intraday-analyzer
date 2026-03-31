@@ -69,6 +69,69 @@ function switchChartTimeframe(tf) {
     loadAnalysis(true);
 }
 
+// ── Crude Oil AT sub-tabs ─────────────────────────────────────
+
+function switchCrudeTab(tab) {
+    const tabs = ['trading', 'chart'];
+    tabs.forEach(t => {
+        const body = document.getElementById('crude-body-' + t);
+        const btn  = document.getElementById('crude-subtab-btn-' + t);
+        if (!body || !btn) return;
+        const active = t === tab;
+        body.classList.toggle('hidden', !active);
+        if (active) {
+            btn.classList.add('crude-subtab-active');
+            btn.setAttribute('aria-selected', 'true');
+        } else {
+            btn.classList.remove('crude-subtab-active');
+            btn.setAttribute('aria-selected', 'false');
+        }
+    });
+    // Lazy-load chart iframe only on first visit
+    if (tab === 'chart') {
+        const iframe = document.getElementById('crude-chart-iframe');
+        if (iframe && !iframe.dataset.loaded) {
+            iframe.src = '/crude-chart';
+            iframe.dataset.loaded = '1';
+        }
+    }
+}
+
+// ── Patterns sub-tabs ────────────────────────────────────────
+
+function switchPatternsTab(tab) {
+    const tabs = ['finder', 'charts', 'guide'];
+    tabs.forEach(t => {
+        const body = document.getElementById('patterns-body-' + t);
+        const btn  = document.getElementById('pat-subtab-btn-' + t);
+        if (!body || !btn) return;
+        const active = t === tab;
+        body.classList.toggle('hidden', !active);
+        if (active) {
+            btn.classList.add('pat-subtab-active');
+            btn.setAttribute('aria-selected', 'true');
+        } else {
+            btn.classList.remove('pat-subtab-active');
+            btn.setAttribute('aria-selected', 'false');
+        }
+    });
+    // Lazy-load iframes only on first visit
+    if (tab === 'charts') {
+        const iframe = document.getElementById('pattern-charts-iframe');
+        if (iframe && !iframe.dataset.loaded) {
+            iframe.src = '/pattern-charts';
+            iframe.dataset.loaded = '1';
+        }
+    }
+    if (tab === 'guide') {
+        const iframe = document.getElementById('patterns-guide-iframe');
+        if (iframe && !iframe.dataset.loaded) {
+            iframe.src = '/patterns-guide';
+            iframe.dataset.loaded = '1';
+        }
+    }
+}
+
 var isAuthenticated = false;
 
 async function checkStatus() {
