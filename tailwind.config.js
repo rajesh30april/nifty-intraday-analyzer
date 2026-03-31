@@ -5,7 +5,19 @@ module.exports = {
     './static/**/*.js',
   ],
   safelist: [
-    // ── Dynamically built class strings in JS ──────────────────────────────
+    // ── Arbitrary value classes (classList.toggle in JS + inline hex colors) ───
+    // These contain # which Tailwind’s scanner can’t reliably extract
+    'accent-[#0053e2]',
+    'bg-[#003db3]', 'bg-[#0046c7]', 'bg-[#0047c7]', 'bg-[#0053e2]',
+    'bg-[#22c55e]', 'bg-[#2a8703]', 'bg-[#38bdf8]', 'bg-[#a78bfa]',
+    'bg-[#e8eefb]', 'bg-[#ea1100]', 'bg-[#ef4444]', 'bg-[#fb923c]',
+    'bg-[#ffc220]',
+    'border-[#003db3]', 'border-[#0053e2]', 'border-[#ffc220]',
+    'from-[#003db3]', 'from-[#0053e2]',
+    'ring-[#0053e2]',
+    'text-[#003db3]', 'text-[#0053e2]', 'text-[#ffc220]',
+    'to-[#001a6e]', 'to-[#002080]', 'to-[#0053e2]', 'to-[#1565ff]',
+    // ── Dynamically built class strings in JS ────────────────────────────────
     // Backgrounds
     'bg-amber-50',
     'bg-blue-50', 'bg-blue-100', 'bg-blue-600', 'bg-blue-800',

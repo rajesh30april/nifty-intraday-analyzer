@@ -7,11 +7,26 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/tailwind.css?v=1">
+    <link rel="stylesheet" href="/static/tailwind.css?v=2">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
     <!-- Styles: see static/input.css → built into static/tailwind.css by npm run build:css -->
+    <script>
+      // Minimal shim — lets the ⚙️ button work immediately on first click,
+      // before at-settings.js finishes loading.
+      // at-settings.js will overwrite this with the full version (sync etc).
+      function toggleAtSettings() {
+        var p = document.getElementById('at-settings-panel');
+        var b = document.getElementById('at-settings-btn');
+        if (!p) return;
+        var nowHidden = p.classList.toggle('hidden');
+        if (b) {
+          b.classList.toggle('bg-[#0053e2]', !nowHidden);
+          b.classList.toggle('bg-gray-700',   nowHidden);
+        }
+      }
+    </script>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
 
@@ -602,7 +617,7 @@
                     <button onclick="startAutoTrader()" id="at-start-btn" class="bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg font-bold text-xs transition">▶ Start</button>
                     <button onclick="stopAutoTrader()"  id="at-stop-btn"  class="bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded-lg font-bold text-xs transition">⏹ Stop</button>
                     <button onclick="killAutoTrader()"  id="at-kill-btn"  class="bg-red-700 hover:bg-red-600 px-2 py-1.5 rounded-lg font-bold text-xs transition">🚨</button>
-                    <button onclick="if(typeof toggleAtSettings==='function'){toggleAtSettings()}" id="at-settings-btn" title="Trade Settings"
+                    <button onclick="toggleAtSettings()" id="at-settings-btn" title="Trade Settings"
                       class="bg-gray-700 hover:bg-gray-600 px-2 py-1.5 rounded-lg text-xs transition">⚙️</button>
                   </div>
                 </div>
