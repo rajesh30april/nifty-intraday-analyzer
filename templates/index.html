@@ -693,7 +693,7 @@
                     <button onclick="startAutoTrader()" id="at-start-btn" class="bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg font-bold text-xs transition">▶ Start</button>
                     <button onclick="stopAutoTrader()"  id="at-stop-btn"  class="bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded-lg font-bold text-xs transition">⏹ Stop</button>
                     <button onclick="killAutoTrader()"  id="at-kill-btn"  class="bg-red-700 hover:bg-red-600 px-2 py-1.5 rounded-lg font-bold text-xs transition">🚨</button>
-                    <button onclick="toggleAtSettings()" id="at-settings-btn" title="Trade Settings"
+                    <button onclick="if(typeof toggleAtSettings==='function'){toggleAtSettings()}else{console.warn('Settings not ready yet, try again')}" id="at-settings-btn" title="Trade Settings"
                       class="bg-gray-700 hover:bg-gray-600 px-2 py-1.5 rounded-lg text-xs transition">⚙️</button>
                   </div>
                 </div>
@@ -2752,21 +2752,20 @@
 
     </div><!-- /dashboard -->
 
-    <script src="/static/progress.js?v=3"></script>
-    <script src="/static/dashboard.js?v=4"></script>
-    <script src="/static/charts.js?v=3"></script>
-    <script src="/static/auto-trader.js?v=16"></script>
-    <script src="/static/at-settings.js?v=3"></script>
-    <script src="/static/at-health.js?v=1"></script>
-    <script src="/static/crude-trader.js?v=35"></script>
-    <script src="/static/crude-chart.js?v=1"></script>
-    <script>/* bt-qty v1 — quantity field wired to backtest + live monitor */</script>
-    <script src="/static/live-monitor.js?v=2"></script>
-    <script src="/static/paper-trader.js?v=1"></script>
-<script src="/static/backtest.js?v=11"></script>
-<script src="/static/replay.js?v=5"></script>
-    <script src="/static/learn.js?v=3"></script>
-    <script src="/static/pattern-history.js?v=2"></script>
+    <script src="/static/progress.js?v=3" defer></script>
+    <script src="/static/dashboard.js?v=4" defer></script>
+    <script src="/static/charts.js?v=3" defer></script>
+    <script src="/static/auto-trader.js?v=16" defer></script>
+    <script src="/static/at-settings.js?v=3" defer></script>
+    <script src="/static/at-health.js?v=1" defer></script>
+    <script src="/static/crude-trader.js?v=35" defer></script>
+    <script src="/static/crude-chart.js?v=1" defer></script>
+    <script src="/static/live-monitor.js?v=2" defer></script>
+    <script src="/static/paper-trader.js?v=1" defer></script>
+    <script src="/static/backtest.js?v=11" defer></script>
+    <script src="/static/replay.js?v=5" defer></script>
+    <script src="/static/learn.js?v=3" defer></script>
+    <script src="/static/pattern-history.js?v=2" defer></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             // Initialize backtest data source dropdown
