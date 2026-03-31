@@ -814,6 +814,43 @@ def _get_nearest_expiry_date() -> datetime:
     return datetime.combine(nearest, datetime.min.time())
 
 
+# Minimum OI for a Nifty option to be considered tradeable.
+# Nifty weekly options are very liquid near ATM; deep OTM or same-day
+# expiry strikes can go almost dead. 200 is a conservative floor.
+_MIN_OI_NIFTY = 200
+
+
+def _check_nifty_option_liquidity(symbol: str) -> dict:
+    """Return liquidity info for a Nifty option via kite.quote().
+
+    Returns dict: oi, bid_qty, ask_qty, ltp, liquid (bool).
+    Fails-open with a warning so a quote API hiccup never blocks a trade.
+    """
+    result = {'oi': 0, 'bid_qty': 0, 'ask_qty': 0, 'ltp': 0.0, 'liquid': False}
+    if not kite_manager.is_authenticated:
+        result['liquid'] = True   # can’t check — allow with warning
+        return result
+    try:
+        full_sym = f"NFO:{symbol}" if not symbol.startswith('NFO:') else symbol
+        quote    = kite_manager.kite.quote([full_sym])
+        data     = quote.get(full_sym, {})
+        oi       = int(data.get('oi', 0) or 0)
+        depth    = data.get('depth', {})
+        bids     = depth.get('buy',  [])
+        asks     = depth.get('sell', [])
+        bid_qty  = sum(b.get('quantity', 0) for b in bids[:3])
+        ask_qty  = sum(a.get('quantity', 0) for a in asks[:3])
+        ltp      = float(data.get('last_price', 0) or 0)
+        liquid   = oi >= _MIN_OI_NIFTY and (bid_qty > 0 or ask_qty > 0)
+        result.update(oi=oi, bid_qty=bid_qty, ask_qty=ask_qty, ltp=ltp, liquid=liquid)
+        status = 'OK ✅' if liquid else 'ILLIQUID ❌'
+        print(f"  💧 Liquidity [{symbol}] OI={oi} bid={bid_qty} ask={ask_qty} → {status}")
+    except Exception as e:
+        print(f"  ⚠️  Nifty liquidity check failed for {symbol}: {e} — allowing with warning")
+        result['liquid'] = True   # fail-open
+    return result
+
+
 def _get_option_symbol(
     nifty_price: float,
     direction: Direction,
@@ -853,7 +890,7 @@ def _get_option_symbol(
     ]
 
     if not matches:
-        # Fallback: try ATM strike
+        # Symbol not in master list — try ATM as geometry fallback
         atm_matches = [
             i for i in instruments
             if i["strike"] == float(atm_strike)
@@ -861,7 +898,6 @@ def _get_option_symbol(
             and str(i["expiry"]) == expiry_str
         ]
         if not atm_matches:
-            # Debug: Show available expiries
             all_expiries = sorted(set(str(i["expiry"]) for i in instruments if i["instrument_type"] == option_type))
             nearby_expiries = all_expiries[:5] if all_expiries else []
             raise RuntimeError(
@@ -877,11 +913,34 @@ def _get_option_symbol(
     symbol     = instrument["tradingsymbol"]
     token      = instrument["instrument_token"]
 
+    # ✅ LIQUIDITY GATE: check OI + bid depth before committing to this strike
+    liq = _check_nifty_option_liquidity(symbol)
+    if not liq['liquid'] and strike != atm_strike:
+        # Target strike is illiquid — fall back to ATM
+        print(f"  ⚠️  {symbol} is illiquid (OI={liq['oi']}) — falling back to ATM {atm_strike}")
+        atm_matches = [
+            i for i in instruments
+            if i["strike"] == float(atm_strike)
+            and i["instrument_type"] == option_type
+            and str(i["expiry"]) == expiry_str
+        ]
+        if atm_matches:
+            instrument = atm_matches[0]
+            symbol     = instrument["tradingsymbol"]
+            token      = instrument["instrument_token"]
+            strike     = atm_strike
+            liq        = _check_nifty_option_liquidity(symbol)
+    if not liq['liquid']:
+        # ATM itself is illiquid — warn but allow (may be pre-market or thin day)
+        print(f"  ⚠️  ATM {symbol} also illiquid — proceeding with caution")
+
     _strike_labels = {-3:"ITM3",-2:"ITM2",-1:"ITM1",0:"ATM",1:"OTM1",2:"OTM2",3:"OTM3"}
     offset_label = _strike_labels.get(offset_steps, f"OTM{abs(offset_steps)}")
     print(f"🎯 Strike Selection:")
     print(f"   Nifty: {nifty_price:.0f} | ATM: {atm_strike} | Offset: {offset_label} | Picked: {strike} {option_type}")
-    print(f"   Expiry: {expiry_str} | Symbol: {symbol} | Token: {token}")
+    print(f"   Expiry: {expiry_str} | Symbol: {symbol} | Token: {token} | OI: {liq['oi']}")
+
+    return symbol, token
 
     return symbol, token
 
