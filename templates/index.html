@@ -7,102 +7,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/tailwind.css?v=1">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-    <style>
-        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-        @keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 10px rgba(0,83,226,0.3); } 50% { box-shadow: 0 0 25px rgba(0,83,226,0.6); } }
-        .glow-blue { animation: pulse-glow 2s ease-in-out infinite; }
-        @keyframes slide-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .slide-in { animation: slide-in 0.4s ease-out; }
-        @keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        .live-dot { animation: live-pulse 1.5s ease-in-out infinite; }
-        .logo-gradient { background: linear-gradient(135deg, #0053e2 0%, #1565ff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .tf-btn { color: #6b7280; cursor: pointer; }
-        .tf-btn-active { background: #0053e2; color: white; }
-.learn-cat-active { background: #0053e2 !important; color: white !important; }
-.learn-card { transition: all 0.2s; }
-.learn-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-.difficulty-beginner { background: #dcfce7; color: #166534; }
-.difficulty-intermediate { background: #fef3c7; color: #92400e; }
-.difficulty-advanced { background: #fce7f3; color: #9d174d; }
-        /* Sidebar */
-        .sidebar { width: 240px; min-height: calc(100vh - 120px); transition: width 0.2s; background: white; }
-        .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; cursor: pointer;
-                        border-left: 3px solid transparent; color: #6b7280; font-weight: 600; font-size: 14px; 
-                        transition: all 0.2s ease; margin: 2px 8px; border-radius: 8px; }
-        .sidebar-item:hover { background: linear-gradient(to right, #eff4ff, #f9fafb); color: #0053e2; }
-        .sidebar-item.active { background: linear-gradient(135deg, #0053e2 0%, #1565ff 100%); color: white;
-                              border-left-color: transparent; font-weight: 700; box-shadow: 0 4px 12px rgba(0,83,226,0.25); }
-        .sidebar-item .badge { font-size: 10px; padding: 2px 7px; border-radius: 9999px; font-weight: 700; }
-        .page-section { display: none; }
-        .page-section.active { display: block; animation: slide-in 0.3s ease-out; }
-        /* ── Sub-tab active states (Crude + Patterns) ───────────────── */
-        .crude-subtab-active, .pat-subtab-active {
-            background: #0053e2; color: #fff;
-            box-shadow: 0 2px 8px rgba(0,83,226,0.25);
-        }
-        .crude-subtab-active:hover, .pat-subtab-active:hover { background: #0047c7; }
-        .ph-filter { cursor:pointer;border:1px solid #e5e7eb;padding:4px 12px;border-radius:9999px;
-                     font-size:11px;font-weight:600;background:white;color:#374151;transition:all .2s;
-                     box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-        .ph-filter.active { background:linear-gradient(135deg, #0053e2 0%, #1565ff 100%);color:#fff;border-color:transparent;
-                           box-shadow: 0 2px 8px rgba(0,83,226,0.3); }
-        .ph-day-btn { cursor:pointer;border:1px solid #e5e7eb;padding:6px 12px;border-radius:10px;
-                      font-size:11px;font-weight:600;background:white;color:#374151;
-                      white-space:nowrap;transition:all .2s;box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-        .ph-day-btn:hover { border-color:#c7d2fe;background:#f0f4ff; }
-        .ph-day-btn.active { background:linear-gradient(135deg, #0053e2 0%, #1565ff 100%);color:#fff;border-color:transparent;
-                            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3); }
-        .conf-bar { height:5px;border-radius:3px;background:#e2e8f0;overflow:hidden; }
-        .conf-fill { height:100%;border-radius:3px; }
-        .chip { display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:700; }
-        @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes pulseBorder { 0%,100%{border-color:#22c55e;box-shadow:0 0 0 0 rgba(34,197,94,.4)} 50%{border-color:#4ade80;box-shadow:0 0 0 6px rgba(34,197,94,0)} }
-        @keyframes slideInRight { from{opacity:0;transform:translateX(60px)} to{opacity:1;transform:translateX(0)} }
-        @keyframes slideOutRight { from{opacity:1;transform:translateX(0)} to{opacity:0;transform:translateX(60px)} }
-
-        /* ── Mobile responsive ───────────────────────────── */
-        .mobile-hamburger { display: none; }
-        .mobile-overlay {
-            display: none; position: fixed; inset: 0;
-            background: rgba(0,0,0,0.5); z-index: 199;
-            backdrop-filter: blur(2px);
-        }
-        @media (max-width: 767px) {
-            .mobile-hamburger { display: flex !important; }
-            .sidebar {
-                position: fixed !important; top: 0; left: 0;
-                height: 100dvh; z-index: 200;
-                width: 280px !important;
-                transform: translateX(-100%);
-                transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
-                overflow-y: auto; padding-top: 60px;
-            }
-            .sidebar.mobile-open { transform: translateX(0); }
-            .mobile-overlay.active { display: block; }
-            #dashboard { flex-direction: column !important; }
-            /* Status bar — collapse on tiny screens */
-            .status-bar-extra { display: none !important; }
-            /* Main header padding */
-            .main-header-inner { padding-left: 1rem !important; padding-right: 1rem !important; }
-            /* Refresh button — icon only on mobile */
-            .refresh-label { display: none; }
-            /* Content area padding */
-            .content-area { padding: 0.75rem !important; }
-            /* Card grids — force single column */
-            .mobile-stack { grid-template-columns: 1fr !important; }
-            /* Overflow tables */
-            .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-            /* Bottom padding so content isn't under mobile nav */
-            body { padding-bottom: 0; }
-        }
-        @media (max-width: 480px) {
-            .sidebar { width: 100vw !important; }
-        }
-    </style>
+    <!-- Styles: see static/input.css → built into static/tailwind.css by npm run build:css -->
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
 
@@ -693,7 +602,7 @@
                     <button onclick="startAutoTrader()" id="at-start-btn" class="bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg font-bold text-xs transition">▶ Start</button>
                     <button onclick="stopAutoTrader()"  id="at-stop-btn"  class="bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded-lg font-bold text-xs transition">⏹ Stop</button>
                     <button onclick="killAutoTrader()"  id="at-kill-btn"  class="bg-red-700 hover:bg-red-600 px-2 py-1.5 rounded-lg font-bold text-xs transition">🚨</button>
-                    <button onclick="if(typeof toggleAtSettings==='function'){toggleAtSettings()}else{console.warn('Settings not ready yet, try again')}" id="at-settings-btn" title="Trade Settings"
+                    <button onclick="if(typeof toggleAtSettings==='function'){toggleAtSettings()}" id="at-settings-btn" title="Trade Settings"
                       class="bg-gray-700 hover:bg-gray-600 px-2 py-1.5 rounded-lg text-xs transition">⚙️</button>
                   </div>
                 </div>

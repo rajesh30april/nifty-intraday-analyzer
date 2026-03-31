@@ -10,6 +10,11 @@ __pycache__/
 *.xlsx
 .DS_Store
 
+# Node (Tailwind CLI build tooling)
+node_modules/
+# NOTE: static/tailwind.css IS committed — it's the built output required to serve the app
+# Rebuild with: npm run build:css
+
 # Runtime state — contains live trade data, never commit
 .state_snapshot.json
 trade_log.json
