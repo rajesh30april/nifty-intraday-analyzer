@@ -12,6 +12,9 @@
 // Set to true on input focus, cleared on Apply click.
 let _atPanelDirty = false;
 
+// ── Quantity mode ────────────────────────────────────────────────────────
+let _atQtyMode = 'capital';   // 'manual' | 'capital' — must be declared here!
+
 // ── Trail SL mode state ──────────────────────────────────────────
 let _atTrailMode    = 'fixed';  // 'fixed' | 'atr' | 'supertrend' | 'manual'
 let _atTrailAtrMult = 1.5;
@@ -598,18 +601,26 @@ async function _applyBalanceSuggestion(offset, balance) {
     // Mark dirty so poll doesn't clobber values
     _atMarkDirty();
 
-    // Auto-save to backend immediately so config is live
-    const sl    = parseFloat(document.getElementById('at-sl-pts')?.value   || '30');
-    const trail = parseFloat(document.getElementById('at-trail-sl')?.value || '15');
-    const rr    = parseFloat(document.getElementById('at-rr')?.value       || '2');
-    const maxT  = parseInt(document.getElementById('at-max-trades')?.value  || '3', 10);
+    // Auto-save to backend immediately so config is live.
+    // Read ALL current settings from the DOM so nothing gets wiped.
+    const sl       = parseFloat(document.getElementById('at-sl-pts')?.value    || '30');
+    const trail    = parseFloat(document.getElementById('at-trail-sl')?.value  || '15');
+    const rr       = parseFloat(document.getElementById('at-rr')?.value        || '2');
+    const maxT     = parseInt(document.getElementById('at-max-trades')?.value   || '3', 10);
+    const maxLoss  = parseFloat(document.getElementById('at-max-loss')?.value   || '3000');
     const params = new URLSearchParams({
-        sl_points: sl, trailing_sl_points: trail, rr_ratio: rr,
-        qty_mode: 'capital',
-        manual_qty: 1 * LOT_SIZE,  // fallback; capital mode uses premium calc
-        capital: Math.floor(balance),
-        strike_offset: offset,
+        sl_points:          sl,
+        trailing_sl_points: trail,
+        rr_ratio:           rr,
+        trail_mode:         _atTrailMode,
+        trail_atr_mult:     _atTrailAtrMult,
+        qty_mode:           'capital',
+        manual_qty:         1 * LOT_SIZE,   // capital mode ignores this; just a safe fallback
+        capital:            Math.floor(balance),
+        strike_offset:      offset,
         max_trades_per_day: maxT,
+        cooldown_minutes:   _atCooldownMinutes,  // ← was missing
+        max_daily_loss:     maxLoss,             // ← was missing
     });
     try {
         const r = await fetch(`/api/auto-trader/configure?${params}`, { method: 'POST' });
@@ -631,28 +642,24 @@ async function _applyBalanceSuggestion(offset, balance) {
 }
 
 // ── Init hints on load ───────────────────────────────────────────
-// ── Load and apply saved config from backend ───────────────────────────
+// ── Load and apply saved config from backend ───────────────────────────────────────────────────────────
 async function loadAtConfig() {
     try {
         const resp = await fetch('/api/auto-trader/status');
         const data = await resp.json();
         
-        // Apply qty_mode (default: capital)
-        const qtyMode = data.qty_mode || 'capital';
-        _atQtyMode = qtyMode;
-        _applyQtyModeUI(qtyMode, false);
+        // 🐶 Use the existing syncAtSettingsFromStatus to load ALL settings
+        // (trail_mode, sl_points, rr, capital, strike, cooldown, max_loss, etc.)
+        syncAtSettingsFromStatus(data);
         
-        // Apply capital value
-        const capital = data.capital || 50000;
-        const capitalInput = document.getElementById('at-capital');
-        if (capitalInput) capitalInput.value = capital;
-        
-        // Apply manual qty value
-        const manualQty = data.manual_qty || 10;
-        const manualInput = document.getElementById('at-manual-qty');
-        if (manualInput) manualInput.value = Math.floor(manualQty / 65);  // Convert units to lots
-        
-        console.log('✅ Loaded AT config:', { qtyMode, capital, manualQty });
+        console.log('✅ Loaded AT config:', {
+            trail_mode: data.trail_mode,
+            trail_atr_mult: data.trail_atr_mult,
+            sl_points: data.sl_points,
+            qty_mode: data.qty_mode,
+            capital: data.capital,
+            strike_offset: data.strike_offset,
+        });
     } catch (err) {
         console.error('❌ Failed to load AT config:', err);
         // Fallback to capital mode as default
@@ -661,8 +668,143 @@ async function loadAtConfig() {
     }
 }
 
+// ▼▼▼ 🎯 STRATEGY SELECTION FUNCTIONS (NEW!) ▼▼▼
+
+async function loadAtStrategies() {
+    console.log('🎯 [AT Strategies] Loading strategy list...');
+    try {
+        const resp = await fetch('/api/nifty/strategies');
+        const data = await resp.json();
+        
+        if (!data.success) {
+            console.error('❌ [AT Strategies] Failed to load:', data);
+            return;
+        }
+        
+        const container = document.getElementById('at-strategy-checkboxes');
+        const countBadge = document.getElementById('at-strategy-count-badge');
+        
+        if (!container) {
+            console.error('❌ [AT Strategies] Container not found!');
+            return;
+        }
+        
+        // Build checkbox grid
+        container.innerHTML = data.strategies.map(s => `
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-gray-800/80 border border-gray-700 hover:border-[#0053e2] transition cursor-pointer group">
+                <input type="checkbox" 
+                    id="at-strategy-${s.id}" 
+                    data-strategy-id="${s.id}"
+                    class="at-strategy-checkbox w-4 h-4 rounded border-gray-600 text-[#0053e2] focus:ring-2 focus:ring-[#0053e2] focus:ring-offset-0 cursor-pointer"
+                    ${s.enabled ? 'checked' : ''}
+                    onchange="updateAtStrategyCount()">
+                <div class="flex-1">
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-sm">${s.emoji}</span>
+                        <span class="text-[11px] font-bold text-white group-hover:text-[#ffc220] transition">${s.name}</span>
+                        <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-700 text-gray-300">${s.category}</span>
+                    </div>
+                    <div class="text-[9px] text-gray-500 mt-0.5">Win rate: ${s.win_rate}%</div>
+                </div>
+            </label>
+        `).join('');
+        
+        // Update count badge
+        const enabledCount = data.strategies.filter(s => s.enabled).length;
+        const totalCount = data.strategies.length;
+        if (countBadge) {
+            countBadge.textContent = data.all_enabled ? `${totalCount}/${totalCount} Active` : `${enabledCount}/${totalCount} Active`;
+            countBadge.className = enabledCount === totalCount 
+                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-600 text-white'
+                : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#0053e2] text-white';
+        }
+        
+        console.log(`✅ [AT Strategies] Loaded ${enabledCount}/${totalCount} strategies`);
+        
+    } catch (e) {
+        console.error('❌ [AT Strategies] Load error:', e);
+    }
+}
+
+function updateAtStrategyCount() {
+    const checkboxes = document.querySelectorAll('.at-strategy-checkbox');
+    const enabledCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+    const totalCount = checkboxes.length;
+    
+    const countBadge = document.getElementById('at-strategy-count-badge');
+    if (countBadge) {
+        countBadge.textContent = `${enabledCount}/${totalCount} Active`;
+        countBadge.className = enabledCount === totalCount
+            ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-600 text-white'
+            : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#0053e2] text-white';
+    }
+}
+
+function atSelectAllStrategies(selectAll) {
+    const checkboxes = document.querySelectorAll('.at-strategy-checkbox');
+    checkboxes.forEach(cb => cb.checked = selectAll);
+    updateAtStrategyCount();
+    
+    const action = selectAll ? '🟢 All strategies enabled' : '⚪ None selected';
+    _atShowToast(action, selectAll ? 'info' : 'warn');
+}
+
+async function saveAtStrategies() {
+    console.log('🎯 [AT Strategies] Saving selection...');
+    const checkboxes = document.querySelectorAll('.at-strategy-checkbox');
+    const enabledStrategies = Array.from(checkboxes)
+        .filter(cb => cb.checked)
+        .map(cb => cb.dataset.strategyId);
+    
+    console.log('🎯 [AT Strategies] Enabled:', enabledStrategies);
+    
+    try {
+        const resp = await fetch('/api/nifty/strategies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled_strategies: enabledStrategies })
+        });
+        
+        const data = await resp.json();
+        
+        if (data.success) {
+            const count = data.enabled_count;
+            const total = data.total_count;
+            const msg = data.all_enabled 
+                ? `✅ All ${total} strategies enabled` 
+                : `✅ ${count}/${total} strategies enabled`;
+            _atShowToast(msg, 'info');
+            console.log('✅ [AT Strategies] Saved:', data);
+        } else {
+            _atShowToast(`❌ ${data.error}`, 'error');
+            console.error('❌ [AT Strategies] Save failed:', data);
+        }
+    } catch (e) {
+        _atShowToast(`❌ ${e.message}`, 'error');
+        console.error('❌ [AT Strategies] Save error:', e);
+    }
+}
+
+// ▲▲▲ END STRATEGY SELECTION ▲▲▲
+
+// Update applyAtSettings to also save strategy selection
+const _originalApplyAtSettings = window.applyAtSettings;
+window.applyAtSettings = async function() {
+    // Call original function
+    if (_originalApplyAtSettings) {
+        await _originalApplyAtSettings();
+    }
+    // Also save strategy selection
+    await saveAtStrategies();
+};
+
+// Expose to window
+window.atSelectAllStrategies = atSelectAllStrategies;
+window.updateAtStrategyCount = updateAtStrategyCount;
+
 document.addEventListener('DOMContentLoaded', async () => {
     await loadAtConfig();  // ← Load config FIRST
+    await loadAtStrategies();  // 🎯 Load strategy checkboxes
     _updateLotsHint();
     _updateCapitalEstimate();
     _applyStrikeUI(_atStrikeOffset);

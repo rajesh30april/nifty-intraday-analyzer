@@ -1661,15 +1661,28 @@ def _fetch_available_margin() -> tuple[float, float, float] | tuple[None, None, 
 
 def _enter_trade(direction: Direction, price: float):
     """Open a new trade."""
-    # ── Sync capital from Zerodha FIRST so affordability check is accurate ──
+    # ── Sync capital from Zerodha before sizing ──────────────────────────────
+    # WHY: We use LIVE free margin (not the settings panel value) so we
+    # never try to buy more lots than Zerodha will actually accept.
+    # The settings panel capital is a GUIDELINE; Zerodha's real free margin
+    # is the hard ceiling. This is why the capital shown in UI may differ
+    # from what you typed if Zerodha has less margin available.
     free, net, used = _fetch_available_margin()
     if free is not None:
-        if abs(free - state.capital) > 100:
-            print(f"💰 Capital synced: ₹{state.capital:,.0f} → ₹{free:,.0f} "
-                  f"(net=₹{net:,.0f}, utilised=₹{used:,.0f})")
-        state.capital = free   # always use FREE margin, not net
+        configured = state.capital
+        state.capital = free   # always use live free margin for sizing
+        diff = free - configured
+        if abs(diff) > 100:
+            direction_str = 'more' if diff > 0 else 'LESS'
+            print(f"\u26a0\ufe0f  Capital override: settings say \u20b9{configured:,.0f} "
+                  f"but Zerodha free margin = \u20b9{free:,.0f} "
+                  f"(\u20b9{abs(diff):,.0f} {direction_str} than configured). "
+                  f"Using \u20b9{free:,.0f} for lot sizing.")
+        else:
+            print(f"\U0001f4b0 Margin [{'EQUITY':6s}]  free=\u20b9{free:,.0f}  net=\u20b9{net:,.0f}  "
+                  f"used=\u20b9{used:,.0f}  (in line with settings)")
 
-    # ── Strike affordability fallback loop ────────────────────────
+    # ── Strike affordability fallback loop ─────────────────────────────
     # If the configured strike is too expensive, walk one step further OTM
     # (cheaper premium) up to MAX_STRIKE_FALLBACKS times before giving up.
     MAX_STRIKE_FALLBACKS = 3
@@ -2312,8 +2325,8 @@ def get_trader_status() -> dict:
         "meta_scores": state.last_meta_scores,
         "meta_regime": state.last_meta_regime,
         "exit_time": EXIT_TIME.strftime("%H:%M"),
-        "sl_points": SL_POINTS,
-        "trailing_sl_points": TRAILING_SL_POINTS,
+        # sl_points / trailing_sl_points come from state below (runtime-configurable)
+        # Do NOT put SL_POINTS / TRAILING_SL_POINTS here — they are startup defaults only.
         "selected_strategy": state.selected_strategy,
         "block_reason":     state.last_block_reason,
         "cooldown_minutes":  state.cooldown_minutes,
