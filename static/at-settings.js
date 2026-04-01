@@ -9,8 +9,13 @@
 //   Auto Capital mode → trader picks ₹ budget → app picks lots at entry
 
 // Guard: when user is actively editing inputs, poll must NOT overwrite their values.
-// Set to true on input focus, cleared on Apply click.
-let _atPanelDirty = false;
+// Initialise from the panel's actual visibility — if the shim already opened it,
+// the panel is visible and we must NOT overwrite what the user is editing.
+let _atPanelDirty = (() => {
+    const p = document.getElementById('at-settings-panel');
+    // panel visible = does NOT have 'hidden' class
+    return p ? !p.classList.contains('hidden') : false;
+})();
 
 // ── Quantity mode ────────────────────────────────────────────────────────
 let _atQtyMode = 'capital';   // 'manual' | 'capital' — must be declared here!

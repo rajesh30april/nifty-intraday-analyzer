@@ -13,14 +13,20 @@
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
     <!-- Styles: see static/input.css → built into static/tailwind.css by npm run build:css -->
     <script>
-      // Minimal shim — lets the ⚙️ button work immediately on first click,
+      // Minimal shim — lets the ⚙️ button respond immediately,
       // before at-settings.js finishes loading.
-      // at-settings.js will overwrite this with the full version (sync etc).
+      // When at-settings.js loads it overwrites this with the full version.
+      // KEY: sets _atPanelDirty=true so the 3-second status poll never
+      // wipes out what the user is typing while the panel is open.
+      window._atPanelDirty = false;
       function toggleAtSettings() {
         var p = document.getElementById('at-settings-panel');
         var b = document.getElementById('at-settings-btn');
         if (!p) return;
         var nowHidden = p.classList.toggle('hidden');
+        // Panel just opened — mark dirty immediately so the poll
+        // cannot overwrite the inputs while the user is editing.
+        if (!nowHidden) window._atPanelDirty = true;
         if (b) {
           b.classList.toggle('bg-[#0053e2]', !nowHidden);
           b.classList.toggle('bg-gray-700',   nowHidden);
@@ -2679,8 +2685,8 @@
     <script src="/static/progress.js?v=3" defer></script>
     <script src="/static/dashboard.js?v=4" defer></script>
     <script src="/static/charts.js?v=3" defer></script>
-    <script src="/static/auto-trader.js?v=16" defer></script>
-    <script src="/static/at-settings.js?v=3" defer></script>
+    <script src="/static/auto-trader.js?v=16"></script>
+    <script src="/static/at-settings.js?v=3"></script>
     <script src="/static/at-health.js?v=1" defer></script>
     <script src="/static/crude-trader.js?v=35" defer></script>
     <script src="/static/crude-chart.js?v=1" defer></script>
