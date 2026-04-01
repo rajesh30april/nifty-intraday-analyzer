@@ -271,28 +271,7 @@ async function _buildCCChart() {
   console.log('[Crude Chart] Chart built successfully!');
 }
 
-// ── Public: called by switchPage('crude-chart') ──────────────────
-function initCrudeChart() {
-  if (!_cc_ready) {
-    _cc_ready = true;
-    _startCCPricePoll();
-    _startCCCountdown();
-  }
-  _buildCCChart();
-}
 
-// Public: Refresh button
-function reloadCrudeChart() {
-  _cc_countdown = 60;
-  _buildCCChart();
-}
-
-// Alias for external calls
-function loadChart() {
-  reloadCrudeChart();
-}
-
-// ── 60-second auto-refresh countdown ────────────────────────────────
 function _startCCCountdown() {
   clearInterval(_cc_cdInt);
   _cc_cdInt = setInterval(() => {
@@ -340,4 +319,9 @@ function initCrudeChart() {
 function reloadCrudeChart() {
   _cc_countdown = 60;
   _buildCCChart();
+}
+
+// Alias for the Refresh button onclick in crude_chart.html
+function loadChart() {
+  reloadCrudeChart();
 }

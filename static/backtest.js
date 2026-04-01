@@ -9,9 +9,9 @@ let _currentDataSource = 'yahoo';
 
 // Period options per data source
 const PERIOD_OPTIONS = {
-    yahoo:    [['1d','1 Day'],['2d','2 Days'],['5d','5 Days'],['30d','30 Days'],['60d','60 Days (max)']],
-    zerodha:  [['1d','1 Day'],['2d','2 Days'],['5d','5 Days'],['30d','30 Days'],['60d','60 Days (max)']],
-    truedata: [['1d','1 Day'],['2d','2 Days'],['5d','5 Days'],['30d','30 Days'],['60d','60 Days'],['90d','90 Days'],
+    yahoo:    [['0d','🔴 Today (Live)'],['1d','Yesterday'],['5d','5 Days'],['30d','30 Days'],['60d','60 Days (max)']],
+    zerodha:  [['0d','🔴 Today (Live)'],['1d','Yesterday'],['5d','5 Days'],['30d','30 Days'],['60d','60 Days (max)']],
+    truedata: [['0d','🔴 Today (Live)'],['1d','Yesterday'],['5d','5 Days'],['30d','30 Days'],['60d','60 Days'],['90d','90 Days'],
                ['6mo','6 Months'],['1y','1 Year'],['2y','2 Years'],['5y','5 Years']],
 };
 
@@ -21,14 +21,14 @@ const PERIOD_OPTIONS = {
 function selectDataSource(source) {
     _currentDataSource = source;
 
-    // Update button styles
+    // Update button styles (DARK THEME)
     ['yahoo', 'zerodha', 'truedata'].forEach(s => {
         const btn = document.getElementById(`ds-${s}`);
         if (!btn) return;
         if (s === source) {
-            btn.className = 'ds-btn active flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-[#0053e2] bg-blue-50 text-[#0053e2] text-xs font-bold transition';
+            btn.className = 'ds-btn active flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-[#0053e2] bg-blue-900 text-[#0053e2] text-xs font-bold transition';
         } else {
-            btn.className = 'ds-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-200 bg-white text-gray-600 text-xs font-bold transition hover:border-gray-400';
+            btn.className = 'ds-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-600 bg-gray-800 text-gray-400 text-xs font-bold transition hover:border-gray-500';
         }
     });
 
@@ -57,16 +57,16 @@ function selectDataSource(source) {
         }).catch(() => {});
     }
 
-    // Check TrueData credentials
+    // Check TrueData credentials (DARK THEME)
     if (source === 'truedata') {
         fetch('/api/truedata/status').then(r => r.json()).then(d => {
             const statusEl = document.getElementById('td-creds-status');
             if (d.configured) {
                 statusEl.textContent = '✅ Credentials saved. Ready to fetch up to 5 years of data!';
-                statusEl.className = 'text-xs mt-1 text-green-600 font-semibold';
+                statusEl.className = 'text-xs mt-1 text-green-400 font-semibold';
             } else {
                 statusEl.textContent = 'Enter your TrueData credentials above to unlock 5-year history.';
-                statusEl.className = 'text-xs mt-1 text-orange-600';
+                statusEl.className = 'text-xs mt-1 text-orange-400';
             }
         }).catch(() => {});
     }
@@ -133,12 +133,31 @@ async function runBacktest() {
     const strategy  = document.getElementById('bt-strategy')?.value || 'smart_router';
     const quantity  = document.getElementById('bt-qty')?.value || '780';
     const dataSource = _currentDataSource;
+    
+    // ── NEW PARAMETERS (matching Auto-Trader) ──
+    const strikeOffset = document.getElementById('bt-strike-offset')?.value || '0';
+    const trailMode = _btTrailMode || 'fixed';
+    const maxDailyLoss = document.getElementById('bt-max-loss')?.value || '3000';
+    const cooldown = document.getElementById('bt-cooldown')?.value || '0';
+
+    // 🎯 Get enabled strategies (only for smart_router)
+    const enabledStrategies = strategy === 'smart_router' ? btGetEnabledStrategies() : '';
 
     const params = new URLSearchParams({
         period, sl_points: slPoints, trailing_sl: trailingSl,
         rr_ratio: rrRatio, max_trades: maxTrades, strategy,
         quantity, data_source: dataSource,
+        strike_offset: strikeOffset,
+        trail_mode: trailMode,
+        max_daily_loss: maxDailyLoss,
+        cooldown: cooldown,
     });
+    
+    // 🎯 Add enabled_strategies if we have a selection (only for smart_router)
+    if (enabledStrategies) {
+        params.set('enabled_strategies', enabledStrategies);
+        console.log('🎯 [Backtest] Testing only:', enabledStrategies);
+    }
 
     // ── Store params for replay sync ────────────────────────────
     window._lastBacktestParams = {
@@ -430,3 +449,166 @@ function renderTradeLog(trades) {
         renderTradeLogWithExpand(trades);
     }
 }
+
+// ▼▼▼ 🎯 STRATEGY FILTER FUNCTIONS (NEW!) ▼▼▼
+
+async function loadBtStrategies() {
+    console.log('🎯 [Backtest] Loading strategy list...');
+    try {
+        const resp = await fetch('/api/nifty/strategies');
+        const data = await resp.json();
+        
+        if (!data.success) {
+            console.error('❌ [Backtest] Failed to load:', data);
+            return;
+        }
+        
+        const container = document.getElementById('bt-strategy-checkboxes');
+        const countBadge = document.getElementById('bt-strategy-count-badge');
+        
+        if (!container) {
+            console.error('❌ [Backtest] Container not found!');
+            return;
+        }
+        
+        // Build checkbox grid (default all checked for backtest)
+        container.innerHTML = data.strategies.map(s => `
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-gray-800/80 border border-gray-700 hover:border-[#0053e2] transition cursor-pointer group">
+                <input type="checkbox" 
+                    id="bt-strategy-${s.id}" 
+                    data-strategy-id="${s.id}"
+                    class="bt-strategy-checkbox w-4 h-4 rounded border-gray-600 text-[#0053e2] focus:ring-2 focus:ring-[#0053e2] focus:ring-offset-0 cursor-pointer"
+                    checked
+                    onchange="updateBtStrategyCount()">
+                <div class="flex-1">
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-sm">${s.emoji}</span>
+                        <span class="text-[11px] font-bold text-white group-hover:text-[#ffc220] transition">${s.name}</span>
+                        <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-700 text-gray-300">${s.category}</span>
+                    </div>
+                    <div class="text-[9px] text-gray-500 mt-0.5">Win rate: ${s.win_rate}%</div>
+                </div>
+            </label>
+        `).join('');
+        
+        // Update count badge (all enabled by default)
+        const totalCount = data.strategies.length;
+        if (countBadge) {
+            countBadge.textContent = `${totalCount}/${totalCount} Active`;
+            countBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-600 text-white';
+        }
+        
+        console.log(`✅ [Backtest] Loaded ${totalCount} strategies (all enabled by default)`);
+        
+    } catch (e) {
+        console.error('❌ [Backtest] Load error:', e);
+    }
+}
+
+function updateBtStrategyCount() {
+    const checkboxes = document.querySelectorAll('.bt-strategy-checkbox');
+    const enabledCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+    const totalCount = checkboxes.length;
+    
+    const countBadge = document.getElementById('bt-strategy-count-badge');
+    if (countBadge) {
+        countBadge.textContent = `${enabledCount}/${totalCount} Active`;
+        countBadge.className = enabledCount === totalCount
+            ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-600 text-white'
+            : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#0053e2] text-white';
+    }
+}
+
+function btSelectAllStrategies(selectAll) {
+    const checkboxes = document.querySelectorAll('.bt-strategy-checkbox');
+    checkboxes.forEach(cb => cb.checked = selectAll);
+    updateBtStrategyCount();
+}
+
+function btGetEnabledStrategies() {
+    const checkboxes = document.querySelectorAll('.bt-strategy-checkbox');
+    return Array.from(checkboxes)
+        .filter(cb => cb.checked)
+        .map(cb => cb.dataset.strategyId)
+        .join(',');  // CSV string for URL param
+}
+
+function btToggleStrategyFilter() {
+    const strategySelect = document.getElementById('bt-strategy');
+    const filterPanel = document.getElementById('bt-strategy-filter');
+    
+    // Only show filter when Smart Router is selected
+    const isSmartRouter = strategySelect.value === 'smart_router';
+    filterPanel.classList.toggle('hidden', !isSmartRouter);
+}
+
+// ▲▲▲ END STRATEGY FILTER ▲▲▲
+
+/* ── Backtester Strike Picker ── */
+function setBtStrike(offset) {
+    // Update hidden input
+    document.getElementById('bt-strike-offset').value = offset;
+    
+    // Update button styles
+    document.querySelectorAll('.bt-strike-btn').forEach(btn => {
+        const btnOffset = parseInt(btn.dataset.offset);
+        if (btnOffset === offset) {
+            btn.className = 'bt-strike-btn flex-1 text-[10px] px-1 py-2 font-bold border border-gray-600 bg-[#0053e2] text-white transition';
+        } else {
+            btn.className = 'bt-strike-btn flex-1 text-[10px] px-1 py-2 font-bold border border-gray-600 bg-gray-700 text-gray-300 transition';
+        }
+    });
+}
+
+/* ── Trail SL Mode Selector ── */
+let _btTrailMode = 'fixed';
+
+function setBtTrailMode(mode) {
+    _btTrailMode = mode;
+    
+    // Update pill styles
+    document.querySelectorAll('.bt-trail-pill').forEach(btn => {
+        const btnMode = btn.dataset.trail;
+        if (btnMode === mode) {
+            btn.className = 'bt-trail-pill flex-1 text-[11px] py-1 rounded border border-gray-600 bg-[#0053e2] text-white font-bold transition';
+        } else {
+            btn.className = 'bt-trail-pill flex-1 text-[11px] py-1 rounded border border-gray-600 text-gray-400 hover:bg-gray-700 transition';
+        }
+    });
+    
+    // Show/hide fixed pts input
+    const fixedRow = document.getElementById('bt-trail-fixed-row');
+    if (fixedRow) {
+        fixedRow.style.display = (mode === 'fixed') ? 'block' : 'none';
+    }
+}
+
+/* ── Cooldown Selector ── */
+function setBtCooldown(minutes) {
+    // Update hidden input
+    document.getElementById('bt-cooldown').value = minutes;
+    
+    // Update pill styles
+    document.querySelectorAll('.bt-cooldown-pill').forEach(btn => {
+        const btnMins = parseInt(btn.dataset.mins);
+        if (btnMins === minutes) {
+            btn.className = 'bt-cooldown-pill flex-1 text-[11px] py-1 rounded border border-gray-600 bg-[#0053e2] text-white font-bold transition';
+        } else {
+            btn.className = 'bt-cooldown-pill flex-1 text-[11px] py-1 rounded border border-gray-600 text-gray-400 hover:bg-gray-700 transition';
+        }
+    });
+}
+
+// ▲▲▲ END NEW CONTROLS ▲▲▲
+
+// Load strategies on page load + show/hide based on strategy selection
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadBtStrategies();
+    
+    // Listen for strategy dropdown changes
+    const strategySelect = document.getElementById('bt-strategy');
+    if (strategySelect) {
+        strategySelect.addEventListener('change', btToggleStrategyFilter);
+        btToggleStrategyFilter();  // Initial state
+    }
+});

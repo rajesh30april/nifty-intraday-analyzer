@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inevitable | Algorithmic Trading Platform</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -1033,6 +1034,21 @@
                         🔗 Sync
                       </button>
                     </div>
+                  </div>
+                </div>
+
+                <!-- 🚨 No exchange SL backstop warning — shown when sl_order_id=None -->
+                <div id="at-no-exchange-sl-warn" class="hidden mt-2 bg-red-900/60 border border-red-500 rounded-xl p-3 text-xs">
+                  <div class="flex items-start gap-2">
+                    <span class="text-red-400 text-base">🚨</span>
+                    <div class="flex-1">
+                      <p class="font-bold text-red-300">Zerodha SL order MISSING</p>
+                      <p class="text-red-400 mt-0.5">No exchange-level stop loss exists. If this app crashes, your position has ZERO protection. Re-arm now.</p>
+                    </div>
+                    <button onclick="rearmExchangeSL()"
+                      class="flex-shrink-0 bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] px-3 py-1.5 rounded-lg transition">
+                      🛡 Re-arm SL
+                    </button>
                   </div>
                 </div>
 
@@ -2418,7 +2434,7 @@
 
               <!-- ── Live Chart body (hidden by default) ─────────────────── -->
               <div id="crude-body-chart" class="hidden">
-                <iframe id="crude-chart-iframe" src="/crude-chart" class="w-full rounded-xl border border-gray-200 shadow-sm" style="height:82vh; min-height:540px;" title="Crude Oil Live Chart"></iframe>
+                <iframe id="crude-chart-iframe" class="w-full rounded-xl border border-gray-200 shadow-sm" style="height:82vh; min-height:540px;" title="Crude Oil Live Chart"></iframe>
               </div>
 
             </div><!-- /page-crude-trader -->

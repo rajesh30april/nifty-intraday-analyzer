@@ -1,0 +1,2394 @@
+INFO:     Started server process [57896]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+While calling system event trigger handler
+Traceback (most recent call last):
+  File "/Users/r0s0iv3/inevitable/.venv/lib/python3.13/site-packages/twisted/internet/base.py", line 518, in _continueFiring
+    callable(*args, **kwargs)
+  File "/Users/r0s0iv3/inevitable/.venv/lib/python3.13/site-packages/twisted/internet/base.py", line 951, in _reallyStartRunning
+    self._signals.install()
+  File "/Users/r0s0iv3/inevitable/.venv/lib/python3.13/site-packages/twisted/internet/_signals.py", line 190, in install
+    d.install()
+  File "/Users/r0s0iv3/inevitable/.venv/lib/python3.13/site-packages/twisted/internet/_signals.py", line 150, in install
+    signal.signal(signal.SIGTERM, self._sigTerm)
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/signal.py", line 58, in signal
+    handler = _signal.signal(_enum_to_int(signalnum), _enum_to_int(handler))
+builtins.ValueError: signal only works in main thread of the main interpreter
+
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📅 [RECOVERY] trade_log is from 2026-03-31, resetting orders_placed to 0 for new day
+♻️  orders_placed restored: 0
+🔄 [RECOVERY] 🚨 RECOVERED open LIVE trade: SHORT NFO:NIFTY2640722500PE entry=₹22,906 SL=₹22,951
+   ⚠️  Auto-trader is NOT running — click START to resume managing it.
+📅 [RECOVERY] trade_log is from 2026-03-31, resetting orders_placed to 0 for new day
+♻️  orders_placed restored: 0
+🔄 [RECOVERY] 🚨 RECOVERED open LIVE trade: SHORT NFO:NIFTY2640722500PE entry=₹22,906 SL=₹22,951
+   ⚠️  Auto-trader is NOT running — click START to resume managing it.
+♻️  Settings restored from snapshot
+🔄 Auto-trader auto-resumed from snapshot (was running before restart)
+🤖 Auto-trader loop started — synced to 5-min candle closes
+💾  Crude settings loaded: {'sl_points': 50.0, 'trail_points': 25.0, 'rr_ratio': 3.0, 'capital': 0.0, 'strike_offset': 0, 'trail_mode': 'atr', 'atr_multiplier': 0.7, 'max_trades': 10, 'max_daily_loss': 19000.0, 'enabled_strategies': ['orb', 'supertrend', 'vwap', 'ema_cross', 'squeeze', 'chart_patterns', 'range_fade', 'divergence']}
+🛢️  Crude auto-trader loop started
+🔌 [Startup] Saved session found — auto-starting Kite WebSocket ticker
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹149.85
+📊 LTP refresh NIFTY2640722500PE: ₹149.85
+🛢️  MCX instruments loaded: 27832 symbols
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:55853 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55854 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55856 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55857 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55856 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55854 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55856 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/live-tick HTTP/1.1" 200 OK
+[VIX] Kite fetch OK: 25.29
+✅ NFO instruments loaded: 4327 NIFTY options
+📊 LTP NIFTY2640722900CE: ₹322.8
+📊 LTP NIFTY2640722900PE: ₹285.85
+INFO:     127.0.0.1:55856 - "GET /api/premium-estimate?spot=22910&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722900CE: ₹322.8
+📊 LTP NIFTY2640722900PE: ₹285.85
+INFO:     127.0.0.1:55855 - "GET /api/premium-estimate?spot=22909.45&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55854 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55866 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55854 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55854 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55854 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55854 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55854 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722500PE: ₹151.4
+📊 LTP refresh NIFTY2640722500PE: ₹151.40
+INFO:     127.0.0.1:55854 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55854 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55854 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55854 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55854 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+⚠️  SL order failed (tick guard still protects): No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+INFO:     127.0.0.1:55871 - "POST /api/auto-trader/rearm-sl HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722500PE: ₹150.9
+📊 LTP refresh NIFTY2640722500PE: ₹150.90
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55868 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:55879 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55855 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55879 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722500PE: ₹151
+📊 LTP refresh NIFTY2640722500PE: ₹151.00
+📊 LTP NIFTY2640722500PE: ₹150.55
+📊 LTP refresh NIFTY2640722500PE: ₹150.55
+INFO:     127.0.0.1:55892 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55893 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55892 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55894 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55893 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55895 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55896 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55895 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55894 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55895 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722900CE: ₹325.7
+📊 LTP NIFTY2640722900PE: ₹282.85
+INFO:     127.0.0.1:55894 - "GET /api/premium-estimate?spot=22909.1&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722900CE: ₹325.7
+📊 LTP NIFTY2640722900PE: ₹282.85
+INFO:     127.0.0.1:55894 - "GET /api/premium-estimate?spot=22909.1&offset=0 HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹148.6
+📊 LTP refresh NIFTY2640722500PE: ₹148.60
+📊 LTP NIFTY2640722500PE: ₹150
+📊 LTP refresh NIFTY2640722500PE: ₹150.00
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹150.1
+📊 LTP refresh NIFTY2640722500PE: ₹150.10
+📊 LTP NIFTY2640722500PE: ₹148.8
+📊 LTP refresh NIFTY2640722500PE: ₹148.80
+INFO:     127.0.0.1:55953 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55954 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55955 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55957 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55954 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55956 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55956 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55954 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55957 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55957 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722900CE: ₹322.65
+📊 LTP NIFTY2640722900PE: ₹285.1
+INFO:     127.0.0.1:55954 - "GET /api/premium-estimate?spot=22907.45&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722900CE: ₹322.65
+📊 LTP NIFTY2640722900PE: ₹285.1
+INFO:     127.0.0.1:55957 - "GET /api/premium-estimate?spot=22906.95&offset=0 HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹150.15
+📊 LTP refresh NIFTY2640722500PE: ₹150.15
+✅ Volume enriched from Kite futures (311/312 candles)
+📊 LTP NIFTY2640722500PE: ₹151.1
+🤖 [10:10:05] CANDLE 10:10 | ₹22904 | 📊 managing trade
+📊 LTP NIFTY2640722500PE: ₹150.9
+📊 LTP refresh NIFTY2640722500PE: ₹150.90
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹152.9
+📊 LTP refresh NIFTY2640722500PE: ₹152.90
+📊 LTP NIFTY2640722500PE: ₹154.5
+📊 LTP refresh NIFTY2640722500PE: ₹154.50
+INFO:     127.0.0.1:55983 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55984 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55985 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55986 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55983 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55985 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55984 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55983 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55983 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55983 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722900CE: ₹309.75
+📊 LTP NIFTY2640722900PE: ₹293.5
+INFO:     127.0.0.1:55984 - "GET /api/premium-estimate?spot=22886.1&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722900CE: ₹309.75
+📊 LTP NIFTY2640722900PE: ₹293.5
+INFO:     127.0.0.1:55984 - "GET /api/premium-estimate?spot=22886.1&offset=0 HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹156.75
+📊 LTP refresh NIFTY2640722500PE: ₹156.75
+📊 LTP NIFTY2640722500PE: ₹157.45
+📊 LTP refresh NIFTY2640722500PE: ₹157.45
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹156.65
+📊 LTP refresh NIFTY2640722500PE: ₹156.65
+📊 LTP NIFTY2640722500PE: ₹157.25
+📊 LTP refresh NIFTY2640722500PE: ₹157.25
+INFO:     127.0.0.1:56026 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56027 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56028 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56029 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56028 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56027 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722900CE: ₹303.75
+📊 LTP NIFTY2640722900PE: ₹297.8
+INFO:     127.0.0.1:56027 - "GET /api/premium-estimate?spot=22875.35&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722900CE: ₹303.75
+📊 LTP NIFTY2640722900PE: ₹297.8
+INFO:     127.0.0.1:56027 - "GET /api/premium-estimate?spot=22875.35&offset=0 HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹159.5
+📊 LTP refresh NIFTY2640722500PE: ₹159.50
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹156.45
+📊 LTP refresh NIFTY2640722500PE: ₹156.45
+📊 LTP NIFTY2640722500PE: ₹157.3
+📊 LTP refresh NIFTY2640722500PE: ₹157.30
+📊 LTP NIFTY2640722500PE: ₹159.5
+📊 LTP refresh NIFTY2640722500PE: ₹159.50
+INFO:     127.0.0.1:56030 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56082 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56083 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56030 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56084 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56083 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56030 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56082 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56083 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56083 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722900CE: ₹308.45
+📊 LTP NIFTY2640722900PE: ₹299.25
+INFO:     127.0.0.1:56082 - "GET /api/premium-estimate?spot=22875.7&offset=0 HTTP/1.1" 200 OK
+[VIX] Kite fetch OK: 25.32
+📊 LTP NIFTY2640722900CE: ₹308.45
+📊 LTP NIFTY2640722900PE: ₹299.25
+INFO:     127.0.0.1:56083 - "GET /api/premium-estimate?spot=22875.7&offset=0 HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹159.8
+📊 LTP refresh NIFTY2640722500PE: ₹159.80
+📊 LTP NIFTY2640722500PE: ₹161.25
+📊 LTP refresh NIFTY2640722500PE: ₹161.25
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹162.25
+📊 LTP refresh NIFTY2640722500PE: ₹162.25
+📊 LTP NIFTY2640722500PE: ₹162.25
+📊 LTP refresh NIFTY2640722500PE: ₹162.25
+INFO:     127.0.0.1:56085 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56132 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56133 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56085 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56134 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56133 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56085 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56132 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56085 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56132 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹332.25
+📊 LTP NIFTY2640722850PE: ₹281.35
+INFO:     127.0.0.1:56085 - "GET /api/premium-estimate?spot=22866.95&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹332.25
+📊 LTP NIFTY2640722850PE: ₹281.35
+INFO:     127.0.0.1:56132 - "GET /api/premium-estimate?spot=22866.95&offset=0 HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹160.55
+📊 LTP refresh NIFTY2640722500PE: ₹160.55
+📊 LTP NIFTY2640722500PE: ₹160.35
+📊 LTP refresh NIFTY2640722500PE: ₹160.35
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹161.55
+📊 LTP refresh NIFTY2640722500PE: ₹161.55
+📊 LTP NIFTY2640722500PE: ₹161.05
+📊 LTP refresh NIFTY2640722500PE: ₹161.05
+INFO:     127.0.0.1:56136 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56136 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56186 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56187 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56188 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56189 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56186 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56187 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56188 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56186 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹330
+📊 LTP NIFTY2640722850PE: ₹282.5
+INFO:     127.0.0.1:56187 - "GET /api/premium-estimate?spot=22867.9&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹330
+📊 LTP NIFTY2640722850PE: ₹282.5
+INFO:     127.0.0.1:56186 - "GET /api/premium-estimate?spot=22867.9&offset=0 HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+✅ Volume enriched from Kite futures (312/313 candles)
+✅ Settings saved to /Users/r0s0iv3/inevitable/.state_snapshot.json
+📊 LTP NIFTY2640722500PE: ₹160.65
+⚠️  sl_order_id missing — attempting to place new SL order at ₹30.31
+⚠️  SL order failed (tick guard still protects): No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+❌ Auto-rearm failed: _place_sl_order returned None — check Zerodha connectivity
+🤖 [10:15:05] CANDLE 10:15 | ₹22870 | 📊 managing trade
+📊 LTP NIFTY2640722500PE: ₹159.75
+📊 LTP refresh NIFTY2640722500PE: ₹159.75
+📊 LTP NIFTY2640722500PE: ₹159.4
+📊 LTP refresh NIFTY2640722500PE: ₹159.40
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+📊 LTP NIFTY2640722500PE: ₹159.6
+📊 LTP refresh NIFTY2640722500PE: ₹159.60
+📊 LTP NIFTY2640722500PE: ₹161.95
+📊 LTP refresh NIFTY2640722500PE: ₹161.95
+INFO:     127.0.0.1:56243 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56244 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56245 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56247 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56246 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56244 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56243 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56245 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56244 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹331.25
+📊 LTP NIFTY2640722850PE: ₹283.75
+INFO:     127.0.0.1:56243 - "GET /api/premium-estimate?spot=22870.65&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56245 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹331.25
+📊 LTP NIFTY2640722850PE: ₹283.75
+INFO:     127.0.0.1:56244 - "GET /api/premium-estimate?spot=22870.65&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722500PE: ₹164.5
+📊 LTP refresh NIFTY2640722500PE: ₹164.50
+INFO:     127.0.0.1:56279 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56279 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56279 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56279 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56279 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56279 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722500PE: ₹163.95
+📊 LTP refresh NIFTY2640722500PE: ₹163.95
+INFO:     127.0.0.1:56280 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹333
+📊 LTP NIFTY2640722850PE: ₹283.5
+INFO:     127.0.0.1:56280 - "GET /api/premium-estimate?spot=22868.2&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹333
+📊 LTP NIFTY2640722850PE: ₹283.5
+INFO:     127.0.0.1:56280 - "GET /api/premium-estimate?spot=22868.2&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/live-tick HTTP/1.1" 200 OK
+✅ Settings saved to /Users/r0s0iv3/inevitable/.state_snapshot.json
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "POST /api/auto-trader/discard-trade HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56280 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+⚠️  SL order failed (tick guard still protects): No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+✅ Settings saved to /Users/r0s0iv3/inevitable/.state_snapshot.json
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "POST /api/auto-trader/sync-zerodha HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56292 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56281 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722500PE: ₹160.95
+📊 LTP refresh NIFTY2640722500PE: ₹160.95
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56334 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56334 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56334 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56334 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56334 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56334 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56334 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+✅ Settings saved to /Users/r0s0iv3/inevitable/.state_snapshot.json
+INFO:     127.0.0.1:56334 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "POST /api/auto-trader/discard-trade HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56334 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56334 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56334 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56334 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56334 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹333.2
+📊 LTP NIFTY2640722850PE: ₹282.95
+INFO:     127.0.0.1:56310 - "GET /api/premium-estimate?spot=22870.65&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56346 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56346 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56346 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56346 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56346 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56346 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹331.15
+📊 LTP NIFTY2640722850PE: ₹285.35
+INFO:     127.0.0.1:56335 - "GET /api/premium-estimate?spot=22864.3&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹331.15
+📊 LTP NIFTY2640722850PE: ₹285.35
+INFO:     127.0.0.1:56363 - "GET /api/premium-estimate?spot=22864.3&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56387 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56387 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56402 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+[VIX] Kite fetch OK: 25.08
+📊 LTP NIFTY2640722850CE: ₹329.55
+📊 LTP NIFTY2640722850PE: ₹288
+INFO:     127.0.0.1:56363 - "GET /api/premium-estimate?spot=22862.35&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56363 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56406 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹327.3
+📊 LTP NIFTY2640722850PE: ₹289.1
+INFO:     127.0.0.1:56420 - "GET /api/premium-estimate?spot=22860.35&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹327.3
+📊 LTP NIFTY2640722850PE: ₹289.1
+INFO:     127.0.0.1:56420 - "GET /api/premium-estimate?spot=22860.35&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56420 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56452 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56452 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56452 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56452 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56452 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56452 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56452 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56452 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56452 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56452 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56452 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56472 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56472 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56472 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56472 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56472 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹331.65
+📊 LTP NIFTY2640722850PE: ₹285.15
+INFO:     127.0.0.1:56423 - "GET /api/premium-estimate?spot=22861.05&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56466 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56423 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56487 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56488 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56489 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56491 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56488 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56490 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56489 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56487 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56490 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56490 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹332.9
+📊 LTP NIFTY2640722850PE: ₹283.1
+INFO:     127.0.0.1:56487 - "GET /api/premium-estimate?spot=22871.7&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹332.9
+📊 LTP NIFTY2640722850PE: ₹283.1
+INFO:     127.0.0.1:56487 - "GET /api/premium-estimate?spot=22871.7&offset=0 HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+✅ Volume enriched from Kite futures (313/314 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (opening=₹34,374  intraday=₹50,000)
+⚠️  Capital override: settings say ₹10,810 but Zerodha free margin = ₹84,374 (₹73,564 more than configured). Using ₹84,374 for lot sizing.
+  💧 Liquidity [NIFTY2640722900PE] OI=3687060 bid=1365 ask=455 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22875 | ATM: 22900 | Offset: ATM | Picked: 22900 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722900PE | Token: 10436866 | OI: 3687060
+📊 LTP NIFTY2640722900PE: ₹302.8
+📐 Capital mode: ₹84,374 ÷ ₹19682/lot (via live LTP ₹302.8) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22875 | SL: ₹22920 | Target: ₹22763
+💰 Available margin: ₹25,065
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [10:20:05] CANDLE 10:20 | ₹22875 | 🔍 scanning signal
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56537 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56538 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56539 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56537 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56540 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56539 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56540 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56538 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56540 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56540 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722900CE: ₹308.35
+📊 LTP NIFTY2640722900PE: ₹298.1
+INFO:     127.0.0.1:56538 - "GET /api/premium-estimate?spot=22877.7&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722900CE: ₹308.35
+📊 LTP NIFTY2640722900PE: ₹298.1
+INFO:     127.0.0.1:56540 - "GET /api/premium-estimate?spot=22877.7&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56561 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56561 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56561 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56561 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56561 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56561 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56563 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56561 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹332.2
+📊 LTP NIFTY2640722850PE: ₹282.65
+INFO:     127.0.0.1:56579 - "GET /api/premium-estimate?spot=22874.3&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹332.2
+📊 LTP NIFTY2640722850PE: ₹282.65
+INFO:     127.0.0.1:56564 - "GET /api/premium-estimate?spot=22874.3&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56599 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56613 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56612 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56620 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56620 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56620 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56620 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹326.9
+📊 LTP NIFTY2640722850PE: ₹287.05
+INFO:     127.0.0.1:56599 - "GET /api/premium-estimate?spot=22856.35&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹326.9
+📊 LTP NIFTY2640722850PE: ₹287.05
+INFO:     127.0.0.1:56579 - "GET /api/premium-estimate?spot=22856.35&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56634 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56646 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56676 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56677 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56678 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56681 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56677 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56679 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56681 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56678 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56681 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56681 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹324.75
+📊 LTP NIFTY2640722850PE: ₹291.55
+INFO:     127.0.0.1:56678 - "GET /api/premium-estimate?spot=22845.9&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹324.75
+📊 LTP NIFTY2640722850PE: ₹291.55
+INFO:     127.0.0.1:56678 - "GET /api/premium-estimate?spot=22845.35&offset=0 HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56705 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56706 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56707 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56705 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56708 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56707 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56708 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56706 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56707 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56707 - "GET /api/live-tick HTTP/1.1" 200 OK
+[VIX] Kite fetch OK: 25.17
+📊 LTP NIFTY2640722850CE: ₹316.45
+📊 LTP NIFTY2640722850PE: ₹299.85
+INFO:     127.0.0.1:56706 - "GET /api/premium-estimate?spot=22827.2&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹316.45
+📊 LTP NIFTY2640722850PE: ₹299.85
+INFO:     127.0.0.1:56706 - "GET /api/premium-estimate?spot=22827.2&offset=0 HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56710 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56759 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56760 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56710 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56761 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56759 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56760 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56710 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56760 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56760 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹311.35
+📊 LTP NIFTY2640722850PE: ₹304.05
+INFO:     127.0.0.1:56710 - "GET /api/premium-estimate?spot=22827.85&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722850CE: ₹311.75
+📊 LTP NIFTY2640722850PE: ₹303.6
+INFO:     127.0.0.1:56760 - "GET /api/premium-estimate?spot=22827.2&offset=0 HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+✅ Volume enriched from Kite futures (314/315 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (in line with settings)
+  💧 Liquidity [NIFTY2640722850PE] OI=2092805 bid=1625 ask=3055 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22827 | ATM: 22850 | Offset: ATM | Picked: 22850 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850PE | Token: 10434562 | OI: 2092805
+📊 LTP NIFTY2640722850PE: ₹304.3
+📐 Capital mode: ₹84,374 ÷ ₹19780/lot (via live LTP ₹304.3) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22827 | SL: ₹22872 | Target: ₹22715
+💰 Available margin: ₹25,065
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [10:25:05] CANDLE 10:25 | ₹22827 | 🔍 scanning signal
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56762 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56800 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56801 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56762 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56802 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56801 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56800 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56762 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56801 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56762 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722800CE: ₹327.7
+📊 LTP NIFTY2640722800PE: ₹292.8
+INFO:     127.0.0.1:56801 - "GET /api/premium-estimate?spot=22799.25&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722800CE: ₹327.7
+📊 LTP NIFTY2640722800PE: ₹292.8
+INFO:     127.0.0.1:56762 - "GET /api/premium-estimate?spot=22799.5&offset=0 HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56803 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56850 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56803 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56851 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56850 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56852 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56853 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56851 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56852 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56853 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722800CE: ₹321.15
+📊 LTP NIFTY2640722800PE: ₹301.65
+INFO:     127.0.0.1:56852 - "GET /api/premium-estimate?spot=22791&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722800CE: ₹321.15
+📊 LTP NIFTY2640722800PE: ₹301.65
+INFO:     127.0.0.1:56852 - "GET /api/premium-estimate?spot=22791&offset=0 HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56877 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56879 - "GET /api/auto-trader/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56880 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56882 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56880 - "GET /api/auto-trader/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56879 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56880 - "GET /api/live-tick HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722800CE: ₹321
+📊 LTP NIFTY2640722800PE: ₹302.1
+INFO:     127.0.0.1:56879 - "GET /api/premium-estimate?spot=22788.45&offset=0 HTTP/1.1" 200 OK
+📊 LTP NIFTY2640722800CE: ₹321
+📊 LTP NIFTY2640722800PE: ₹302.1
+INFO:     127.0.0.1:56880 - "GET /api/premium-estimate?spot=22788.45&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56880 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56880 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56880 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56880 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56880 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56880 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56880 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56880 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56880 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56888 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56880 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56891 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56890 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56891 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56946 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56946 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+✅ Volume enriched from Kite futures (315/316 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (in line with settings)
+  💧 Liquidity [NIFTY2640722800CE] OI=2346240 bid=1495 ask=390 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22804 | ATM: 22800 | Offset: ATM | Picked: 22800 CE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722800CE | Token: 10432514 | OI: 2346240
+📊 LTP NIFTY2640722800CE: ₹324.35
+📐 Capital mode: ₹84,374 ÷ ₹21083/lot (via live LTP ₹324.4) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22804 | SL: ₹22759 | Target: ₹22916
+💰 Available margin: ₹25,065
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [10:30:05] CANDLE 10:30 | ₹22804 | 🔍 scanning signal
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56908 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56947 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56947 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56974 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56947 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56974 - "GET /api/crude/status HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:56975 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56975 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56996 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56997 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56996 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57011 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57011 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57012 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57012 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57011 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57014 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57014 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57031 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57014 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57032 - "GET /api/crude/status HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57033 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57033 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57062 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57033 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57063 - "GET /api/crude/status HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+✅ Volume enriched from Kite futures (316/317 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (in line with settings)
+  💧 Liquidity [NIFTY2640722800PE] OI=3462680 bid=715 ask=1690 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22797 | ATM: 22800 | Offset: ATM | Picked: 22800 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722800PE | Token: 10432770 | OI: 3462680
+📊 LTP NIFTY2640722800PE: ₹302
+📐 Capital mode: ₹84,374 ÷ ₹19630/lot (via live LTP ₹302.0) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22797 | SL: ₹22842 | Target: ₹22685
+💰 Available margin: ₹25,065
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [10:35:05] CANDLE 10:35 | ₹22797 | 🔍 scanning signal
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57085 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57086 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57086 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57085 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57086 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57114 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57114 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57116 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57117 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57114 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57174 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57175 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57174 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57174 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57175 - "GET /api/crude/status HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57219 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57220 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57220 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57219 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57222 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57246 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57247 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57246 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57247 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57248 - "GET /api/crude/status HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+✅ Volume enriched from Kite futures (317/318 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (in line with settings)
+  💧 Liquidity [NIFTY2640722800PE] OI=3604965 bid=585 ask=3380 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22808 | ATM: 22800 | Offset: ATM | Picked: 22800 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722800PE | Token: 10432770 | OI: 3604965
+📊 LTP NIFTY2640722800PE: ₹295.35
+📐 Capital mode: ₹84,374 ÷ ₹19198/lot (via live LTP ₹295.4) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22808 | SL: ₹22853 | Target: ₹22696
+💰 Available margin: ₹25,065
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [10:40:17] CANDLE 10:40 | ₹22808 | 🔍 scanning signal
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57275 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57276 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57275 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57276 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57277 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57375 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57375 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57376 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57377 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57375 - "GET /api/crude/status HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57392 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57393 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57393 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57392 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57393 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57425 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57425 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57426 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57425 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57426 - "GET /api/crude/status HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+✅ Volume enriched from Kite futures (319/319 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (in line with settings)
+  💧 Liquidity [NIFTY2640722800PE] OI=3815240 bid=1495 ask=1625 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22803 | ATM: 22800 | Offset: ATM | Picked: 22800 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722800PE | Token: 10432770 | OI: 3815240
+📊 LTP NIFTY2640722800PE: ₹297.65
+📐 Capital mode: ₹84,374 ÷ ₹19347/lot (via live LTP ₹297.6) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22803 | SL: ₹22848 | Target: ₹22691
+💰 Available margin: ₹25,065
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [10:49:53] CANDLE 10:45 | ₹22803 | 🔍 scanning signal
+INFO:     127.0.0.1:57427 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57449 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57427 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57449 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57450 - "GET /api/crude/status HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+✅ Volume enriched from Kite futures (319/320 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (in line with settings)
+  💧 Liquidity [NIFTY2640722800PE] OI=3815240 bid=650 ask=845 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22799 | ATM: 22800 | Offset: ATM | Picked: 22800 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722800PE | Token: 10432770 | OI: 3815240
+📊 LTP NIFTY2640722800PE: ₹299.2
+📐 Capital mode: ₹84,374 ÷ ₹19448/lot (via live LTP ₹299.2) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22799 | SL: ₹22844 | Target: ₹22687
+💰 Available margin: ₹25,065
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [10:50:05] CANDLE 10:50 | ₹22799 | 🔍 scanning signal
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57521 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57521 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57522 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57523 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57521 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Quote error: HTTPSConnectionPool(host='api.kite.trade', port=443): Read timed out. (read timeout=7)
+INFO:     127.0.0.1:57564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57565 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57564 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57565 - "GET /api/crude/status HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57567 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57592 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57592 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57567 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57594 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57648 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57648 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57649 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57648 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57649 - "GET /api/crude/status HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57650 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57697 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57650 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57697 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57650 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+✅ Volume enriched from Kite futures (321/321 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (in line with settings)
+  💧 Liquidity [NIFTY2640722800PE] OI=3911375 bid=780 ask=1365 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22776 | ATM: 22800 | Offset: ATM | Picked: 22800 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722800PE | Token: 10432770 | OI: 3911375
+📊 LTP NIFTY2640722800PE: ₹311
+📐 Capital mode: ₹84,374 ÷ ₹20215/lot (via live LTP ₹311.0) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22776 | SL: ₹22821 | Target: ₹22663
+💰 Available margin: ₹25,065
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [10:58:07] CANDLE 10:55 | ₹22776 | 🔍 scanning signal
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57771 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57771 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57772 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57771 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57772 - "GET /api/crude/status HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57793 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57793 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57794 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57794 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57793 - "GET /api/live-tick HTTP/1.1" 200 OK
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+Connection closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+✅ Volume enriched from Kite futures (321/322 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹25,065  used=₹59,309  (in line with settings)
+  💧 Liquidity [NIFTY2640722750PE] OI=1454960 bid=1365 ask=2470 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22770 | ATM: 22750 | Offset: ATM | Picked: 22750 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722750PE | Token: 10432258 | OI: 1454960
+📊 LTP NIFTY2640722750PE: ₹291
+📐 Capital mode: ₹84,374 ÷ ₹18915/lot (via live LTP ₹291.0) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22770 | SL: ₹22815 | Target: ₹22658
+💰 Available margin: ₹25,065
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [11:00:05] CANDLE 11:00 | ₹22770 | 🔍 scanning signal
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket error: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+WebSocket closed: 1006 - connection was closed uncleanly (peer dropped the TCP connection without previous WebSocket closing handshake)
+INFO:     127.0.0.1:57891 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57892 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57891 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57892 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57893 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57938 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57938 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57939 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57938 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57940 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57942 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57977 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57976 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57977 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57976 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58002 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58003 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58002 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58003 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58004 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58052 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58053 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58052 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58053 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58054 - "GET /api/live-tick HTTP/1.1" 200 OK
+✅ Volume enriched from Kite futures (323/323 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹26,345  used=₹58,029  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹26,345  used=₹58,029  (in line with settings)
+  💧 Liquidity [NIFTY2640722750PE] OI=1705535 bid=975 ask=1690 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22740 | ATM: 22750 | Offset: ATM | Picked: 22750 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722750PE | Token: 10432258 | OI: 1705535
+📊 LTP NIFTY2640722750PE: ₹303.75
+📐 Capital mode: ₹84,374 ÷ ₹19744/lot (via live LTP ₹303.8) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22740 | SL: ₹22785 | Target: ₹22628
+💰 Available margin: ₹26,345
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [11:05:49] CANDLE 11:05 | ₹22740 | 🔍 scanning signal
+INFO:     127.0.0.1:58075 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58076 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58076 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58075 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58077 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58140 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58140 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58141 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58141 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58142 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58170 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58171 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58171 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58170 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58261 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58262 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58172 - "GET /api/live-tick HTTP/1.1" 200 OK
+✅ Volume enriched from Kite futures (323/324 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722750PE] OI=1634880 bid=910 ask=1365 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22772 | ATM: 22750 | Offset: ATM | Picked: 22750 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722750PE | Token: 10432258 | OI: 1634880
+📊 LTP NIFTY2640722750PE: ₹291.55
+📐 Capital mode: ₹84,374 ÷ ₹18951/lot (via live LTP ₹291.6) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22772 | SL: ₹22817 | Target: ₹22659
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [11:10:05] CANDLE 11:10 | ₹22772 | 🔍 scanning signal
+INFO:     127.0.0.1:58327 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58327 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58328 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58329 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58327 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58330 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58352 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58352 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58330 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58352 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58391 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58391 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58392 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58393 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58391 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58447 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58447 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58448 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58448 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58447 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58449 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58502 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58449 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58502 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58449 - "GET /api/live-tick HTTP/1.1" 200 OK
+✅ Volume enriched from Kite futures (324/325 candles)
+🤖 [11:15:05] CANDLE 11:15 | ₹22764 | 🔍 scanning signal
+INFO:     127.0.0.1:58503 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58532 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58503 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58532 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58533 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58547 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58548 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58547 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58548 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58549 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58580 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58579 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58580 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58581 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58599 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58601 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58600 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58602 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58599 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58626 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58628 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58627 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58627 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58626 - "GET /api/crude/status HTTP/1.1" 200 OK
+✅ Volume enriched from Kite futures (325/326 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722750PE] OI=1859455 bid=1170 ask=1560 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22768 | ATM: 22750 | Offset: ATM | Picked: 22750 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722750PE | Token: 10432258 | OI: 1859455
+📊 LTP NIFTY2640722750PE: ₹288.25
+📐 Capital mode: ₹84,374 ÷ ₹18736/lot (via live LTP ₹288.2) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22768 | SL: ₹22813 | Target: ₹22656
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [11:20:06] CANDLE 11:20 | ₹22768 | 🔍 scanning signal
+INFO:     127.0.0.1:58659 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58659 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58660 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58659 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58661 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58737 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58737 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58738 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58737 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58739 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58785 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58785 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58786 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58785 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58786 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58787 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58787 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58856 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58787 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58857 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58908 - "GET /api/crude/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58909 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58908 - "GET /api/live-tick HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58910 - "GET /api/crude/status HTTP/1.1" 200 OK
+✅ Volume enriched from Kite futures (326/327 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722800PE] OI=3248895 bid=1430 ask=715 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22783 | ATM: 22800 | Offset: ATM | Picked: 22800 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722800PE | Token: 10432770 | OI: 3248895
+📊 LTP NIFTY2640722800PE: ₹303
+📐 Capital mode: ₹84,374 ÷ ₹19695/lot (via live LTP ₹303.0) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22783 | SL: ₹22828 | Target: ₹22671
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [11:25:05] CANDLE 11:25 | ₹22783 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (327/328 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722800PE] OI=3263780 bid=1560 ask=1495 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22789 | ATM: 22800 | Offset: ATM | Picked: 22800 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722800PE | Token: 10432770 | OI: 3263780
+📊 LTP NIFTY2640722800PE: ₹299.4
+📐 Capital mode: ₹84,374 ÷ ₹19461/lot (via live LTP ₹299.4) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22789 | SL: ₹22834 | Target: ₹22677
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [11:30:05] CANDLE 11:30 | ₹22789 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (328/329 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722800PE] OI=3337945 bid=1430 ask=780 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22798 | ATM: 22800 | Offset: ATM | Picked: 22800 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722800PE | Token: 10432770 | OI: 3337945
+📊 LTP NIFTY2640722800PE: ₹292
+📐 Capital mode: ₹84,374 ÷ ₹18980/lot (via live LTP ₹292.0) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22798 | SL: ₹22843 | Target: ₹22686
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [11:35:05] CANDLE 11:35 | ₹22798 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (329/330 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722800PE] OI=3419845 bid=325 ask=1625 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22813 | ATM: 22800 | Offset: ATM | Picked: 22800 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722800PE | Token: 10432770 | OI: 3419845
+📊 LTP NIFTY2640722800PE: ₹285.95
+📐 Capital mode: ₹84,374 ÷ ₹18587/lot (via live LTP ₹285.9) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22813 | SL: ₹22858 | Target: ₹22700
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [11:40:07] CANDLE 11:40 | ₹22813 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (331/331 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722800PE] OI=3499600 bid=1755 ask=3510 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22791 | ATM: 22800 | Offset: ATM | Picked: 22800 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722800PE | Token: 10432770 | OI: 3499600
+📊 LTP NIFTY2640722800PE: ₹291.4
+📐 Capital mode: ₹84,374 ÷ ₹18941/lot (via live LTP ₹291.4) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22791 | SL: ₹22836 | Target: ₹22678
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [11:45:49] CANDLE 11:45 | ₹22791 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (331/332 candles)
+🤖 [11:50:05] CANDLE 11:50 | ₹22751 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (332/333 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722750PE] OI=1976780 bid=780 ask=975 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22744 | ATM: 22750 | Offset: ATM | Picked: 22750 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722750PE | Token: 10432258 | OI: 1976780
+📊 LTP NIFTY2640722750PE: ₹291.5
+📐 Capital mode: ₹84,374 ÷ ₹18948/lot (via live LTP ₹291.5) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22744 | SL: ₹22790 | Target: ₹22632
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [11:55:05] CANDLE 11:55 | ₹22744 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (333/334 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722800PE] OI=3530280 bid=1950 ask=1300 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22776 | ATM: 22800 | Offset: ATM | Picked: 22800 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722800PE | Token: 10432770 | OI: 3530280
+📊 LTP NIFTY2640722800PE: ₹298.5
+📐 Capital mode: ₹84,374 ÷ ₹19402/lot (via live LTP ₹298.5) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22776 | SL: ₹22821 | Target: ₹22664
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [12:00:05] CANDLE 12:00 | ₹22776 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (334/335 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722850PE] OI=1504815 bid=585 ask=585 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22835 | ATM: 22850 | Offset: ATM | Picked: 22850 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850PE | Token: 10434562 | OI: 1504815
+📊 LTP NIFTY2640722850PE: ₹288.4
+📐 Capital mode: ₹84,374 ÷ ₹18746/lot (via live LTP ₹288.4) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22835 | SL: ₹22880 | Target: ₹22722
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [12:05:05] CANDLE 12:05 | ₹22835 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (335/336 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722850PE] OI=1557855 bid=1170 ask=1300 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22838 | ATM: 22850 | Offset: ATM | Picked: 22850 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850PE | Token: 10434562 | OI: 1557855
+📊 LTP NIFTY2640722850PE: ₹286.05
+📐 Capital mode: ₹84,374 ÷ ₹18593/lot (via live LTP ₹286.1) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22838 | SL: ₹22883 | Target: ₹22726
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [12:10:05] CANDLE 12:10 | ₹22838 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (336/337 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722850CE] OI=1929135 bid=845 ask=910 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22859 | ATM: 22850 | Offset: ATM | Picked: 22850 CE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850CE | Token: 10433026 | OI: 1929135
+📊 LTP NIFTY2640722850CE: ₹330.85
+📐 Capital mode: ₹84,374 ÷ ₹21505/lot (via live LTP ₹330.9) = 3 lots → 195 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22859 | SL: ₹22814 | Target: ₹22972
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [12:15:05] CANDLE 12:15 | ₹22859 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (337/338 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722850PE] OI=1709305 bid=1495 ask=1235 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22835 | ATM: 22850 | Offset: ATM | Picked: 22850 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850PE | Token: 10434562 | OI: 1709305
+📊 LTP NIFTY2640722850PE: ₹283.1
+📐 Capital mode: ₹84,374 ÷ ₹18402/lot (via live LTP ₹283.1) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22835 | SL: ₹22880 | Target: ₹22723
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [12:20:05] CANDLE 12:20 | ₹22835 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (338/339 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722850PE] OI=1799070 bid=780 ask=975 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22829 | ATM: 22850 | Offset: ATM | Picked: 22850 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850PE | Token: 10434562 | OI: 1799070
+📊 LTP NIFTY2640722850PE: ₹285.8
+📐 Capital mode: ₹84,374 ÷ ₹18577/lot (via live LTP ₹285.8) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22829 | SL: ₹22874 | Target: ₹22716
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [12:25:05] CANDLE 12:25 | ₹22829 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (339/340 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722850PE] OI=1815905 bid=1300 ask=520 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22836 | ATM: 22850 | Offset: ATM | Picked: 22850 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850PE | Token: 10434562 | OI: 1815905
+📊 LTP NIFTY2640722850PE: ₹280
+📐 Capital mode: ₹84,374 ÷ ₹18200/lot (via live LTP ₹280.0) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22836 | SL: ₹22881 | Target: ₹22724
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [12:30:05] CANDLE 12:30 | ₹22836 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (340/341 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722850PE] OI=1805245 bid=585 ask=1950 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22829 | ATM: 22850 | Offset: ATM | Picked: 22850 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850PE | Token: 10434562 | OI: 1805245
+📊 LTP NIFTY2640722850PE: ₹285.6
+📐 Capital mode: ₹84,374 ÷ ₹18564/lot (via live LTP ₹285.6) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22829 | SL: ₹22874 | Target: ₹22717
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [12:35:09] CANDLE 12:35 | ₹22829 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (341/342 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722850CE] OI=2040610 bid=1430 ask=2925 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22846 | ATM: 22850 | Offset: ATM | Picked: 22850 CE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850CE | Token: 10433026 | OI: 2040610
+📊 LTP NIFTY2640722850CE: ₹322.45
+📐 Capital mode: ₹84,374 ÷ ₹20959/lot (via live LTP ₹322.4) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22846 | SL: ₹22800 | Target: ₹22958
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [12:40:05] CANDLE 12:40 | ₹22846 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (342/343 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722850PE] OI=1846975 bid=650 ask=1950 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22836 | ATM: 22850 | Offset: ATM | Picked: 22850 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850PE | Token: 10434562 | OI: 1846975
+📊 LTP NIFTY2640722850PE: ₹280.75
+📐 Capital mode: ₹84,374 ÷ ₹18249/lot (via live LTP ₹280.8) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22836 | SL: ₹22881 | Target: ₹22724
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [12:45:05] CANDLE 12:45 | ₹22836 | 🔍 scanning signal
+⚠️  Crude spot fetch failed: HTTPSConnectionPool(host='api.kite.trade', port=443): Read timed out. (read timeout=7)/Users/r0s0iv3/inevitable/reversal_continuation_detector.py:244: RuntimeWarning: invalid value encountered in scalar divide
+  vol_change_pct = (second_half_vol - first_half_vol) / first_half_vol * 100
+/Users/r0s0iv3/inevitable/reversal_continuation_detector.py:244: RuntimeWarning: invalid value encountered in scalar divide
+  vol_change_pct = (second_half_vol - first_half_vol) / first_half_vol * 100
+/Users/r0s0iv3/inevitable/reversal_continuation_detector.py:244: RuntimeWarning: invalid value encountered in scalar divide
+  vol_change_pct = (second_half_vol - first_half_vol) / first_half_vol * 100
+/Users/r0s0iv3/inevitable/reversal_continuation_detector.py:244: RuntimeWarning: invalid value encountered in scalar divide
+  vol_change_pct = (second_half_vol - first_half_vol) / first_half_vol * 100
+/Users/r0s0iv3/inevitable/reversal_continuation_detector.py:244: RuntimeWarning: invalid value encountered in scalar divide
+  vol_change_pct = (second_half_vol - first_half_vol) / first_half_vol * 100
+
+✅ Volume enriched from Kite futures (346/346 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722850CE] OI=1891435 bid=1235 ask=650 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22867 | ATM: 22850 | Offset: ATM | Picked: 22850 CE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850CE | Token: 10433026 | OI: 1891435
+📊 LTP NIFTY2640722850CE: ₹332.2
+📐 Capital mode: ₹84,374 ÷ ₹21593/lot (via live LTP ₹332.2) = 3 lots → 195 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22867 | SL: ₹22822 | Target: ₹22980
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [13:00:45] CANDLE 13:00 | ₹22867 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (346/347 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722850CE] OI=1924455 bid=715 ask=780 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22867 | ATM: 22850 | Offset: ATM | Picked: 22850 CE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850CE | Token: 10433026 | OI: 1924455
+📊 LTP NIFTY2640722850CE: ₹329.8
+📐 Capital mode: ₹84,374 ÷ ₹21437/lot (via live LTP ₹329.8) = 3 lots → 195 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22867 | SL: ₹22822 | Target: ₹22980
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [13:05:05] CANDLE 13:05 | ₹22867 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (347/348 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722850CE] OI=1932385 bid=715 ask=1495 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22868 | ATM: 22850 | Offset: ATM | Picked: 22850 CE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850CE | Token: 10433026 | OI: 1932385
+📊 LTP NIFTY2640722850CE: ₹328
+📐 Capital mode: ₹84,374 ÷ ₹21320/lot (via live LTP ₹328.0) = 3 lots → 195 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22868 | SL: ₹22823 | Target: ₹22980
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [13:10:05] CANDLE 13:10 | ₹22868 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (348/349 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722900CE] OI=3772665 bid=1755 ask=5135 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22886 | ATM: 22900 | Offset: ATM | Picked: 22900 CE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722900CE | Token: 10434818 | OI: 3772665
+📊 LTP NIFTY2640722900CE: ₹309.9
+📐 Capital mode: ₹84,374 ÷ ₹20144/lot (via live LTP ₹309.9) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22886 | SL: ₹22841 | Target: ₹22998
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [13:15:05] CANDLE 13:15 | ₹22886 | 🔍 scanning signal
+✅ Volume enriched from Kite futures (349/350 candles)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (opening=₹34,374  intraday=₹50,000)
+💰 Margin [EQUITY]  free=₹84,374  net=₹6,813  used=₹77,561  (in line with settings)
+  💧 Liquidity [NIFTY2640722850PE] OI=2072980 bid=2015 ask=975 → OK ✅
+🎯 Strike Selection:
+   Nifty: 22840 | ATM: 22850 | Offset: ATM | Picked: 22850 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722850PE | Token: 10434562 | OI: 2072980
+📊 LTP NIFTY2640722850PE: ₹276.4
+📐 Capital mode: ₹84,374 ÷ ₹17966/lot (via live LTP ₹276.4) = 4 lots → 260 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22840 | SL: ₹22885 | Target: ₹22728
+💰 Available margin: ₹6,813
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [13:20:05] CANDLE 13:20 | ₹22840 | 🔍 scanning signal
+⚠️  Crude spot fetch failed: HTTPSConnectionPool(host='api.kite.trade', port=443): Read timed out. (read timeout=7)
+🎯 Strike Selection:
+   Nifty: 22698 | ATM: 22700 | Offset: ATM | Picked: 22700 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722700PE | Token: 10430722 | OI: 0
+📐 Capital mode: ₹84,374 ÷ ₹5161/lot (via estimated ₹79.4 (0.35% of spot — Kite unavailable)) = 16 lots → 1040 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22698 | SL: ₹22743 | Target: ₹22586
+💰 Available margin: ₹771
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [13:51:56] CANDLE 13:50 | ₹22698 | 🔍 scanning signal
+🎯 Strike Selection:
+   Nifty: 22719 | ATM: 22700 | Offset: ATM | Picked: 22700 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722700PE | Token: 10430722 | OI: 0
+📐 Capital mode: ₹84,374 ÷ ₹5168/lot (via estimated ₹79.5 (0.35% of spot — Kite unavailable)) = 16 lots → 1040 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22719 | SL: ₹22764 | Target: ₹22607
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [14:08:07] CANDLE 14:05 | ₹22719 | 🔍 scanning signal
+🎯 Strike Selection:
+   Nifty: 22738 | ATM: 22750 | Offset: ATM | Picked: 22750 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722750PE | Token: 10432258 | OI: 0
+📐 Capital mode: ₹84,374 ÷ ₹5174/lot (via estimated ₹79.6 (0.35% of spot — Kite unavailable)) = 16 lots → 1040 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22738 | SL: ₹22783 | Target: ₹22626
+💰 Available margin: ₹771
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [14:10:05] CANDLE 14:10 | ₹22738 | 🔍 scanning signal
+🎯 Strike Selection:
+   Nifty: 22755 | ATM: 22750 | Offset: ATM | Picked: 22750 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722750PE | Token: 10432258 | OI: 0
+📐 Capital mode: ₹84,374 ÷ ₹5174/lot (via estimated ₹79.6 (0.35% of spot — Kite unavailable)) = 16 lots → 1040 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22755 | SL: ₹22800 | Target: ₹22642
+💰 Available margin: ₹771
+❌ [LIVE] Order chunk 1/1 failed: No IPs configured for this app. Add allowed IPs on the Kite developer console (https://developers.kite.trade).
+🤖 [14:15:05] CANDLE 14:15 | ₹22755 | 🔍 scanning signal
+🎯 Strike Selection:
+   Nifty: 22741 | ATM: 22750 | Offset: ATM | Picked: 22750 PE
+   Expiry: 2026-04-07 | Symbol: NIFTY2640722750PE | Token: 10432258 | OI: 0
+📐 Capital mode: ₹84,374 ÷ ₹5174/lot (via estimated ₹79.6 (0.35% of spot — Kite unavailable)) = 16 lots → 1040 units
+⚠️  Option info unavailable: No module named 'data'
+
+🎯 Entry SL distance: 45 points | Entry: ₹22741 | SL: ₹22786 | Target: ₹22629/Users/r0s0iv3/inevitable/reversal_continuation_detector.py:244: RuntimeWarning: invalid value encountered in scalar divide
+  vol_change_pct = (second_half_vol - first_half_vol) / first_half_vol * 100
+/Users/r0s0iv3/inevitable/reversal_continuation_detector.py:244: RuntimeWarning: invalid value encountered in scalar divide
+  vol_change_pct = (second_half_vol - first_half_vol) / first_half_vol * 100
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [57896]

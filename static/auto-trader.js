@@ -610,6 +610,17 @@ function renderAutoTrader(data) {
             }
         }
 
+        // ── 🚨 Exchange SL missing warning (no Zerodha backstop) ────
+        const noSlWarn = document.getElementById('at-no-exchange-sl-warn');
+        if (noSlWarn) {
+            const hasSL = t.sl_order_id && !t.sl_order_id.startsWith('SL-PAPER');
+            if (!hasSL && !t.paper && t.app_managed) {
+                noSlWarn.classList.remove('hidden');
+            } else {
+                noSlWarn.classList.add('hidden');
+            }
+        }
+
         // Unrealized P&L — live LTP preferred, delta estimate fallback
         const upnlEl = document.getElementById('at-upnl');
         if (upnlEl) {
@@ -854,7 +865,29 @@ async function syncFromZerodha() {
     }
 }
 
-// ── Trade Managed Toggle ──────────────────────────────────────────
+async function rearmExchangeSL() {
+    _atShowToast('⏳ Re-arming Zerodha SL order…', 'info');
+    const warn = document.getElementById('at-no-exchange-sl-warn');
+    const btn  = warn ? warn.querySelector('button') : null;
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Placing…'; }
+    try {
+        const resp = await fetch('/api/auto-trader/rearm-sl', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            _atShowToast(`🛡 Exchange SL armed — order ${data.sl_order_id} @ ₹${data.sl_trigger?.toFixed(2)}`, 'info');
+            if (warn) warn.classList.add('hidden');
+            await pollAutoTraderStatus();
+        } else {
+            _atShowToast(`❌ Re-arm failed — ${data.error}`, 'error');
+            if (btn) { btn.disabled = false; btn.textContent = '🛡 Re-arm SL'; }
+        }
+    } catch (e) {
+        _atShowToast(`❌ Re-arm error — ${e.message}`, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = '🛡 Re-arm SL'; }
+    }
+}
+
+// ── Trade Managed Toggle ──────────────────────────────────────────────────
 let _tradeManaged = true;  // local state mirror
 
 function _refreshManagedToggle(managed) {

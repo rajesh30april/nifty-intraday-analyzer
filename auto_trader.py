@@ -239,6 +239,7 @@ def _save_state_snapshot():
         # ── Trail tracking — survive restarts so ATR trail resumes correctly ──
         # Without these, entry_nifty_sl=0 after restart → new guard never fires
         "entry_nifty_sl":           state.entry_nifty_sl,
+        "entry_option_trigger":      state.entry_option_trigger,  # needed for delta math after restart
         "lowest_price_since_entry": state.lowest_price_since_entry,
         "highest_price_since_entry":state.highest_price_since_entry,
         "active_option_token":      state.active_option_token,
@@ -532,8 +533,10 @@ def _recover_state(snapshot_file: Path | None = None):
         # evaluates candidate < 0 → always False → trail never fires!
         # Restore the extremes too so the trail picks up exactly where it left off.
         state.entry_nifty_sl            = snap.get("entry_nifty_sl",            at["stop_loss"])
-        state.highest_price_since_entry = snap.get("highest_price_since_entry", at["entry_price"])
-        state.lowest_price_since_entry  = snap.get("lowest_price_since_entry",  at["entry_price"])
+        state.entry_option_trigger       = snap.get("entry_option_trigger", 0.0) or 0.0  # delta math
+        # None-safe restore: if extremes were never saved, use entry_price as safe default
+        state.highest_price_since_entry = snap.get("highest_price_since_entry") or at["entry_price"]
+        state.lowest_price_since_entry  = snap.get("lowest_price_since_entry")  or at["entry_price"]
         # Restore option token so WebSocket subscription resumes on recovery
         opt_tok = snap.get("active_option_token")
         if opt_tok:
@@ -1166,11 +1169,48 @@ def _nifty_to_option_premium(nifty_level: float, trade: "Trade") -> float:
     return max(round(result, 1), 0.1)
 
 
+def rearm_exchange_sl() -> dict:
+    """Place (or re-place) the exchange SL-M backstop order on Zerodha.
+
+    Call this when sl_order_id is None (e.g. sync trade where SL order
+    failed at sync time) to restore the crash-protection backstop.
+    Safe to call anytime — if an SL order already exists it is cancelled
+    first to avoid duplicate protection.
+    """
+    trade = state.active_trade
+    if not trade:
+        return {"success": False, "error": "No active trade"}
+    if trade.paper:
+        return {"success": False, "error": "Paper trade — no exchange orders"}
+    if not getattr(trade, "app_managed", True):
+        return {"success": False, "error": "Trade is monitor-only — app will not place orders"}
+
+    # Cancel any existing SL order first (avoids duplicates)
+    if trade.sl_order_id and not trade.sl_order_id.startswith("SL-PAPER"):
+        _cancel_sl_order(trade)
+
+    # Compute current trigger price from active stop_loss level
+    sl_trigger = _nifty_to_option_premium(trade.stop_loss, trade)
+    sl_order_id = _place_sl_order(trade, sl_trigger)
+    if sl_order_id:
+        trade.sl_order_id = sl_order_id
+        _save_state_snapshot()
+        _log("🛡", "Exchange SL re-armed",
+             f"New SL order placed: trigger=₹{sl_trigger:.2f} "
+             f"Nifty SL=₹{trade.stop_loss:.0f} | id={sl_order_id}")
+        return {"success": True, "sl_order_id": sl_order_id, "sl_trigger": sl_trigger}
+    else:
+        _log("❌", "Re-arm failed", "Could not place SL order at Zerodha — check logs")
+        return {"success": False, "error": "_place_sl_order returned None — check Zerodha connectivity"}
+
+
 def _sync_trailing_sl_to_exchange() -> None:
     """Modify the standing SL-M order at Zerodha to the current trailed level.
 
     Called from the 5-min candle loop — API calls are safe here.
     Skipped in paper mode (logged instead).
+    If sl_order_id is missing (sync trade where SL placement failed),
+    we attempt to place a NEW SL order at the current stop_loss level.
     """
     trade = state.active_trade
     if not trade or not state.pending_sl_exchange_update:
@@ -1181,10 +1221,20 @@ def _sync_trailing_sl_to_exchange() -> None:
     new_trigger = _compute_option_trigger_for_nifty_sl(trade.stop_loss)
     nifty_sl    = trade.stop_loss
 
-    is_paper_order = trade.paper or not trade.sl_order_id or trade.sl_order_id.startswith("SL-PAPER")
-    if is_paper_order:
+    if trade.paper:
         print(f"📝 [PAPER] Exchange SL-M would update → "
               f"₹{new_trigger:.1f} (Nifty SL ₹{nifty_sl:.0f})")
+        return
+
+    # 🐶 FIX: If no SL order exists (e.g. sync trade), place a fresh one
+    is_paper_order = not trade.sl_order_id or trade.sl_order_id.startswith("SL-PAPER")
+    if is_paper_order:
+        print(f"⚠️  sl_order_id missing — attempting to place new SL order at ₹{new_trigger:.2f}")
+        result = rearm_exchange_sl()
+        if result["success"]:
+            print(f"✅ Exchange SL auto-rearmed: {result['sl_order_id']}")
+        else:
+            print(f"❌ Auto-rearm failed: {result['error']}")
         return
 
     try:
@@ -2309,6 +2359,7 @@ def get_trader_status() -> dict:
             ),
             # ─────────────────────────────────────────────────────
             "exchange_sl_pending": state.pending_sl_exchange_update,
+            "sl_order_id":     getattr(active, "sl_order_id", None),  # None = no exchange backstop!
             "quantity":        active.quantity,
             "paper":           active.paper,
             "app_managed":     getattr(active, "app_managed", True),

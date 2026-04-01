@@ -14,7 +14,7 @@ import numpy as np
 from pathlib import Path
 from fastapi import FastAPI, Request, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -469,6 +469,12 @@ async def simple_health():
 
 
 # ── Pages ───────────────────────────────────────────────────────
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Suppress 404s for favicon requests — browsers always ask for this."""
+    return Response(status_code=204)
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -3288,7 +3294,7 @@ async def crude_history():
     return {'trades': [], 'count': 0}
 
 
-@app.get("/crude/chart", response_class=HTMLResponse)
+@app.get("/crude-chart", response_class=HTMLResponse)
 async def crude_chart_page(request: Request):
     """Standalone live chart page for MCX Crude Oil."""
     return templates.TemplateResponse("crude_chart.html", {"request": request})
@@ -3549,6 +3555,18 @@ async def auto_trader_configure(
         max_daily_loss=max_daily_loss,  # ← NEW: Pass max loss to configure
     )
     return {"success": True, **result}
+
+
+@app.post("/api/auto-trader/rearm-sl")
+async def auto_trader_rearm_sl():
+    """Re-place the Zerodha exchange SL-M backstop order.
+
+    Call this when the SL order is missing (sl_order_id=None),
+    e.g. after a sync trade where the initial SL placement failed.
+    """
+    from auto_trader import rearm_exchange_sl
+    result = rearm_exchange_sl()
+    return result
 
 
 @app.post("/api/auto-trader/dismiss-recovery")
@@ -4154,3 +4172,115 @@ async def run_backtest_api(
     except Exception as e:
         traceback.print_exc()
         return {"success": False, "error": str(e)}
+
+
+# ──────────────────────────────────────────────────────────────────
+# Zerodha Live Trades Report
+# ──────────────────────────────────────────────────────────────────
+
+@app.get("/api/zerodha/nifty-report")
+async def zerodha_nifty_report():
+    """Pull today’s Nifty option orders, trades and positions from Zerodha.
+
+    Returns structured data ready for the trades report page.
+    Requires Kite authentication.
+    """
+    from kite_integration import kite_manager
+
+    if not kite_manager.is_authenticated:
+        return JSONResponse(
+            {"success": False, "error": "Not authenticated — please login at /login first"},
+            status_code=401,
+        )
+
+    def _is_nifty(sym: str) -> bool:
+        s = (sym or "").upper()
+        return "NIFTY" in s and "BANKNIFTY" not in s and "MIDCAP" not in s and "FINNIFTY" not in s
+
+    try:
+        # — Orders —
+        raw_orders = kite_manager.kite.orders() or []
+        orders = [
+            {
+                "order_id":        o.get("order_id"),
+                "symbol":          o.get("tradingsymbol"),
+                "type":            o.get("transaction_type"),
+                "qty":             o.get("quantity"),
+                "filled_qty":      o.get("filled_quantity"),
+                "price":           o.get("average_price") or o.get("price"),
+                "status":          o.get("status"),
+                "order_type":      o.get("order_type"),
+                "placed_at":       str(o.get("order_timestamp") or ""),
+                "exchange":        o.get("exchange"),
+                "product":         o.get("product"),
+                "status_message":  o.get("status_message") or "",
+            }
+            for o in raw_orders
+            if _is_nifty(o.get("tradingsymbol", ""))
+        ]
+
+        # — Trades (fills) —
+        raw_trades = kite_manager.kite.trades() or []
+        trades = [
+            {
+                "trade_id":   t.get("trade_id"),
+                "order_id":   t.get("order_id"),
+                "symbol":     t.get("tradingsymbol"),
+                "type":       t.get("transaction_type"),
+                "qty":        t.get("quantity"),
+                "price":      t.get("average_price"),
+                "filled_at":  str(t.get("fill_timestamp") or ""),
+                "exchange":   t.get("exchange"),
+                "product":    t.get("product"),
+            }
+            for t in raw_trades
+            if _is_nifty(t.get("tradingsymbol", ""))
+        ]
+
+        # — Positions (with realised + unrealised P&L) —
+        raw_pos = kite_manager.kite.positions() or {}
+        day_pos = raw_pos.get("day", [])
+        positions = [
+            {
+                "symbol":        p.get("tradingsymbol"),
+                "qty":           p.get("quantity"),
+                "avg_price":     p.get("average_price"),
+                "ltp":           p.get("last_price"),
+                "pnl":           round(float(p.get("pnl") or 0), 2),
+                "realised_pnl":  round(float(p.get("realised") or 0), 2),
+                "unrealised_pnl":round(float(p.get("unrealised") or 0), 2),
+                "buy_qty":       p.get("buy_quantity"),
+                "sell_qty":      p.get("sell_quantity"),
+                "buy_avg":       p.get("buy_price"),
+                "sell_avg":      p.get("sell_price"),
+                "product":       p.get("product"),
+            }
+            for p in day_pos
+            if _is_nifty(p.get("tradingsymbol", ""))
+        ]
+
+        total_pnl = round(sum(p["pnl"] for p in positions), 2)
+        open_pos  = [p for p in positions if p["qty"] != 0]
+        closed_pos = [p for p in positions if p["qty"] == 0]
+
+        return JSONResponse({
+            "success":     True,
+            "orders":      orders,
+            "trades":      trades,
+            "positions":   positions,
+            "open":        open_pos,
+            "closed":      closed_pos,
+            "total_pnl":   total_pnl,
+            "order_count": len(orders),
+            "trade_count": len(trades),
+        })
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@app.get("/zerodha/trades", response_class=HTMLResponse)
+async def zerodha_trades_page():
+    """Serve the Nifty trades report page."""
+    return FileResponse("templates/zerodha_trades.html")

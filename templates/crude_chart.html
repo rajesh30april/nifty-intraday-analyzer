@@ -4,13 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🛢️ Crude Oil Live Chart</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛢️</text></svg>">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     body { background: linear-gradient(to bottom, #f8fafc, #f1f5f9); }
     .legend-dot { width:10px;height:10px;border-radius:50%;display:inline-block; }
     #chart-wrap { position:relative; }
-    #loading-overlay {
+    #cc-loading {
       position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
       background:rgba(255,255,255,0.95);z-index:10;border-radius:12px;
       font-size:18px;color:#64748b;letter-spacing:1px;font-weight:600;
@@ -59,7 +60,7 @@
             Refresh
           </button>
           <label class="flex items-center gap-2 bg-gray-800 border border-gray-600 px-4 py-2.5 rounded-xl cursor-pointer hover:bg-gray-700 transition">
-            <input type="checkbox" id="auto-refresh" checked class="accent-blue-600 w-4 h-4" />
+            <input type="checkbox" id="cc-auto" checked class="accent-blue-600 w-4 h-4" />
             <span class="text-sm text-gray-300 font-medium">Auto-refresh (60s)</span>
           </label>
         </div>
@@ -76,10 +77,10 @@
           <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">MCX Spot Price</span>
           <span class="text-xl">🛢️</span>
         </div>
-        <div id="hdr-price" class="text-3xl font-black text-gray-900 mb-1">--</div>
+        <div id="cc-price" class="text-3xl font-black text-gray-900 mb-1">--</div>
         <div class="flex items-center gap-2">
-          <span id="hdr-symbol" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-bold">--</span>
-          <span id="hdr-expiry" class="text-xs text-gray-400">--</span>
+          <span id="cc-symbol" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-bold">--</span>
+          <span id="cc-expiry" class="text-xs text-gray-400">--</span>
         </div>
       </div>
 
@@ -180,7 +181,7 @@
         <span class="text-sm font-bold text-gray-900">Price Chart (5-Minute)</span>
       </div>
       <div id="chart-wrap" class="relative">
-        <div id="loading-overlay">
+        <div id="cc-loading">
           <div class="flex flex-col items-center gap-3">
             <svg class="w-12 h-12 text-blue-600 spinner" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -189,7 +190,7 @@
             <span>Loading chart data...</span>
           </div>
         </div>
-        <div id="chart" style="height:560px;"></div>
+        <div id="cc-chart" style="height:560px;"></div>
       </div>
     </div>
 
@@ -200,7 +201,7 @@
       <div class="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 px-4 py-3">
         <span class="text-sm font-bold text-gray-900">Volume</span>
       </div>
-      <div id="vol-chart" style="height:140px;"></div>
+      <div id="cc-vol" style="height:140px;"></div>
     </div>
 
     <!-- ══════════════════════════════════════════════════════════ -->
@@ -209,8 +210,8 @@
     <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
       <div class="flex items-center justify-between text-xs text-gray-500">
         <div class="flex items-center gap-4">
-          <span>🔄 Last updated: <span id="last-updated" class="font-bold text-gray-700">--</span></span>
-          <span>⏱️ Next refresh: <span id="next-refresh" class="font-bold text-gray-700">60s</span></span>
+          <span>🔄 Last updated: <span id="cc-updated" class="font-bold text-gray-700">--</span></span>
+          <span>⏱️ Next refresh: <span id="cc-next" class="font-bold text-gray-700">60s</span></span>
         </div>
         <span class="text-gray-400">5-Minute Candles • MCX India</span>
       </div>
@@ -219,5 +220,11 @@
   </div>
 
 <script src="/static/crude-chart.js"></script>
+<script>
+  // Auto-start the chart when loaded as a standalone page / iframe
+  document.addEventListener('DOMContentLoaded', function() {
+    initCrudeChart();
+  });
+</script>
 </body>
 </html>

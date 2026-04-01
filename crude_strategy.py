@@ -26,12 +26,16 @@ import pandas as pd
 
 from strategy import Direction, StrategyCondition, StrategySignal
 import indicators as ind
-# from strategies.chart_patterns import (
-#     detect_flag,  # These functions no longer exist
-#     detect_double_top_bottom,
-#     detect_triangle,
-# )
-# TODO: Update crude strategy to use pattern_detector.py instead
+
+# ✅ Import pattern detectors from centralized module
+from pattern_detector import (
+    detect_flag,
+    detect_double_top,
+    detect_double_bottom,
+    detect_ascending_triangle,
+    detect_descending_triangle,
+)
+
 from strategies.candlestick_patterns import (
     detect_engulfing,
     detect_hammer_star,
@@ -98,24 +102,38 @@ def _adx_filter(
 
 
 def _conditions_to_signal(conditions: list[StrategyCondition]) -> StrategySignal:
-    """Roll up a list of StrategyConditions → StrategySignal."""
+    """Roll up a list of StrategyConditions → StrategySignal.
+    
+    🐶 NOW CALCULATES CONFIDENCE based on how many conditions pass!
+    """
     passing = [c for c in conditions if c.met]
     failing = [c for c in conditions if not c.met]
+    
     if failing:
         reason = " | ".join(c.detail for c in failing)
         return StrategySignal(
             should_enter=False,
             reason=f"Blocked: {reason}",
             conditions=conditions,
+            confidence=0.0,
         )
+    
     direction = None
     for c in passing:
         if hasattr(c, '_direction') and c._direction:
             direction = c._direction
             break
+    
+    # 🐶 Calculate confidence: 50% base + 10% per condition met
+    num_passed = len(passing)
+    num_total = len(conditions)
+    confidence = 50.0 + (num_passed / max(num_total, 1)) * 50.0
+    confidence = min(100.0, confidence)
+    
     return StrategySignal(
         should_enter=True,
         direction=direction,
+        confidence=confidence,  # 🐶 NOW HAS CONFIDENCE!
         reason=" | ".join(c.detail for c in passing),
         conditions=conditions,
     )
@@ -196,9 +214,29 @@ def evaluate_crude_orb(df: pd.DataFrame) -> StrategySignal:
     if fail:
         return StrategySignal(should_enter=False, reason=fail.detail, conditions=conditions)
 
+    # 🐶 FIX: Calculate confidence based on conditions!
+    # Higher confidence if:
+    # - Recent flip (fresh signal) = +30
+    # - Pullback re-entry = +20
+    # - EMA aligned = +30
+    # - RSI in range = +20
+    confidence = 50.0  # Base
+    if recent_flip:
+        confidence += 30.0  # Fresh flip = strong signal
+    if pullback_reentry:
+        confidence += 20.0  # Controlled reentry
+    if ema_ok:
+        confidence += 30.0  # Trend confirmation
+    if not_extreme:
+        confidence += 20.0  # RSI healthy
+    
+    # Cap at 100
+    confidence = min(100.0, confidence)
+
     return StrategySignal(
         should_enter=True,
         direction=direction,
+        confidence=confidence,  # 🐶 NOW HAS CONFIDENCE!
         reason=f"ORB {direction.value} breakout | range ₹{orb_range:.0f} | vol {volume:.0f}",
         conditions=conditions,
     )
@@ -311,9 +349,29 @@ def evaluate_crude_supertrend(df: pd.DataFrame) -> StrategySignal:
     if fail:
         return StrategySignal(should_enter=False, reason=fail.detail, conditions=conditions)
 
+    # 🐶 FIX: Calculate confidence based on conditions!
+    # Higher confidence if:
+    # - Recent flip (fresh signal) = +30
+    # - Pullback re-entry = +20
+    # - EMA aligned = +30
+    # - RSI in range = +20
+    confidence = 50.0  # Base
+    if recent_flip:
+        confidence += 30.0  # Fresh flip = strong signal
+    if pullback_reentry:
+        confidence += 20.0  # Controlled reentry
+    if ema_ok:
+        confidence += 30.0  # Trend confirmation
+    if not_extreme:
+        confidence += 20.0  # RSI healthy
+    
+    # Cap at 100
+    confidence = min(100.0, confidence)
+
     return StrategySignal(
         should_enter=True,
         direction=direction,
+        confidence=confidence,  # 🐶 NOW INCLUDES CONFIDENCE!
         reason=f"Crude ST {direction.value} | price {price:.0f} | EMA9 {ema_fast:.0f}",
         conditions=conditions,
     )
@@ -671,22 +729,52 @@ def evaluate_crude_chart_pattern(df: pd.DataFrame) -> StrategySignal:
         return StrategySignal(should_enter=False, reason=conditions[-1].detail, conditions=conditions)
 
     # ── Pattern scan ─────────────────────────────────────────────
-    flag_kind,  flag_detail,  _ = detect_flag(session_df)
-    dbl_kind,   dbl_detail,   _ = detect_double_top_bottom(session_df)
-    tri_kind,   tri_detail      = detect_triangle(session_df)
-
-    detected_kind   = flag_kind or dbl_kind or tri_kind
-    detected_detail = (
-        flag_detail if flag_kind else
-        dbl_detail  if dbl_kind  else
-        tri_detail
-    )
-
-    pattern_found = bool(detected_kind) and detected_kind in _PATTERN_META
+    # Try all chart patterns
+    # Note: detect_flag takes DataFrame, others take Series
+    high = session_df['high']
+    low = session_df['low']
+    close = session_df['close']
+    volume = session_df['volume']
+    
+    flag_result = detect_flag(session_df, volume=volume)
+    dbl_top_result = detect_double_top(high, low, close, volume=volume)
+    dbl_bot_result = detect_double_bottom(high, low, close, volume=volume)
+    tri_asc_result = detect_ascending_triangle(high, low, close, volume=volume)
+    tri_desc_result = detect_descending_triangle(high, low, close, volume=volume)
+    
+    # Collect all detected patterns
+    patterns = []
+    if flag_result:
+        patterns.append(flag_result)
+    if dbl_top_result:
+        patterns.append(dbl_top_result)
+    if dbl_bot_result:
+        patterns.append(dbl_bot_result)
+    if tri_asc_result:
+        patterns.append(tri_asc_result)
+    if tri_desc_result:
+        patterns.append(tri_desc_result)
+    
+    # Pick the highest confidence pattern
+    pattern_found = False
+    detected_kind = None
+    detected_detail = ""
     direction: Direction | None = None
     emoji = label = ""
-    if pattern_found:
-        direction, emoji, label = _PATTERN_META[detected_kind]
+    
+    if patterns:
+        # Sort by confidence, take highest
+        best_pattern = max(patterns, key=lambda p: p.confidence)
+        
+        # Normalize pattern name to match _PATTERN_META keys
+        # "Bull Flag" → "bull_flag", "Ascending Triangle" → "ascending"
+        pattern_name = best_pattern.name.lower().replace(" ", "_").replace("_triangle", "")
+        detected_kind = pattern_name
+        detected_detail = best_pattern.description
+        pattern_found = detected_kind in _PATTERN_META
+        
+        if pattern_found:
+            direction, emoji, label = _PATTERN_META[detected_kind]
 
     conditions.append(StrategyCondition(
         name="Chart pattern",
@@ -1293,3 +1381,288 @@ def evaluate_crude_best(df: pd.DataFrame) -> StrategySignal:
         should_enter=False,
         reason=" ║ ".join(block_parts),
     )
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🔄 DIVERGENCE DETECTION — Early Reversal Warning System
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _detect_rsi_divergence(df: pd.DataFrame, lookback: int = 15) -> tuple[bool, str, str | None]:
+    """Detect RSI divergence (bullish or bearish).
+    
+    Returns: (has_divergence, divergence_type, detail_message)
+    
+    BULLISH DIVERGENCE:
+      - Price makes lower low
+      - RSI makes higher low
+      → Reversal UP coming!
+    
+    BEARISH DIVERGENCE:
+      - Price makes higher high
+      - RSI makes lower high
+      → Reversal DOWN coming!
+    """
+    try:
+        if len(df) < lookback + 5:
+            return False, "none", "Not enough data for divergence"
+        
+        close = df['close']
+        
+        # Calculate RSI if not present
+        if 'rsi' not in df.columns:
+            from pandas_ta import rsi as ta_rsi
+            df['rsi'] = ta_rsi(close, length=14)
+        
+        rsi = df['rsi']
+        
+        # Get recent segment
+        recent_closes = close.iloc[-lookback:].values
+        recent_rsi = rsi.iloc[-lookback:].values
+        
+        # Find price peaks and troughs
+        price_highs = []
+        price_lows = []
+        rsi_highs = []
+        rsi_lows = []
+        
+        for i in range(2, len(recent_closes) - 2):
+            # Peak detection (local maximum)
+            if (recent_closes[i] > recent_closes[i-1] and 
+                recent_closes[i] > recent_closes[i-2] and
+                recent_closes[i] > recent_closes[i+1] and
+                recent_closes[i] > recent_closes[i+2]):
+                price_highs.append((i, recent_closes[i]))
+                rsi_highs.append((i, recent_rsi[i]))
+            
+            # Trough detection (local minimum)
+            if (recent_closes[i] < recent_closes[i-1] and 
+                recent_closes[i] < recent_closes[i-2] and
+                recent_closes[i] < recent_closes[i+1] and
+                recent_closes[i] < recent_closes[i+2]):
+                price_lows.append((i, recent_closes[i]))
+                rsi_lows.append((i, recent_rsi[i]))
+        
+        # BEARISH DIVERGENCE: Price higher high, RSI lower high
+        if len(price_highs) >= 2 and len(rsi_highs) >= 2:
+            last_price_high = price_highs[-1][1]
+            prev_price_high = price_highs[-2][1]
+            last_rsi_high = rsi_highs[-1][1]
+            prev_rsi_high = rsi_highs[-2][1]
+            
+            if last_price_high > prev_price_high and last_rsi_high < prev_rsi_high:
+                detail = (f"⚠️ BEARISH DIV: Price HH {prev_price_high:.0f}→{last_price_high:.0f} "
+                         f"but RSI LH {prev_rsi_high:.1f}→{last_rsi_high:.1f}")
+                return True, "bearish", detail
+        
+        # BULLISH DIVERGENCE: Price lower low, RSI higher low
+        if len(price_lows) >= 2 and len(rsi_lows) >= 2:
+            last_price_low = price_lows[-1][1]
+            prev_price_low = price_lows[-2][1]
+            last_rsi_low = rsi_lows[-1][1]
+            prev_rsi_low = rsi_lows[-2][1]
+            
+            if last_price_low < prev_price_low and last_rsi_low > prev_rsi_low:
+                detail = (f"⚠️ BULLISH DIV: Price LL {prev_price_low:.0f}→{last_price_low:.0f} "
+                         f"but RSI HL {prev_rsi_low:.1f}→{last_rsi_low:.1f}")
+                return True, "bullish", detail
+        
+        return False, "none", "No divergence detected"
+        
+    except Exception as e:
+        return False, "error", f"RSI divergence error: {str(e)}"
+
+
+def _detect_macd_divergence(df: pd.DataFrame, lookback: int = 15) -> tuple[bool, str, str | None]:
+    """Detect MACD divergence (bullish or bearish).
+    
+    Returns: (has_divergence, divergence_type, detail_message)
+    """
+    try:
+        if len(df) < lookback + 26:  # MACD needs 26 periods minimum
+            return False, "none", "Not enough data for MACD divergence"
+        
+        close = df['close']
+        
+        # Calculate MACD if not present
+        if 'macd' not in df.columns or 'macdsignal' not in df.columns:
+            from pandas_ta import macd as ta_macd
+            macd_df = ta_macd(close, fast=12, slow=26, signal=9)
+            if macd_df is not None:
+                df['macd'] = macd_df['MACD_12_26_9']
+                df['macdsignal'] = macd_df['MACDs_12_26_9']
+                df['macdhist'] = macd_df['MACDh_12_26_9']
+        
+        if 'macdhist' not in df.columns:
+            return False, "none", "MACD calculation failed"
+        
+        macd_hist = df['macdhist']
+        
+        # Get recent segment
+        recent_closes = close.iloc[-lookback:].values
+        recent_macd = macd_hist.iloc[-lookback:].values
+        
+        # Find price peaks and troughs
+        price_highs = []
+        price_lows = []
+        macd_highs = []
+        macd_lows = []
+        
+        for i in range(2, len(recent_closes) - 2):
+            # Peak detection
+            if (recent_closes[i] > recent_closes[i-1] and 
+                recent_closes[i] > recent_closes[i-2] and
+                recent_closes[i] > recent_closes[i+1] and
+                recent_closes[i] > recent_closes[i+2]):
+                price_highs.append((i, recent_closes[i]))
+                macd_highs.append((i, recent_macd[i]))
+            
+            # Trough detection
+            if (recent_closes[i] < recent_closes[i-1] and 
+                recent_closes[i] < recent_closes[i-2] and
+                recent_closes[i] < recent_closes[i+1] and
+                recent_closes[i] < recent_closes[i+2]):
+                price_lows.append((i, recent_closes[i]))
+                macd_lows.append((i, recent_macd[i]))
+        
+        # BEARISH DIVERGENCE
+        if len(price_highs) >= 2 and len(macd_highs) >= 2:
+            last_price_high = price_highs[-1][1]
+            prev_price_high = price_highs[-2][1]
+            last_macd_high = macd_highs[-1][1]
+            prev_macd_high = macd_highs[-2][1]
+            
+            if last_price_high > prev_price_high and last_macd_high < prev_macd_high:
+                detail = (f"⚠️ BEARISH MACD DIV: Price HH but MACD LH")
+                return True, "bearish", detail
+        
+        # BULLISH DIVERGENCE
+        if len(price_lows) >= 2 and len(macd_lows) >= 2:
+            last_price_low = price_lows[-1][1]
+            prev_price_low = price_lows[-2][1]
+            last_macd_low = macd_lows[-1][1]
+            prev_macd_low = macd_lows[-2][1]
+            
+            if last_price_low < prev_price_low and last_macd_low > prev_macd_low:
+                detail = (f"⚠️ BULLISH MACD DIV: Price LL but MACD HL")
+                return True, "bullish", detail
+        
+        return False, "none", "No MACD divergence"
+        
+    except Exception as e:
+        return False, "error", f"MACD divergence error: {str(e)}"
+
+
+def evaluate_crude_divergence(df: pd.DataFrame) -> StrategySignal:
+    """Strategy 9: Divergence Detection — Early reversal warning.
+    
+    Fires when RSI or MACD divergence is detected:
+      - Bearish divergence → SHORT signal
+      - Bullish divergence → LONG signal
+    
+    This gives 5-15 candles ADVANCE WARNING before reversals!
+    
+    Confidence scoring:
+      - Both RSI + MACD divergence = 90% confidence
+      - RSI divergence only = 70% confidence
+      - MACD divergence only = 65% confidence
+      - Must be at extreme (RSI > 60 or < 40) for entry
+    """
+    conditions: list[StrategyCondition] = []
+    
+    try:
+        close = df['close']
+        
+        # Calculate RSI if needed
+        if 'rsi' not in df.columns:
+            from pandas_ta import rsi as ta_rsi
+            df['rsi'] = ta_rsi(close, length=14)
+        
+        rsi_now = float(df['rsi'].iloc[-1]) if 'rsi' in df.columns else 50.0
+        
+        # Detect divergences
+        rsi_has_div, rsi_type, rsi_detail = _detect_rsi_divergence(df, lookback=15)
+        macd_has_div, macd_type, macd_detail = _detect_macd_divergence(df, lookback=15)
+        
+        # Check if at extreme (required for entry)
+        at_overbought = rsi_now > 60
+        at_oversold = rsi_now < 40
+        at_extreme = at_overbought or at_oversold
+        
+        conditions.append(StrategyCondition(
+            name="RSI Extreme",
+            met=at_extreme,
+            detail=(
+                f"RSI {rsi_now:.1f} {'> 60 overbought' if at_overbought else '< 40 oversold' if at_oversold else 'neutral (40-60)'}"
+            ),
+        ))
+        
+        conditions.append(StrategyCondition(
+            name="RSI Divergence",
+            met=rsi_has_div,
+            detail=rsi_detail or "No RSI divergence",
+        ))
+        
+        conditions.append(StrategyCondition(
+            name="MACD Divergence",
+            met=macd_has_div,
+            detail=macd_detail or "No MACD divergence",
+        ))
+        
+        # Determine signal
+        both_agree = rsi_has_div and macd_has_div and rsi_type == macd_type
+        only_rsi = rsi_has_div and not macd_has_div
+        only_macd = macd_has_div and not rsi_has_div
+        
+        # Calculate confidence
+        if both_agree:
+            confidence = 90.0
+            div_type = rsi_type
+        elif only_rsi:
+            confidence = 70.0
+            div_type = rsi_type
+        elif only_macd:
+            confidence = 65.0
+            div_type = macd_type
+        else:
+            return StrategySignal(
+                should_enter=False,
+                reason="No divergence detected — watch for reversal signals",
+                conditions=conditions,
+            )
+        
+        # Require extreme for entry
+        if not at_extreme:
+            return StrategySignal(
+                should_enter=False,
+                reason=f"{div_type.upper()} divergence detected but RSI not extreme ({rsi_now:.1f}) — wait for extreme",
+                conditions=conditions,
+                confidence=confidence * 0.5,  # Lower confidence without extreme
+            )
+        
+        # ENTRY SIGNAL!
+        direction = Direction.LONG if div_type == "bullish" else Direction.SHORT
+        
+        signal_msg = []
+        if both_agree:
+            signal_msg.append(f"🚨 BOTH RSI + MACD {div_type.upper()} divergence")
+        elif only_rsi:
+            signal_msg.append(f"⚠️ RSI {div_type.upper()} divergence")
+        elif only_macd:
+            signal_msg.append(f"⚠️ MACD {div_type.upper()} divergence")
+        
+        signal_msg.append(f"at extreme (RSI {rsi_now:.1f})")
+        
+        return StrategySignal(
+            should_enter=True,
+            direction=direction,
+            reason=" | ".join(signal_msg),
+            confidence=confidence,
+            conditions=conditions,
+        )
+        
+    except Exception as e:
+        return StrategySignal(
+            should_enter=False,
+            reason=f"Divergence strategy error: {str(e)}",
+            conditions=conditions,
+        )

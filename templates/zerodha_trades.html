@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Zerodha • Nifty Trades Report</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body { background:#0f172a; color:#e2e8f0; font-family:'Inter',sans-serif; }
+  .card { background:#1e293b; border:1px solid #334155; border-radius:12px; padding:1.25rem; }
+  .pill-buy  { background:#16a34a22; color:#4ade80; border:1px solid #16a34a55; }
+  .pill-sell { background:#dc262622; color:#f87171; border:1px solid #dc262655; }
+  .pill-rej  { background:#ca8a0422; color:#fbbf24; border:1px solid #ca8a0455; }
+  th { color:#94a3b8; font-size:.72rem; text-transform:uppercase; letter-spacing:.07em; padding:.6rem .8rem; }
+  td { padding:.55rem .8rem; font-size:.85rem; border-bottom:1px solid #1e293b; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#ffffff08; }
+  .pnl-pos { color:#4ade80; }
+  .pnl-neg { color:#f87171; }
+  .pnl-zero { color:#94a3b8; }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+<!-- header -->
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-white">&#127916; Nifty Options — Today’s Trades</h1>
+    <p class="text-slate-400 text-sm mt-1" id="last-updated">Loading…</p>
+  </div>
+  <div class="flex gap-3">
+    <button onclick="loadReport()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition">&#8635; Refresh</button>
+    <a href="/" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition">&#8592; Dashboard</a>
+  </div>
+</div>
+
+<!-- not-auth banner (hidden by default) -->
+<div id="auth-banner" class="hidden card border-amber-500/40 bg-amber-950/30 mb-6">
+  <div class="flex items-center gap-3">
+    <span class="text-2xl">&#128274;</span>
+    <div>
+      <p class="font-semibold text-amber-300">Not logged in to Zerodha</p>
+      <p class="text-sm text-amber-400/80 mt-0.5">Please <a href="/login" class="underline">click here to login</a>, then come back to this page.</p>
+    </div>
+  </div>
+</div>
+
+<!-- error banner -->
+<div id="err-banner" class="hidden card border-red-500/40 bg-red-950/30 mb-6">
+  <p class="text-red-400" id="err-msg"></p>
+</div>
+
+<!-- summary cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="summary-cards">
+  <div class="card text-center">
+    <p class="text-slate-400 text-xs uppercase tracking-wider">Total P&amp;L Today</p>
+    <p class="text-3xl font-bold mt-2" id="s-pnl">&#8212;</p>
+  </div>
+  <div class="card text-center">
+    <p class="text-slate-400 text-xs uppercase tracking-wider">Orders</p>
+    <p class="text-3xl font-bold mt-2 text-white" id="s-orders">&#8212;</p>
+  </div>
+  <div class="card text-center">
+    <p class="text-slate-400 text-xs uppercase tracking-wider">Fills / Trades</p>
+    <p class="text-3xl font-bold mt-2 text-white" id="s-trades">&#8212;</p>
+  </div>
+  <div class="card text-center">
+    <p class="text-slate-400 text-xs uppercase tracking-wider">Open Positions</p>
+    <p class="text-3xl font-bold mt-2 text-white" id="s-open">&#8212;</p>
+  </div>
+</div>
+
+<!-- open positions -->
+<div class="card mb-6" id="open-section">
+  <h2 class="text-lg font-semibold text-white mb-4">&#128308; Open Positions</h2>
+  <div id="open-body"><p class="text-slate-500 text-sm">No open positions.</p></div>
+</div>
+
+<!-- closed positions -->
+<div class="card mb-6" id="closed-section">
+  <h2 class="text-lg font-semibold text-white mb-4">&#9989; Closed Positions</h2>
+  <div id="closed-body"><p class="text-slate-500 text-sm">No closed positions.</p></div>
+</div>
+
+<!-- all orders -->
+<div class="card mb-6">
+  <h2 class="text-lg font-semibold text-white mb-4">&#128203; All Orders</h2>
+  <div id="orders-body"><p class="text-slate-500 text-sm">No orders.</p></div>
+</div>
+
+<!-- fill-by-fill trades -->
+<div class="card mb-6">
+  <h2 class="text-lg font-semibold text-white mb-4">&#128200; Fill-by-Fill Trades</h2>
+  <div id="trades-body"><p class="text-slate-500 text-sm">No trade fills.</p></div>
+</div>
+
+<!-- disclaimer -->
+<div class="card mt-4 border-slate-600/40">
+  <p class="text-xs text-slate-500">
+    &#9432;&nbsp; This page only shows <strong>today’s</strong> Nifty index option trades
+    (BANKNIFTY, MIDCAP, FINNIFTY excluded).
+    For previous days, download your trade statement from
+    <a href="https://console.zerodha.com/reports/tradebook" target="_blank" class="text-blue-400 underline">Zerodha Console → Reports → Tradebook</a>.
+  </p>
+</div>
+
+<script>
+const fmt = new Intl.NumberFormat('en-IN', {style:'currency', currency:'INR', maximumFractionDigits:2});
+
+function pnlClass(v) {
+  if (v > 0)  return 'pnl-pos';
+  if (v < 0)  return 'pnl-neg';
+  return 'pnl-zero';
+}
+function pnlStr(v) {
+  const c = pnlClass(v);
+  const s = v > 0 ? '+' : '';
+  return `<span class="${c} font-semibold">${s}${fmt.format(v)}</span>`;
+}
+function pill(type) {
+  const t = (type||'').toUpperCase();
+  if (t==='BUY')  return `<span class="pill-buy  text-xs px-2 py-0.5 rounded-full font-bold">BUY</span>`;
+  if (t==='SELL') return `<span class="pill-sell text-xs px-2 py-0.5 rounded-full font-bold">SELL</span>`;
+  return `<span class="pill-rej  text-xs px-2 py-0.5 rounded-full font-bold">${t}</span>`;
+}
+function statusBadge(s) {
+  const col = s==='COMPLETE'?'text-green-400':s==='REJECTED'?'text-red-400':'text-amber-400';
+  return `<span class="${col} text-xs font-medium">${s}</span>`;
+}
+
+function posTable(rows, showUnreal) {
+  if (!rows.length) return '<p class="text-slate-500 text-sm">None.</p>';
+  return `
+  <div class="overflow-x-auto">
+  <table class="w-full">
+    <thead><tr class="border-b border-slate-700">
+      <th class="text-left">Symbol</th>
+      <th class="text-right">Qty</th>
+      <th class="text-right">Avg Price</th>
+      <th class="text-right">LTP</th>
+      <th class="text-right">Realised P&amp;L</th>
+      ${showUnreal ? '<th class="text-right">Unrealised P&amp;L</th>' : ''}
+      <th class="text-right">Total P&amp;L</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(p=>`
+        <tr>
+          <td class="font-mono text-blue-300">${p.symbol}</td>
+          <td class="text-right">${p.qty}</td>
+          <td class="text-right">${fmt.format(p.avg_price||0)}</td>
+          <td class="text-right">${p.ltp ? fmt.format(p.ltp) : '&#8212;'}</td>
+          <td class="text-right">${pnlStr(p.realised_pnl)}</td>
+          ${showUnreal ? `<td class="text-right">${pnlStr(p.unrealised_pnl)}</td>` : ''}
+          <td class="text-right">${pnlStr(p.pnl)}</td>
+        </tr>`).join('')}
+    </tbody>
+  </table></div>`;
+}
+
+function ordersTable(rows) {
+  if (!rows.length) return '<p class="text-slate-500 text-sm">No Nifty orders today.</p>';
+  return `
+  <div class="overflow-x-auto">
+  <table class="w-full">
+    <thead><tr class="border-b border-slate-700">
+      <th class="text-left">Symbol</th>
+      <th class="text-left">Side</th>
+      <th class="text-right">Qty</th>
+      <th class="text-right">Filled</th>
+      <th class="text-right">Avg Price</th>
+      <th class="text-left">Type</th>
+      <th class="text-left">Status</th>
+      <th class="text-left">Time</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(o=>`
+        <tr>
+          <td class="font-mono text-blue-300">${o.symbol}</td>
+          <td>${pill(o.type)}</td>
+          <td class="text-right">${o.qty}</td>
+          <td class="text-right">${o.filled_qty}</td>
+          <td class="text-right">${o.price ? fmt.format(o.price) : '&#8212;'}</td>
+          <td class="text-slate-400 text-xs">${o.order_type||''}</td>
+          <td>${statusBadge(o.status)}</td>
+          <td class="text-slate-400 text-xs">${(o.placed_at||'').split('T').join(' ').slice(0,19)}</td>
+        </tr>`).join('')}
+    </tbody>
+  </table></div>`;
+}
+
+function tradesTable(rows) {
+  if (!rows.length) return '<p class="text-slate-500 text-sm">No fills yet today.</p>';
+  return `
+  <div class="overflow-x-auto">
+  <table class="w-full">
+    <thead><tr class="border-b border-slate-700">
+      <th class="text-left">Symbol</th>
+      <th class="text-left">Side</th>
+      <th class="text-right">Qty</th>
+      <th class="text-right">Price</th>
+      <th class="text-left">Time</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(t=>`
+        <tr>
+          <td class="font-mono text-blue-300">${t.symbol}</td>
+          <td>${pill(t.type)}</td>
+          <td class="text-right">${t.qty}</td>
+          <td class="text-right">${fmt.format(t.price||0)}</td>
+          <td class="text-slate-400 text-xs">${(t.filled_at||'').split('T').join(' ').slice(0,19)}</td>
+        </tr>`).join('')}
+    </tbody>
+  </table></div>`;
+}
+
+async function loadReport() {
+  document.getElementById('last-updated').textContent = 'Refreshing…';
+  ['auth-banner','err-banner'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+
+  try {
+    const res  = await fetch('/api/zerodha/nifty-report');
+    const data = await res.json();
+
+    if (res.status === 401) {
+      document.getElementById('auth-banner').classList.remove('hidden');
+      document.getElementById('last-updated').textContent = 'Not authenticated';
+      return;
+    }
+    if (!data.success) {
+      document.getElementById('err-banner').classList.remove('hidden');
+      document.getElementById('err-msg').textContent = '\u274c ' + (data.error || 'Unknown error');
+      document.getElementById('last-updated').textContent = 'Error loading data';
+      return;
+    }
+
+    // Summary
+    const pnl = data.total_pnl || 0;
+    document.getElementById('s-pnl').innerHTML    = pnlStr(pnl);
+    document.getElementById('s-orders').textContent = data.order_count;
+    document.getElementById('s-trades').textContent = data.trade_count;
+    document.getElementById('s-open').textContent  = (data.open||[]).length;
+
+    // Tables
+    document.getElementById('open-body').innerHTML   = posTable(data.open||[], true);
+    document.getElementById('closed-body').innerHTML = posTable(data.closed||[], false);
+    document.getElementById('orders-body').innerHTML = ordersTable(data.orders||[]);
+    document.getElementById('trades-body').innerHTML = tradesTable(data.trades||[]);
+
+    document.getElementById('last-updated').textContent =
+      'Last updated: ' + new Date().toLocaleTimeString('en-IN');
+
+  } catch(e) {
+    document.getElementById('err-banner').classList.remove('hidden');
+    document.getElementById('err-msg').textContent = '\u274c Fetch failed: ' + e.message;
+    document.getElementById('last-updated').textContent = 'Error';
+  }
+}
+
+loadReport();
+setInterval(loadReport, 30000);  // auto-refresh every 30s
+</script>
+</body>
+</html>
