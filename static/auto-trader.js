@@ -5,7 +5,6 @@ let _atIsRunning       = false;
 let _atKillSwitch      = false;
 let _atPollTimer       = null;
 let _atHadTrade        = false;
-let _atQtyMode         = 'manual';   // 'manual' | 'capital'
 const AT_POLL_MS       = 3000;  // poll every 3s — fast enough without hammering server
 const LOT_SIZE         = 65;         // Nifty F&O lot size (65 units/lot, Apr 2025)
 
