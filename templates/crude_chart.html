@@ -219,10 +219,11 @@
 
   </div>
 
-<script src="/static/crude-chart.js"></script>
+<script src="/static/crude-chart.js?v=2"></script>
 <script>
-  // Auto-start the chart when loaded as a standalone page / iframe
-  document.addEventListener('DOMContentLoaded', function() {
+  // Use window.onload (not DOMContentLoaded) so Tailwind CSS has fully
+  // applied and the chart container has real pixel dimensions when we init.
+  window.addEventListener('load', function() {
     initCrudeChart();
   });
 </script>
