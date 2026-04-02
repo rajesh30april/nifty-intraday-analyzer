@@ -2322,7 +2322,21 @@
                       <span class="text-xs font-bold text-green-400 uppercase tracking-wider">POSITION OPEN</span>
                       <span id="ct-dir-badge" class="text-xs font-bold px-2 py-0.5 rounded bg-green-700 text-white">LONG</span>
                     </div>
-                    <div class="text-[11px] text-gray-400 truncate max-w-[260px]" id="ct-instr" title="">--</div>
+                    <!-- App Managed / Monitor Only toggle + Discard -->
+                    <div class="flex items-center gap-1">
+                      <button id="ct-managed-toggle"
+                        onclick="toggleCrudeManagedTrade()"
+                        title="Toggle whether app manages SL/trail/exit for this trade"
+                        class="text-[10px] px-2 py-1 rounded-lg font-bold border transition-all bg-[#0053e2] border-[#0053e2] text-white">
+                        🤖 APP MANAGED
+                      </button>
+                      <button onclick="discardCrudeTrade()"
+                        title="Remove trade from app only — no order sent to Zerodha. Trade stays open in Zerodha."
+                        class="text-[10px] px-2 py-1 rounded-lg font-bold border border-gray-600 text-gray-400 hover:border-red-500 hover:text-red-400 transition-all">
+                        🗑 Remove
+                      </button>
+                    </div>
+                    <div class="text-[11px] text-gray-400 truncate max-w-[200px]" id="ct-instr" title="">--</div>
                     <span id="ct-paper-badge" class="hidden text-[10px] bg-yellow-600 text-white px-2 py-0.5 rounded font-bold">PAPER</span>
                   </div>
 

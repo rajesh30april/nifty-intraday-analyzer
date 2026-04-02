@@ -3126,12 +3126,41 @@ async def crude_force_exit():
 async def crude_clear_ghost():
     """Wipe a phantom position that exists in the UI but NOT in Zerodha.
 
-    Safe to call when you’ve confirmed Zerodha has no matching position.
+    Safe to call when you've confirmed Zerodha has no matching position.
     Does NOT place any order — just clears the local state + snapshot.
     """
     from crude_trader import clear_ghost_position
     try:
         result = await asyncio.to_thread(clear_ghost_position, "Manual ghost clear via UI")
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+
+
+@app.post("/api/crude/trade-managed")
+async def crude_set_trade_managed(managed: bool = True):
+    """Toggle app management of the active crude trade.
+
+    managed=True  → app handles SL/trailing/time-exit automatically.
+    managed=False → monitor-only — P&L tracked but app won't touch the position.
+    """
+    from crude_trader import set_crude_trade_managed
+    try:
+        result = await asyncio.to_thread(set_crude_trade_managed, managed)
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+
+
+@app.post("/api/crude/discard-trade")
+async def crude_discard_trade():
+    """Remove active crude trade from app state only — NO Zerodha order sent.
+
+    Position stays open in Zerodha; user manages it manually from there.
+    """
+    from crude_trader import discard_crude_trade_from_app
+    try:
+        result = await asyncio.to_thread(discard_crude_trade_from_app)
         return JSONResponse(result)
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)})

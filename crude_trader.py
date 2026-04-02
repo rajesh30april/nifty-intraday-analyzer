@@ -149,6 +149,7 @@ class CrudeTrade:
     status:        str           = CrudeOrderStatus.PENDING
     order_id:      str  | None   = None
     paper:         bool          = True
+    app_managed:   bool          = True   # False = monitor only, no auto SL/exit
 
 
 @dataclass
@@ -265,6 +266,8 @@ def _recover_snapshot():
         _fill('sl_premium', round(ep * 0.98, 1))
         _fill('peak_ltp',   ep)
         # tgt_premium: None is valid (no target set)
+        # app_managed: default True for old snapshots (can't use _fill — False is falsy)
+        trade_data.setdefault('app_managed', True)
         trade = CrudeTrade(**trade_data)
         state.active_trade        = trade
         state.entry_crude_sl      = data.get('entry_crude_sl', trade.stop_loss)
@@ -1015,6 +1018,8 @@ def _manage_trade_by_premium(ltp: float, source: str = "ltp_poll") -> None:
     trade = state.active_trade
     if not trade or ltp <= 0:
         return
+    if not getattr(trade, 'app_managed', True):
+        return  # monitor-only — user manages SL/exit via Zerodha directly
 
     # ── Time exit ────────────────────────────────────────────────
     if datetime.now().time() >= CRUDE_EXIT_TIME:
@@ -1087,6 +1092,8 @@ def _manage_trade(price: float, source: str = "candle") -> None:
     trade = state.active_trade
     if not trade:
         return
+    if not getattr(trade, 'app_managed', True):
+        return  # monitor-only — user manages via Zerodha directly
 
     # ── Time exit ────────────────────────────────────────────────
     if datetime.now().time() >= CRUDE_EXIT_TIME:
@@ -1553,6 +1560,38 @@ def clear_ghost_position(reason: str = "Manual ghost clear") -> dict:
     return {"success": True, "message": f"Ghost position cleared: {t.instrument}"}
 
 
+def set_crude_trade_managed(managed: bool) -> dict:
+    """Toggle app management for the active crude trade.
+
+    managed=True  → app handles SL, trailing, time exit.
+    managed=False → monitor-only — app tracks P&L but won't touch the position.
+    """
+    trade = state.active_trade
+    if not trade:
+        return {"success": False, "error": "No active crude trade"}
+    trade.app_managed = managed
+    _save_snapshot()
+    mode = "APP MANAGED" if managed else "MONITOR ONLY"
+    _log("🎛", "Trade mode", f"{mode} — {'SL/trail/exit active' if managed else 'app will NOT touch position'}")
+    return {"success": True, "app_managed": managed, "mode": mode}
+
+
+def discard_crude_trade_from_app() -> dict:
+    """Remove active crude trade from app state only — zero Zerodha API calls.
+
+    The position stays open in Zerodha; you manage it manually from there.
+    """
+    trade = state.active_trade
+    if not trade:
+        return {"success": False, "error": "No active crude trade in app state"}
+    instr = trade.instrument
+    state.active_trade     = None
+    state.exit_in_progress = False
+    _log("🗑", "Trade removed", f"{instr} cleared from app — no order sent to Zerodha")
+    _save_snapshot()
+    return {"success": True, "discarded": instr}
+
+
 def get_crude_status() -> dict:
     """Return full status dict — consumed by /api/crude/status endpoint."""
     # ✅ FIX: If state is empty but snapshot exists, recover it!
@@ -1593,6 +1632,7 @@ def get_crude_status() -> dict:
             'peak_ltp':       round(at.peak_ltp, 1) if at.peak_ltp else None,
             'lot_size':       lot_sz,
             'lots':           at.quantity,
+            'app_managed':    getattr(at, 'app_managed', True),
         }
     # ── Instrument info (what are we actually evaluating against?) ────
     try:

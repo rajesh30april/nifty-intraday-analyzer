@@ -7,7 +7,7 @@
 
 'use strict';
 
-// ── State ────────────────────────────────────────────────────────────────────
+// ── State ────────────────────────────────────────────────────────────────────────────────
 let _crudePoller      = null;
 let _crudeRunning     = false;
 let _crudeKilled      = false;  // track kill switch state
@@ -15,6 +15,7 @@ let _crudeLastSignal  = null;   // dedup signal logs
 let _crudeLastBlock   = null;   // dedup block_reason logs
 let _crudeLastTrade   = null;   // dedup active trade logs
 let _crudeLastSL      = null;   // track trailing SL changes
+let _crudeTradeManaged = true;  // mirrors trade.app_managed from backend
 
 // ── Toast ─────────────────────────────────────────────────────────
 function _crudeToast(msg, type = 'info') {
@@ -1169,7 +1170,10 @@ function _renderCrudePositionBanner(at, d) {
     const ep       = at.entry_premium;
     const qty      = at.lots ?? at.quantity ?? 1;
 
-    // ── Direction badge ────────────────────────────────────────────
+    // ── App-managed toggle — sync state from backend ──────────────────────
+    _refreshCrudeManagedToggle(at.app_managed ?? true);
+
+    // ── Direction badge ──────────────────────────────────────────────────
     const badge = document.getElementById('ct-dir-badge');
     if (badge) {
         badge.textContent = dirLabel;
@@ -1521,8 +1525,73 @@ async function crudeSyncPositions() {
         }
     }
 }
+// ── App-Managed toggle ────────────────────────────────────────────────────────
+function _refreshCrudeManagedToggle(managed) {
+    _crudeTradeManaged = managed;
+    const btn = document.getElementById('ct-managed-toggle');
+    if (!btn) return;
+    if (managed) {
+        btn.textContent = '\ud83e\udd16 APP MANAGED';
+        btn.className   = 'text-[10px] px-2 py-1 rounded-lg font-bold border transition-all ' +
+                          'bg-[#0053e2] border-[#0053e2] text-white';
+        btn.title       = 'App is managing SL / trail / exit — click to switch to Monitor Only';
+    } else {
+        btn.textContent = '\ud83d\udc41 MONITOR ONLY';
+        btn.className   = 'text-[10px] px-2 py-1 rounded-lg font-bold border transition-all ' +
+                          'bg-yellow-500 border-yellow-400 text-gray-900';
+        btn.title       = 'App is NOT managing SL/exit — click to hand back control to app';
+    }
+}
 
-// ── Trade history ─────────────────────────────────────────
+async function toggleCrudeManagedTrade() {
+    const newManaged = !_crudeTradeManaged;
+    try {
+        const resp = await fetch(`/api/crude/trade-managed?managed=${newManaged}`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            _refreshCrudeManagedToggle(data.app_managed);
+            _crudeToast(
+                data.app_managed
+                    ? '\ud83e\udd16 App will manage SL, trailing & exit'
+                    : '\ud83d\udc41 Monitor Only — app will NOT touch your crude position',
+                data.app_managed ? 'ok' : 'warn'
+            );
+            _crudeLog(
+                data.app_managed
+                    ? '\ud83e\udd16 Switched to APP MANAGED mode'
+                    : '\ud83d\udc41 Switched to MONITOR ONLY — Zerodha trade untouched',
+                data.app_managed ? 'ok' : 'warn'
+            );
+        } else {
+            _crudeToast(`\u274c ${data.error}`, 'error');
+        }
+    } catch (e) {
+        _crudeToast(`\u274c Toggle failed: ${e.message}`, 'error');
+    }
+}
+
+async function discardCrudeTrade() {
+    if (!confirm(
+        'Remove this crude trade from the app?\n\n' +
+        'NO order will be sent to Zerodha — your position stays open there.\n' +
+        'Manage the exit manually from your Zerodha app.'
+    )) return;
+    try {
+        const resp = await fetch('/api/crude/discard-trade', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            _crudeToast(`\ud83d� Trade removed from app — ${data.discarded}`, 'info');
+            _crudeLog(`\ud83d� Trade discarded from app: ${data.discarded} (Zerodha position untouched)`, 'warn');
+            await pollCrudeStatus();
+        } else {
+            _crudeToast(`\u274c ${data.error}`, 'error');
+        }
+    } catch (e) {
+        _crudeToast(`\u274c ${e.message}`, 'error');
+    }
+}
+
+// ── Trade history ─────────────────────────────────────────────────────────
 async function loadCrudeHistory() {
     const el = document.getElementById('crude-history');
     if (!el) return;
@@ -1572,6 +1641,8 @@ function onCrudeTraderTabClose() {
 
 // 🐶 Explicitly expose functions to window for onclick handlers
 window.applyCrudeSettings = applyCrudeSettings;
+window.toggleCrudeManagedTrade = toggleCrudeManagedTrade;
+window.discardCrudeTrade       = discardCrudeTrade;
 window.toggleCrudeSettings = toggleCrudeSettings;
 window.setCrudeStrike = setCrudeStrike;  // 🐶 NEW!
 window.setCrudeTrailMode = setCrudeTrailMode;  // 🐶 NEW!
