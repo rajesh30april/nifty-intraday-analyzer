@@ -30,6 +30,10 @@ function switchPage(pageId) {
     } else if (typeof onAutoTraderTabClose === 'function') {
         onAutoTraderTabClose();
     }
+    // Init crude live chart when navigating to that page
+    if (pageId === 'crude-chart' && typeof initCrudeChart === 'function') {
+        setTimeout(initCrudeChart, 100); // slight delay so container has real dimensions
+    }
     // Re-render charts if switching to charts page (canvas sizing)
     if (pageId === 'charts') {
         setTimeout(() => {
