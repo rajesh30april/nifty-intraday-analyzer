@@ -91,12 +91,15 @@ function switchCrudeTab(tab) {
             btn.setAttribute('aria-selected', 'false');
         }
     });
-    // Lazy-load chart iframe only on first visit
+    // Always reload chart iframe when switching to chart tab
+    // (cache-bust with timestamp so stale blank frames never get stuck)
     if (tab === 'chart') {
         const iframe = document.getElementById('crude-chart-iframe');
-        if (iframe && !iframe.dataset.loaded) {
-            iframe.src = '/crude-chart';
-            iframe.dataset.loaded = '1';
+        if (iframe) {
+            iframe.src = '';
+            requestAnimationFrame(() => {
+                iframe.src = '/crude-chart?t=' + Date.now();
+            });
         }
     }
 }
