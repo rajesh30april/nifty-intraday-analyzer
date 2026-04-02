@@ -177,22 +177,47 @@ async function syncCrudeCapital() {
 }
 
 // 🐶 HELPER: Silent balance sync (info only — no toast, no slider change)
+// Retries once after 3 s if the first live call fails (Kite auth may not be ready yet)
+let _syncCapitalInFlight = false;  // prevent overlapping fetch calls
 async function _syncCapitalFromZerodha() {
+    if (_syncCapitalInFlight) return;   // already in progress
+    _syncCapitalInFlight = true;
     const availDisplay = document.getElementById('crude-available-margin-display');
-    try {
+    async function _doSync() {
         const r = await fetch('/api/crude/margin');
         const d = await r.json();
         if (d.success && d.free > 0) {
-            const net = Math.round(d.net || 0);
+            const net  = Math.round(d.net || 0);
             const free = Math.floor(d.free);
             if (availDisplay) availDisplay.textContent = '\u20b9' + net.toLocaleString('en-IN');
             console.log(`\ud83d\udcb0 [Balance] Zerodha net: \u20b9${net.toLocaleString('en-IN')} | free: \u20b9${free.toLocaleString('en-IN')}`);
-        } else {
-            console.warn('\u26a0\ufe0f [Balance Sync] Failed:', d.error || 'No margin data');
+            return true;
+        }
+        console.warn('\u26a0\ufe0f [Balance Sync] Failed:', d.error || 'No margin data');
+        return false;
+    }
+    try {
+        const ok = await _doSync();
+        if (!ok) {
+            // Retry once after 3 s — gives Kite auth a moment to settle on fresh page load
+            setTimeout(async () => {
+                try { await _doSync(); }
+                catch (e) { console.error('\u274c [Balance Sync Retry] Error:', e); }
+                finally { _syncCapitalInFlight = false; }
+            }, 3000);
+            return; // don’t clear flag yet — retry will do it
         }
     } catch (e) {
         console.error('\u274c [Balance Sync] Error:', e);
+        // Still retry — could be a transient network blip
+        setTimeout(async () => {
+            try { await _doSync(); }
+            catch (_) {}
+            finally { _syncCapitalInFlight = false; }
+        }, 3000);
+        return;
     }
+    _syncCapitalInFlight = false;
 }
 
 
@@ -1098,6 +1123,13 @@ function renderCrudeStatus(d) {
         if (btnForceShort) btnForceShort.classList.remove('hidden');
     }
 
+    // ── Net available margin — if still on placeholder, retry the live Zerodha fetch ──
+    // This means every 5-s poll retries until _syncCapitalFromZerodha() succeeds.
+    const _availEl = document.getElementById('crude-available-margin-display');
+    if (_availEl && _availEl.textContent.includes('syncing')) {
+        _syncCapitalFromZerodha(); // retry — won’t spam if it’s already working (retry has its own guard)
+    }
+
     // ── Active trade card (Nifty-style full banner) ──────────────
     _renderCrudePositionBanner(at, d);
 }
@@ -1381,10 +1413,10 @@ async function loadCrudeSettings() {
             if (capDisplay) capDisplay.textContent = Math.round(data.capital).toLocaleString('en-IN');
             console.log('🔄 [Settings] Set Capital to:', data.capital);
         }
-        // Show live Zerodha balance next to budget so user sees both at a glance
+        // Show a loading placeholder — _syncCapitalFromZerodha() will fill the real value
         const availDisplay = document.getElementById('crude-available-margin-display');
-        if (availDisplay && data.available_margin != null && data.available_margin > 0) {
-            availDisplay.textContent = '\u20b9' + Math.round(data.available_margin).toLocaleString('en-IN');
+        if (availDisplay && availDisplay.textContent === '\u2014') {
+            availDisplay.textContent = '\u23f3 syncing...';
         }
         
         // 🐶 Populate Max Trades slider
