@@ -25,6 +25,8 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+import ssl
+import threading
 import requests
 import websocket
 from dotenv import load_dotenv
@@ -42,7 +44,7 @@ OUT_DIR      = Path(__file__).parent / "data"
 OUT_FILE     = OUT_DIR / "nifty_5min_tv.csv"
 
 TV_SIGNIN_URL  = "https://www.tradingview.com/accounts/signin/"
-TV_WS_URL      = "wss://data.tradingview.com/socket.io/websocket?from=chart%2F&date=2024_03_17-12_57&type=chart"
+TV_WS_URL      = "wss://data.tradingview.com/socket.io/websocket?from=chart/&type=chart"
 
 HEADERS = {
     "User-Agent"   : "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
@@ -185,7 +187,21 @@ class _TVDataCollector:
             on_error   = self.on_error,
             on_close   = self.on_close,
         )
-        ws.run_forever(ping_interval=20, ping_timeout=10)
+        # SSL bypass needed on corporate networks (Walmart VPN intercepts certs)
+        sslopt   = {"cert_reqs": ssl.CERT_NONE}
+        done_evt = threading.Event()
+        _orig_close = self.on_close
+        def _on_close(ws, *a):
+            _orig_close(ws, *a); done_evt.set()
+        ws.on_close = _on_close
+        t = threading.Thread(
+            target=ws.run_forever,
+            kwargs={"ping_interval": 20, "ping_timeout": 10, "sslopt": sslopt},
+        )
+        t.daemon = True
+        t.start()
+        done_evt.wait(timeout=60)
+        ws.close()
         return self.candles
 
 
