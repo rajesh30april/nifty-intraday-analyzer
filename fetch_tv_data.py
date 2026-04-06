@@ -1,146 +1,154 @@
 """fetch_tv_data.py — Fetch Nifty 5-min OHLCV from TradingView WebSocket API.
 
-Uses TradingView's native WebSocket protocol (same as browser).
-With a Premium plan → up to unlimited bars of history.
-With Pro+ plan      → up to 20,000 bars (~14 months of 5-min data).
+Uses TradingView's native WebSocket protocol (same as your browser).
 
-Setup (one time):
-    Add to your .env file:
-        TV_USERNAME=your@email.com
-        TV_PASSWORD=yourpassword
+Works with ANY login method (Apple, Google, email — doesn't matter!)
+because we use the session token directly from your browser, not your password.
+
+Setup (one time — 30 seconds):
+    1. Open tradingview.com in browser (logged in)
+    2. Press Cmd+Option+I → Console tab
+    3. Paste this and hit Enter:
+           document.cookie.split(';').find(c=>c.trim().startsWith('auth_token'))?.trim()
+    4. Copy the value after 'auth_token=' and add to .env:
+           TV_AUTH_TOKEN=eyJhb...your_long_token_here
 
 Usage:
     .venv/bin/python3 fetch_tv_data.py
 
 Output:
     data/nifty_5min_tv.csv
+
+Bar limits by plan (5-min candles):
+    Guest / no token  →  ~5,000 bars  (~3.5 months)
+    Essential         → ~10,000 bars  (~7 months)
+    Essential+        → ~20,000 bars  (~14 months)
+    Premium           → ~40,000 bars  (~2 years) ✅
 """
 
 import json
+import os
 import random
 import re
+import ssl
 import string
-import time
+import threading
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
-import ssl
-import threading
 import requests
 import websocket
 from dotenv import load_dotenv
-import os
 
 load_dotenv()
 
 # ── Config ────────────────────────────────────────────────────────
-TV_USERNAME  = os.getenv("TV_USERNAME", "")
-TV_PASSWORD  = os.getenv("TV_PASSWORD", "")
-SYMBOL       = "NSE:NIFTY"
-INTERVAL     = "5"          # 5-minute candles (TV uses "5" not "5m")
-N_BARS       = 50000        # request max — TV will cap based on your plan
-OUT_DIR      = Path(__file__).parent / "data"
-OUT_FILE     = OUT_DIR / "nifty_5min_tv.csv"
+TV_AUTH_TOKEN = os.getenv("TV_AUTH_TOKEN", "").strip()
+TV_USERNAME   = os.getenv("TV_USERNAME",   "").strip()
+TV_PASSWORD   = os.getenv("TV_PASSWORD",   "").strip()
+SYMBOL        = "NSE:NIFTY"
+INTERVAL      = "5"       # TradingView uses "5" for 5-minute
+N_BARS        = 50000     # Request max — TV caps based on your plan
+OUT_DIR       = Path(__file__).parent / "data"
+OUT_FILE      = OUT_DIR / "nifty_5min_tv.csv"
 
-TV_SIGNIN_URL  = "https://www.tradingview.com/accounts/signin/"
-TV_WS_URL      = "wss://data.tradingview.com/socket.io/websocket?from=chart/&type=chart"
-
-HEADERS = {
-    "User-Agent"   : "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-    "Referer"      : "https://www.tradingview.com/",
-    "Origin"       : "https://www.tradingview.com",
-}
-
-
-# ── TradingView WebSocket message format ──────────────────────────
-
-def _rand_session(prefix: str = "cs") -> str:
-    """Generate a random session ID like TradingView does."""
-    return prefix + "_" + "".join(random.choices(string.ascii_lowercase + string.digits, k=12))
+TV_WS_URL    = "wss://data.tradingview.com/socket.io/websocket?from=chart/&type=chart"
+TV_LOGIN_URL = "https://www.tradingview.com/accounts/signin/"
+WS_HEADERS   = [
+    "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    "Origin: https://www.tradingview.com",
+    "Referer: https://www.tradingview.com/",
+]
 
 
-def _wrap(msg: dict) -> str:
-    """Wrap a dict into TradingView's ~m~N~m~{json} wire format."""
-    raw = json.dumps(msg, separators=(",", ":"))
-    return f"~m~{len(raw)}~m~{raw}"
-
-
-def _send(ws, method: str, params: list):
-    ws.send(_wrap({"m": method, "p": params}))
-
-
-# ── Login → get auth token ────────────────────────────────────────
+# ── Auth ─────────────────────────────────────────────────────────
 
 def _login(username: str, password: str) -> str | None:
-    """POST to TradingView signin and return auth_token."""
+    """POST credentials to TradingView → return JWT auth token."""
     try:
         r = requests.post(
-            TV_SIGNIN_URL,
-            data={"username": username, "password": password,
-                  "remember": "on", "code": ""},
-            headers={**HEADERS, "Content-Type": "application/x-www-form-urlencoded"},
+            TV_LOGIN_URL,
+            data={"username": username, "password": password, "remember": "on"},
+            headers={
+                "User-Agent" : "Mozilla/5.0",
+                "Referer"    : "https://www.tradingview.com/",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            verify=False,
             timeout=15,
         )
-        data = r.json()
+        data  = r.json()
         token = data.get("user", {}).get("auth_token")
         if token:
+            plan = data["user"].get("pro_plan", "free")
             print(f"  ✅ Logged in as: {data['user'].get('username', username)}")
-            plan = data.get("user", {}).get("pro_plan", "free")
-            print(f"  📋 Plan: {plan}")
+            print(f"  📋 Plan: {plan or 'free'}")
             return token
-        else:
-            print(f"  ❌ Login failed: {data.get('error', 'unknown error')}")
-            return None
+        print(f"  ❌ Login failed: {data.get('error', data)}")
+        return None
     except Exception as e:
         print(f"  ❌ Login error: {e}")
         return None
 
 
-# ── WebSocket data collector ──────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────
 
-class _TVDataCollector:
-    def __init__(self, symbol: str, interval: str, n_bars: int):
-        self.symbol   = symbol
-        self.interval = interval
-        self.n_bars   = n_bars
+def _rand_id(n: int = 12) -> str:
+    return "".join(random.choices(string.ascii_lowercase + string.digits, k=n))
+
+
+def _wrap(msg: dict) -> str:
+    """Pack a dict into TradingView's ~m~N~m~{json} wire format."""
+    raw = json.dumps(msg, separators=(",", ":"))
+    return f"~m~{len(raw)}~m~{raw}"
+
+
+def _send(ws, method: str, params: list) -> None:
+    ws.send(_wrap({"m": method, "p": params}))
+
+
+# ── WebSocket collector ───────────────────────────────────────────
+
+class _Collector:
+    def __init__(self, auth_token: str, symbol: str, interval: str, n_bars: int):
+        self._token   = auth_token
+        self._symbol  = symbol
+        self._interval= interval
+        self._n_bars  = n_bars
+        self._cs      = "cs_" + _rand_id()
         self.candles: list[dict] = []
-        self.done     = False
-        self._cs      = _rand_session("cs")
-        self._ss      = _rand_session("ss")
+        self._done    = threading.Event()
 
     def on_open(self, ws):
-        print("  📡 WebSocket connected")
+        print("  📡 Connected to TradingView WebSocket")
         _send(ws, "set_auth_token",       [self._token])
         _send(ws, "chart_create_session", [self._cs, ""])
         _send(ws, "switch_timezone",      [self._cs, "Asia/Kolkata"])
-        _send(ws, "quote_create_session", [self._ss])
         _send(ws, "resolve_symbol", [
             self._cs, "sds_sym_1",
-            f'={json.dumps({"symbol": self.symbol, "adjustment": "splits"})}',
+            f'={json.dumps({"symbol": self._symbol, "adjustment": "splits"})}',
         ])
         _send(ws, "create_series", [
             self._cs, "sds_1", "s1", "sds_sym_1",
-            self.interval, self.n_bars, "",
+            self._interval, self._n_bars, "",
         ])
 
     def on_message(self, ws, message):
-        # TradingView sends heartbeats: ~m~N~m~~h~N
+        # Heartbeat → pong immediately
         if "~h~" in message:
-            ws.send(f"~m~{len(message)}~m~{message}")  # pong
+            ws.send(f"~m~{len(message)}~m~{message}")
             return
 
-        # Parse all JSON packets from the wire format
-        packets = re.findall(r"~m~\d+~m~(\{.*?\})(?=~m~|$)", message, re.DOTALL)
-        for raw in packets:
+        for raw in re.findall(r"~m~\d+~m~(\{.*?\})(?=~m~|$)", message, re.DOTALL):
             try:
                 pkt = json.loads(raw)
             except Exception:
                 continue
 
-            m = pkt.get("m", "")
+            msg_type = pkt.get("m", "")
 
-            if m == "timescale_update":
+            if msg_type == "timescale_update":
                 bars = (pkt.get("p", [{}])[1] or {}).get("sds_1", {}).get("s", [])
                 for bar in bars:
                     v = bar.get("v", [])
@@ -153,54 +161,46 @@ class _TVDataCollector:
                             "close"    : v[4],
                             "volume"   : v[5] if len(v) > 5 else 0,
                         })
+                print(f"  📦 {len(self.candles):,} candles received...", end="\r")
 
-            elif m == "series_completed":
-                count = len(self.candles)
-                print(f"  ✅ Series complete — {count:,} candles received")
-                self.done = True
+            elif msg_type == "series_completed":
+                print(f"  ✅ Series complete — {len(self.candles):,} candles total")
+                self._done.set()
                 ws.close()
 
-            elif m == "symbol_error":
-                print(f"  ❌ Symbol error: {pkt.get('p')}")
-                self.done = True
-                ws.close()
-
-            elif m == "critical_error":
-                print(f"  ❌ Critical error: {pkt.get('p')}")
-                self.done = True
+            elif msg_type in ("symbol_error", "critical_error"):
+                print(f"\n  ❌ TradingView error ({msg_type}): {pkt.get('p')}")
+                self._done.set()
                 ws.close()
 
     def on_error(self, ws, error):
-        print(f"  ❌ WebSocket error: {error}")
-        self.done = True
+        print(f"\n  ❌ WebSocket error: {error}")
+        self._done.set()
 
-    def on_close(self, ws, code, msg):
-        self.done = True
+    def on_close(self, ws, *_):
+        self._done.set()
 
-    def fetch(self, auth_token: str) -> list[dict]:
-        self._token = auth_token
+    def fetch(self) -> list[dict]:
         ws = websocket.WebSocketApp(
             TV_WS_URL,
-            header=[f"{k}: {v}" for k, v in HEADERS.items()],
+            header     = WS_HEADERS,
             on_open    = self.on_open,
             on_message = self.on_message,
             on_error   = self.on_error,
             on_close   = self.on_close,
         )
-        # SSL bypass needed on corporate networks (Walmart VPN intercepts certs)
-        sslopt   = {"cert_reqs": ssl.CERT_NONE}
-        done_evt = threading.Event()
-        _orig_close = self.on_close
-        def _on_close(ws, *a):
-            _orig_close(ws, *a); done_evt.set()
-        ws.on_close = _on_close
         t = threading.Thread(
             target=ws.run_forever,
-            kwargs={"ping_interval": 20, "ping_timeout": 10, "sslopt": sslopt},
+            kwargs={
+                "ping_interval": 20,
+                "ping_timeout" : 10,
+                # SSL bypass — needed on Walmart VPN (corporate cert interception)
+                "sslopt"       : {"cert_reqs": ssl.CERT_NONE},
+            },
+            daemon=True,
         )
-        t.daemon = True
         t.start()
-        done_evt.wait(timeout=60)
+        self._done.wait(timeout=90)
         ws.close()
         return self.candles
 
@@ -210,49 +210,56 @@ class _TVDataCollector:
 def main():
     OUT_DIR.mkdir(exist_ok=True)
 
-    if not TV_USERNAME or not TV_PASSWORD:
-        print("❌ Missing credentials!")
-        print("   Add to your .env file:")
-        print("   TV_USERNAME=your@email.com")
-        print("   TV_PASSWORD=yourpassword")
-        return
+    # ── Resolve auth token (priority: explicit token > login > guest) ──
+    if TV_AUTH_TOKEN:
+        token = TV_AUTH_TOKEN
+        print("🔐 Using TV_AUTH_TOKEN from .env")
+    elif TV_USERNAME and TV_PASSWORD:
+        print("🔐 Logging in to TradingView...")
+        token = _login(TV_USERNAME, TV_PASSWORD)
+        if not token:
+            return
+    else:
+        token = "unauthorized_user_token"
+        print("⚠️  No credentials in .env — guest mode (~5,000 bars only)")
 
-    print(f"📈 TradingView → Nifty 5-min data fetcher")
-    print(f"🎯 Symbol: {SYMBOL} | Interval: {INTERVAL}min | Bars: {N_BARS:,}\n")
+    print(f"📈 Fetching: {SYMBOL} | {INTERVAL}-min | up to {N_BARS:,} bars\n")
 
-    # Step 1: Login
-    print("🔐 Logging in to TradingView...")
-    token = _login(TV_USERNAME, TV_PASSWORD)
-    if not token:
-        return
-
-    # Step 2: Fetch via WebSocket
-    print(f"\n📡 Connecting to TradingView WebSocket...")
-    collector = _TVDataCollector(SYMBOL, INTERVAL, N_BARS)
-    candles   = collector.fetch(token)
+    # Fetch
+    collector = _Collector(token, SYMBOL, INTERVAL, N_BARS)
+    candles   = collector.fetch()
 
     if not candles:
-        print("\n💀 No data received. Check credentials and plan.")
+        print("\n💀 No data received.")
+        if not TV_AUTH_TOKEN:
+            print("   Tip: Add TV_AUTH_TOKEN to .env for more data.")
         return
 
-    # Step 3: Build DataFrame
+    # Build DataFrame
     df = pd.DataFrame(candles)
-    df["date"] = pd.to_datetime(df["timestamp"], unit="s", utc=True) \
-                   .dt.tz_convert("Asia/Kolkata")
-    df = df.drop(columns=["timestamp"]).sort_values("date").drop_duplicates("date")
+    df["date"] = (
+        pd.to_datetime(df["timestamp"], unit="s", utc=True)
+          .dt.tz_convert("Asia/Kolkata")
+    )
+    df = (df.drop(columns=["timestamp"])
+            .sort_values("date")
+            .drop_duplicates("date")
+            .reset_index(drop=True))
 
-    # Market hours only: 9:15 – 15:30 IST
+    # Market hours only: 9:15 AM – 3:30 PM IST
     h, m = df["date"].dt.hour, df["date"].dt.minute
-    df = df[((h > 9) | ((h == 9) & (m >= 15))) & ((h < 15) | ((h == 15) & (m <= 30)))]
-    df = df.reset_index(drop=True)
+    df = df[
+        ((h > 9) | ((h == 9) & (m >= 15))) &
+        ((h < 15) | ((h == 15) & (m <= 30)))
+    ].reset_index(drop=True)
 
-    # Step 4: Save
+    # Save
     df.to_csv(OUT_FILE, index=False)
 
-    trading_days  = df["date"].dt.date.nunique()
-    candles_vol   = int((df["volume"] > 0).sum())
-    date_from     = df["date"].min().strftime("%Y-%m-%d")
-    date_to       = df["date"].max().strftime("%Y-%m-%d")
+    trading_days = df["date"].dt.date.nunique()
+    vol_count    = int((df["volume"] > 0).sum())
+    date_from    = df["date"].min().strftime("%Y-%m-%d")
+    date_to      = df["date"].max().strftime("%Y-%m-%d")
 
     print(f"""
 ╔══════════════════════════════════════════════════════╗
@@ -261,7 +268,7 @@ def main():
 ║  Period        : {date_from} → {date_to}       ║
 ║  Total candles : {len(df):>10,}                         ║
 ║  Trading days  : {trading_days:>10,}                         ║
-║  Volume > 0    : {candles_vol:>10,} candles                  ║
+║  Volume > 0    : {vol_count:>10,} / {len(df):,} candles        ║
 ║  Nifty range   : {df['low'].min():>8,.0f} – {df['high'].max():,.0f}             ║
 ╠══════════════════════════════════════════════════════╣
 ║  📄 {str(OUT_FILE):<48} ║
