@@ -27,10 +27,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)  # .env always wins over stale shell exports
 
-KITE_CONSOLE_URL   = "https://developers.kite.trade/apps"
 KITE_DEV_LOGIN_URL = "https://developers.kite.trade/login"
+KITE_PROFILE_URL   = "https://developers.kite.trade/profile"   # IP whitelist is here
+KITE_CONSOLE_URL   = "https://developers.kite.trade/apps"       # kept for manual fallback
 IP_CACHE_FILE      = Path(__file__).parent / ".last_known_ip.json"
 KITE_API_KEY       = os.getenv("KITE_API_KEY", "")
 
@@ -313,68 +314,50 @@ def _auto_update_kite_ip(new_ip: str) -> bool:
 
         time.sleep(4)   # let redirect + dashboard load
 
-        # ── 5. Navigate to apps list ──────────────────────────────────────
-        print("   → Navigating to apps list...")
-        driver.get(KITE_CONSOLE_URL)
+        # ── 5. Go to Profile page (IP whitelist lives here, not /apps) ──
+        # Confirmed: textarea id='id_ip_addresses' name='ip_addresses'
+        print("   → Navigating to Profile page for IP whitelist...")
+        driver.get(KITE_PROFILE_URL)
         time.sleep(3)
 
-        # Click our app — try API key match, then name, then first app
-        clicked = False
-        for xpath in [
-            f"//a[contains(.,'{KITE_API_KEY}')]",
-            "//a[contains(.,'Inevitable')]",
-            "(//a[contains(@href,'/apps/')])[1]",
-        ]:
-            el = _clickable(By.XPATH, xpath)
-            if el:
-                el.click()
-                clicked = True
-                time.sleep(2)
-                break
+        if "login" in driver.current_url:
+            raise RuntimeError("Login failed — redirected back to login page")
 
-        if not clicked:
-            raise RuntimeError("Could not find app link on apps page")
-
-        # ── 6. Click Edit button if present ──────────────────────────────
-        print("   → Updating IP address...")
-        for xpath in [
-            "//button[contains(text(),'Edit')]",
-            "//a[contains(text(),'Edit')]",
-        ]:
-            el = _clickable(By.XPATH, xpath)
-            if el:
-                el.click()
-                time.sleep(1.5)
-                break
-
-        # ── 7. Find the IP addresses input field ──────────────────────────
+        # ── 6. Find the IP whitelist TEXTAREA ─────────────────────────────
+        print("   → Locating IP whitelist textarea...")
         ip_el = None
         for by, sel in [
-            (By.NAME,         "ip_addresses"),
-            (By.ID,           "ip_addresses"),
-            (By.CSS_SELECTOR, "input[name='ip_addresses']"),
-            (By.XPATH,        "//input[contains(@placeholder,'IP')]"),
-            (By.XPATH,        "//label[contains(text(),'IP')]//following::input[1]"),
+            (By.ID,    "id_ip_addresses"),                        # confirmed id
+            (By.NAME,  "ip_addresses"),                           # confirmed name
+            (By.XPATH, "//textarea[contains(@placeholder,'1.2.3.4')]"),
+            (By.XPATH, "//label[contains(text(),'IP')]//following::textarea[1]"),
         ]:
             ip_el = _clickable(by, sel, wait=W20)
             if ip_el:
+                print(f"      ✓ Found IP textarea via {by}='{sel}'")
                 break
 
         if not ip_el:
-            raise RuntimeError("Could not find IP address input field")
+            raise RuntimeError("Could not find IP whitelist textarea on Profile page")
 
-        _fill(ip_el, new_ip)
+        # Clear existing IPs and enter the new one (one per line)
+        ip_el.click()
+        time.sleep(0.2)
+        ip_el.send_keys(Keys.CONTROL + "a")
+        ip_el.send_keys(Keys.COMMAND  + "a")
+        time.sleep(0.1)
+        ip_el.send_keys(new_ip)
         time.sleep(0.4)
 
-        # ── 8. Save ───────────────────────────────────────────────────────
+        # ── 7. Click Update ───────────────────────────────────────────────
+        print("   → Clicking Update...")
         save_el = (
-            _clickable(By.CSS_SELECTOR, "button[type='submit']")
-            or _clickable(By.XPATH, "//button[contains(text(),'Save')]")
-            or _clickable(By.XPATH, "//button[contains(text(),'Update')]")
-            or _clickable(By.XPATH, "//input[@type='submit']")
+            _clickable(By.CSS_SELECTOR, "input[type='submit']")
+            or _clickable(By.XPATH,     "//input[@value='Update']")
+            or _clickable(By.CSS_SELECTOR, "button[type='submit']")
         )
         if not save_el:
-            raise RuntimeError("Could not find Save button")
+            raise RuntimeError("Could not find Update button on Profile page")
 
         save_el.click()
         time.sleep(2)
