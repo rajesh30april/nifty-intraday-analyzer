@@ -33,19 +33,78 @@ IP_SERVICES = [
     "https://checkip.amazonaws.com",
     "https://api.ipify.org",
     "https://ifconfig.me/ip",
+    "https://icanhazip.com",
+    "https://ident.me",
+    "http://checkip.amazonaws.com",   # http fallback (no TLS issues)
 ]
 
 
 # ── Public IP detection ───────────────────────────────────────────────────────
 
-def get_public_ip(timeout: int = 5) -> str | None:
+def _ip_via_http(timeout: int = 8) -> str | None:
+    """Try multiple HTTP/HTTPS services."""
+    # Try requests first (better SSL handling)
+    try:
+        import requests as req
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        for url in IP_SERVICES:
+            try:
+                r = req.get(url, timeout=timeout, verify=False)  # noqa: S501
+                ip = r.text.strip()
+                if ip and ip.count(".") == 3:
+                    return ip
+            except Exception:
+                continue
+    except ImportError:
+        pass
+
+    # Fallback: urllib
     for url in IP_SERVICES:
         try:
             with urllib.request.urlopen(url, timeout=timeout) as r:
-                return r.read().decode().strip()
+                ip = r.read().decode().strip()
+                if ip and ip.count(".") == 3:
+                    return ip
         except Exception:
             continue
     return None
+
+
+def _ip_via_dns() -> str | None:
+    """Use OpenDNS resolver — works even when HTTP is blocked."""
+    try:
+        result = subprocess.run(
+            ["dig", "+short", "myip.opendns.com", "@resolver1.opendns.com"],
+            capture_output=True, text=True, timeout=5,
+        )
+        ip = result.stdout.strip()
+        if ip and ip.count(".") == 3:
+            return ip
+    except Exception:
+        pass
+    return None
+
+
+def _ip_via_curl() -> str | None:
+    """curl as last resort — uses system proxy settings automatically."""
+    for url in ["https://checkip.amazonaws.com", "https://api.ipify.org"]:
+        try:
+            result = subprocess.run(
+                ["curl", "-s", "--max-time", "6", url],
+                capture_output=True, text=True, timeout=8,
+            )
+            ip = result.stdout.strip()
+            if ip and ip.count(".") == 3:
+                return ip
+        except Exception:
+            continue
+    return None
+
+
+def get_public_ip() -> str | None:
+    """Try HTTP → DNS → curl until one works."""
+    return _ip_via_http() or _ip_via_dns() or _ip_via_curl()
 
 
 # ── IP cache ─────────────────────────────────────────────────────────────────
