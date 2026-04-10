@@ -1,12 +1,11 @@
 """
 IP Change Detector for Kite Connect
-------------------------------------
-Runs at startup. If your public IP has changed since last time,
-it warns you loudly and opens the Kite developer console so you
-can paste the new IP before trading starts.
+-------------------------------------
+Runs at startup. Detects your public IP, compares to last known.
 
-Usage (standalone):  python check_ip.py
-Auto-run via:        start.py (already hooked in)
+- First run  → shows IP, opens Kite console, waits for you to add it
+- IP changed → shows old vs new, opens console, waits for you to update
+- IP same    → green light, server starts immediately
 """
 
 import json
@@ -18,9 +17,8 @@ from pathlib import Path
 KITE_CONSOLE_URL = "https://developers.kite.trade/apps"
 IP_CACHE_FILE    = Path(__file__).parent / ".last_known_ip.json"
 
-# Multiple fallback services — tries each until one works
 IP_SERVICES = [
-    "https://checkip.amazonaws.com",   # AWS — very reliable
+    "https://checkip.amazonaws.com",
     "https://api.ipify.org",
     "https://ifconfig.me/ip",
 ]
@@ -36,7 +34,7 @@ def get_public_ip(timeout: int = 5) -> str | None:
     return None
 
 
-def load_cached_ip() -> dict:
+def load_cached() -> dict:
     if IP_CACHE_FILE.exists():
         try:
             return json.loads(IP_CACHE_FILE.read_text())
@@ -48,77 +46,99 @@ def load_cached_ip() -> dict:
 def save_ip(ip: str) -> None:
     from datetime import datetime
     IP_CACHE_FILE.write_text(json.dumps({
-        "ip":         ip,
-        "saved_at":   datetime.now().isoformat(timespec="seconds"),
+        "ip":       ip,
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
     }, indent=2))
 
 
 def open_browser(url: str) -> None:
-    """Open URL in default browser — works on Mac & Linux."""
     try:
-        subprocess.Popen(
-            ["open", url] if sys.platform == "darwin" else ["xdg-open", url],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        cmd = ["open", url] if sys.platform == "darwin" else ["xdg-open", url]
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
-        pass  # Non-fatal — we already printed the URL
+        pass
 
 
-def check_ip(auto_open: bool = True) -> bool:
+def _banner(lines: list[str]) -> None:
+    width = 62
+    print("\n" + "━" * width)
+    for line in lines:
+        print(f"  {line}")
+    print("━" * width + "\n")
+
+
+def check_ip(auto_open: bool = True) -> None:
     """
-    Check if public IP has changed since last run.
-
-    Returns:
-        True  — IP is same as last time (or first run saved successfully)
-        False — IP changed or couldn't be fetched (needs manual action)
+    Checks public IP at startup.
+    Blocks until user confirms Kite console is updated (if needed).
+    Always safe to call — won't hard-crash if no internet.
     """
     print("🔍 Checking public IP for Kite Connect...")
 
     current_ip = get_public_ip()
+
     if not current_ip:
-        print("⚠️  Could not detect public IP (no internet?). Skipping IP check.")
-        print(f"   ➜ Manually verify at: {KITE_CONSOLE_URL}")
-        return False  # Warn but don't hard-block startup
+        _banner([
+            "⚠️  Could not detect public IP (internet issue?).",
+            f"   Check manually: {KITE_CONSOLE_URL}",
+            "   Continuing startup anyway...",
+        ])
+        return  # Don't block — maybe Kite IP hasn't changed
 
-    cached     = load_cached_ip()
-    last_ip    = cached.get("ip")
-    saved_at   = cached.get("saved_at", "never")
+    cached   = load_cached()
+    last_ip  = cached.get("ip")
+    saved_at = cached.get("saved_at", "never")
 
+    # ── All good — same IP ────────────────────────────────────────────────────
     if last_ip == current_ip:
-        print(f"✅ IP unchanged: {current_ip}  (last verified: {saved_at})")
-        return True
+        print(f"✅ IP unchanged: {current_ip}  (last verified: {saved_at})\n")
+        return
 
-    # ── IP has changed (or first run) ─────────────────────────────────────────
+    # ── IP changed OR first run — must update Kite before trading ─────────────
     is_first_run = last_ip is None
 
-    print()
-    print("━" * 60)
     if is_first_run:
-        print("🐶 FIRST RUN — saving your IP for future comparisons")
+        _banner([
+            "🐶 FIRST RUN — you need to whitelist your IP on Kite console",
+            "",
+            f"   Your public IP  →  {current_ip}",
+            "",
+            "   Steps:",
+            f"   1. Go to  {KITE_CONSOLE_URL}",
+            "   2. Click your app → Edit",
+            f"   3. Paste this IP:  {current_ip}",
+            "   4. Save",
+        ])
     else:
-        print("🚨 YOUR PUBLIC IP HAS CHANGED!")
-        print(f"   Old IP : {last_ip}  (from {saved_at})")
-    print(f"   New IP : {current_ip}")
-    print()
-    print("   ➜ ACTION REQUIRED:")
-    print(f"     1. Go to  {KITE_CONSOLE_URL}")
-    print(f"     2. Edit your app → paste IP:  {current_ip}")
-    print("     3. Save — takes ~30 seconds to apply")
-    print()
-    print("   ⚠️  Orders WILL FAIL until you update Kite console!")
-    print("━" * 60)
-    print()
+        _banner([
+            "🚨 YOUR PUBLIC IP HAS CHANGED — update Kite console NOW",
+            "",
+            f"   Old IP  →  {last_ip}  (from {saved_at})",
+            f"   New IP  →  {current_ip}   ← paste this",
+            "",
+            "   Steps:",
+            f"   1. Go to  {KITE_CONSOLE_URL}",
+            "   2. Click your app → Edit",
+            f"   3. Replace IP with:  {current_ip}",
+            "   4. Save",
+        ])
 
-    if auto_open and not is_first_run:
-        print("🌐 Opening Kite console in your browser...")
+    if auto_open:
+        print("🌐 Opening Kite console in browser...")
         open_browser(KITE_CONSOLE_URL)
 
-    # Save the new IP so tomorrow we compare against today's
+    # Save IP now — so it's ready for tomorrow's comparison regardless
     save_ip(current_ip)
-    return is_first_run  # First run = OK to proceed; changed = warn but continue
+
+    # ── Block until confirmed ─────────────────────────────────────────────────
+    print(f"\n   📋 Your IP to paste:  {current_ip}\n")
+    try:
+        input("   ⏸  Press ENTER once you've saved it in Kite console... ")
+    except EOFError:
+        # Non-interactive mode (e.g. launched as service) — skip wait
+        print("   [Non-interactive mode] Skipping wait. Update Kite console manually!")
+    print("\n✅ Continuing startup...\n")
 
 
 if __name__ == "__main__":
-    ok = check_ip(auto_open=True)
-    sys.exit(0 if ok else 1)
+    check_ip(auto_open=True)
