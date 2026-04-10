@@ -10,6 +10,10 @@ Flow:
   4. Changed  → Selenium opens Chrome, logs into developers.kite.trade,
                  updates the IP field, saves — zero user input needed
   5. If Selenium fails → manual fallback (open browser + press Enter)
+
+Periodic watcher:
+  start_ip_watcher(interval_minutes=10) launches a daemon thread that
+  repeats the check every N minutes while the server is live.
 """
 
 import json
@@ -17,6 +21,7 @@ import os
 import subprocess
 import sys
 import time
+import threading
 import urllib.request
 from pathlib import Path
 
@@ -24,10 +29,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-KITE_CONSOLE_URL = "https://developers.kite.trade/apps"
-KITE_LOGIN_URL   = "https://developers.kite.trade"
-IP_CACHE_FILE    = Path(__file__).parent / ".last_known_ip.json"
-KITE_API_KEY     = os.getenv("KITE_API_KEY", "")
+KITE_CONSOLE_URL   = "https://developers.kite.trade/apps"
+KITE_DEV_LOGIN_URL = "https://developers.kite.trade/login"
+IP_CACHE_FILE      = Path(__file__).parent / ".last_known_ip.json"
+KITE_API_KEY       = os.getenv("KITE_API_KEY", "")
 
 IP_SERVICES = [
     "https://checkip.amazonaws.com",
@@ -149,6 +154,14 @@ def _auto_update_kite_ip(new_ip: str) -> bool:
     Fully automated — opens Chrome, logs into developers.kite.trade,
     updates the IP field, saves. Zero user input required.
     Returns True on success, False on any failure.
+
+    Key improvements over v1:
+    - Navigates DIRECTLY to /login (no brittle "click Login link" dance)
+    - Uses element_to_be_clickable (not just presence) — elements are typeable
+    - _fill() does click → select-all → type, which works on SPAs
+    - Per-selector timeout is 5 s (not 15 s) so failures fail fast
+    - Saves a screenshot to /tmp on failure for easy debugging
+    - Masks navigator.webdriver to avoid bot-detection blocks
     """
     user_id  = os.getenv("ZERODHA_USER_ID", "").strip()
     password = os.getenv("ZERODHA_DEV_PASSWORD", "").strip()
@@ -157,11 +170,14 @@ def _auto_update_kite_ip(new_ip: str) -> bool:
         print("⚠️  ZERODHA_USER_ID / ZERODHA_DEV_PASSWORD not set in .env")
         return False
 
+    print(f"   🔑 Credentials loaded for: {user_id}")
+
     try:
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
         from selenium.webdriver.chrome.service import Service
         from selenium.webdriver.common.by import By
+        from selenium.webdriver.common.keys import Keys
         from selenium.webdriver.support import expected_conditions as EC
         from selenium.webdriver.support.ui import WebDriverWait
         from webdriver_manager.chrome import ChromeDriverManager
@@ -175,7 +191,9 @@ def _auto_update_kite_ip(new_ip: str) -> bool:
     opts.add_argument("--start-maximized")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
-    opts.add_experimental_option("excludeSwitches", ["enable-logging"])
+    opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
+    opts.add_experimental_option("useAutomationExtension", False)
 
     driver = None
     try:
@@ -183,68 +201,95 @@ def _auto_update_kite_ip(new_ip: str) -> bool:
             service=Service(ChromeDriverManager().install()),
             options=opts,
         )
-        W = WebDriverWait(driver, 15)
+        # Hide the webdriver flag so the site doesn't block us
+        driver.execute_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
 
-        def first(selectors: list[tuple]):
-            """Try selectors in order, return first element found."""
-            for by, sel in selectors:
-                try:
-                    return W.until(EC.presence_of_element_located((by, sel)))
-                except Exception:
-                    continue
-            raise RuntimeError(f"None found: {selectors}")
+        # W5  → fast fail (5 s) for individual selector probes
+        # W20 → patient wait (20 s) after page navigations
+        W5  = WebDriverWait(driver, 5)
+        W20 = WebDriverWait(driver, 20)
 
-        # ── 1. Open login page ────────────────────────────────────────────
-        print("   → Opening Kite developer console...")
-        driver.get(KITE_LOGIN_URL)
-        time.sleep(2)
+        def _clickable(by, sel, wait=None):
+            """Return the first *clickable* element matching (by, sel), or None."""
+            try:
+                return (wait or W5).until(EC.element_to_be_clickable((by, sel)))
+            except Exception:
+                return None
 
-        # Click Login link if visible
-        try:
-            driver.find_element(
-                By.XPATH,
-                "//a[contains(@href,'login') or contains(text(),'Login')]"
-            ).click()
-            time.sleep(1.5)
-        except Exception:
-            pass
+        def _fill(element, text: str) -> None:
+            """Click the field, select all existing text, then type fresh value."""
+            element.click()
+            time.sleep(0.2)
+            element.send_keys(Keys.CONTROL + "a")  # Windows/Linux select-all
+            element.send_keys(Keys.COMMAND  + "a")  # macOS select-all
+            time.sleep(0.1)
+            element.send_keys(text)
+
+        # ── 1. Navigate directly to the Kite developer LOGIN page ─────────
+        print("   → Opening Kite developer login page...")
+        driver.get(KITE_DEV_LOGIN_URL)
+        time.sleep(3)   # wait for SPA to hydrate
 
         # ── 2. Fill user ID ───────────────────────────────────────────────
-        print("   → Logging in...")
-        uid = first([
+        print("   → Filling in user ID...")
+        uid_el = None
+        for by, sel in [
             (By.ID,           "user_id"),
             (By.NAME,         "user_id"),
             (By.CSS_SELECTOR, "input[type='email']"),
-            (By.CSS_SELECTOR, "input[type='text']"),
-            (By.XPATH,        "//input[not(@type='password') and not(@type='hidden')]"),
-        ])
-        uid.clear()
-        uid.send_keys(user_id)
-        time.sleep(0.3)
+            (By.CSS_SELECTOR, "input[type='text']:not([type='hidden'])"),
+            (By.XPATH,        "(//input[not(@type='password') and not(@type='hidden')])[1]"),
+        ]:
+            uid_el = _clickable(by, sel)
+            if uid_el:
+                print(f"      ✓ Found user-id field via {by}='{sel}'")
+                break
+
+        if not uid_el:
+            raise RuntimeError("Could not find user ID input field on login page")
+
+        _fill(uid_el, user_id)
+        time.sleep(0.4)
 
         # ── 3. Fill password ──────────────────────────────────────────────
-        pwd = first([
+        print("   → Filling in password...")
+        pwd_el = None
+        for by, sel in [
             (By.ID,           "password"),
             (By.NAME,         "password"),
             (By.CSS_SELECTOR, "input[type='password']"),
-        ])
-        pwd.clear()
-        pwd.send_keys(password)
-        time.sleep(0.3)
+        ]:
+            pwd_el = _clickable(by, sel)
+            if pwd_el:
+                print(f"      ✓ Found password field via {by}='{sel}'")
+                break
 
-        # ── 4. Submit ─────────────────────────────────────────────────────
-        try:
-            driver.find_element(
-                By.CSS_SELECTOR, "button[type='submit'], input[type='submit']"
-            ).click()
-        except Exception:
-            pwd.submit()
-        time.sleep(3)
+        if not pwd_el:
+            raise RuntimeError("Could not find password input field on login page")
 
-        # ── 5. Go to apps list ────────────────────────────────────────────
-        print("   → Finding your app...")
+        _fill(pwd_el, password)
+        time.sleep(0.4)
+
+        # ── 4. Submit form ────────────────────────────────────────────────
+        print("   → Submitting login form...")
+        submit_el = (
+            _clickable(By.CSS_SELECTOR, "button[type='submit']")
+            or _clickable(By.XPATH, "//button[contains(text(),'Login')]")
+            or _clickable(By.XPATH, "//input[@type='submit']")
+        )
+        if submit_el:
+            submit_el.click()
+        else:
+            pwd_el.send_keys(Keys.RETURN)   # last resort: Enter in password field
+
+        time.sleep(4)   # let redirect + dashboard load
+
+        # ── 5. Navigate to apps list ──────────────────────────────────────
+        print("   → Navigating to apps list...")
         driver.get(KITE_CONSOLE_URL)
-        time.sleep(2)
+        time.sleep(3)
 
         # Click our app — try API key match, then name, then first app
         clicked = False
@@ -253,50 +298,58 @@ def _auto_update_kite_ip(new_ip: str) -> bool:
             "//a[contains(.,'Inevitable')]",
             "(//a[contains(@href,'/apps/')])[1]",
         ]:
-            try:
-                driver.find_element(By.XPATH, xpath).click()
+            el = _clickable(By.XPATH, xpath)
+            if el:
+                el.click()
                 clicked = True
                 time.sleep(2)
                 break
-            except Exception:
-                continue
+
         if not clicked:
             raise RuntimeError("Could not find app link on apps page")
 
-        # ── 6. Click Edit if needed ───────────────────────────────────────
-        print("   → Updating IP...")
+        # ── 6. Click Edit button if present ──────────────────────────────
+        print("   → Updating IP address...")
         for xpath in [
             "//button[contains(text(),'Edit')]",
             "//a[contains(text(),'Edit')]",
         ]:
-            try:
-                driver.find_element(By.XPATH, xpath).click()
-                time.sleep(1)
+            el = _clickable(By.XPATH, xpath)
+            if el:
+                el.click()
+                time.sleep(1.5)
                 break
-            except Exception:
-                continue
 
-        # ── 7. Find IP field (named 'ip_addresses' per Kite console) ─────
-        ip_field = first([
+        # ── 7. Find the IP addresses input field ──────────────────────────
+        ip_el = None
+        for by, sel in [
             (By.NAME,         "ip_addresses"),
             (By.ID,           "ip_addresses"),
             (By.CSS_SELECTOR, "input[name='ip_addresses']"),
             (By.XPATH,        "//input[contains(@placeholder,'IP')]"),
             (By.XPATH,        "//label[contains(text(),'IP')]//following::input[1]"),
-        ])
-        ip_field.clear()
-        time.sleep(0.2)
-        ip_field.send_keys(new_ip)
-        time.sleep(0.3)
+        ]:
+            ip_el = _clickable(by, sel, wait=W20)
+            if ip_el:
+                break
+
+        if not ip_el:
+            raise RuntimeError("Could not find IP address input field")
+
+        _fill(ip_el, new_ip)
+        time.sleep(0.4)
 
         # ── 8. Save ───────────────────────────────────────────────────────
-        save = first([
-            (By.CSS_SELECTOR, "button[type='submit']"),
-            (By.XPATH,        "//button[contains(text(),'Save')]"),
-            (By.XPATH,        "//button[contains(text(),'Update')]"),
-            (By.XPATH,        "//input[@type='submit']"),
-        ])
-        save.click()
+        save_el = (
+            _clickable(By.CSS_SELECTOR, "button[type='submit']")
+            or _clickable(By.XPATH, "//button[contains(text(),'Save')]")
+            or _clickable(By.XPATH, "//button[contains(text(),'Update')]")
+            or _clickable(By.XPATH, "//input[@type='submit']")
+        )
+        if not save_el:
+            raise RuntimeError("Could not find Save button")
+
+        save_el.click()
         time.sleep(2)
 
         print(f"   ✅ IP updated to {new_ip} in Kite console!")
@@ -307,6 +360,8 @@ def _auto_update_kite_ip(new_ip: str) -> bool:
         print(f"   ⚠️  Auto-update failed: {e}")
         if driver:
             try:
+                driver.save_screenshot("/tmp/kite_ip_update_error.png")
+                print("   📸 Screenshot → /tmp/kite_ip_update_error.png (for debugging)")
                 driver.quit()
             except Exception:
                 pass
@@ -350,7 +405,7 @@ def _manual_fallback(new_ip: str, is_first_run: bool,
     print("\n✅ Continuing startup...\n")
 
 
-# ── Main entry point ──────────────────────────────────────────────────────────
+# ── Main check ────────────────────────────────────────────────────────────────
 
 def check_ip(auto_open: bool = True) -> None:
     """
@@ -391,6 +446,32 @@ def check_ip(auto_open: bool = True) -> None:
     else:
         _manual_fallback(current_ip, is_first_run, last_ip, saved_at)
         save_ip(current_ip)          # user pressed Enter = confirmed
+
+
+# ── Periodic IP watcher ───────────────────────────────────────────────────────
+
+def start_ip_watcher(interval_minutes: int = 10) -> None:
+    """
+    Launch a background daemon thread that re-runs check_ip() every
+    `interval_minutes` minutes while the server is live.
+
+    - IP unchanged → silent, no log noise
+    - IP changed   → Selenium auto-updates; manual fallback if that fails
+
+    Call this ONCE in start.py, right before uvicorn.run() blocks.
+    """
+    def _watcher() -> None:
+        while True:
+            time.sleep(interval_minutes * 60)
+            print(f"\n🔄 [IP Watcher] Periodic check (every {interval_minutes} min)...")
+            try:
+                check_ip(auto_open=False)
+            except Exception as exc:
+                print(f"⚠️  [IP Watcher] Unexpected error: {exc}")
+
+    t = threading.Thread(target=_watcher, daemon=True, name="ip-watcher")
+    t.start()
+    print(f"👀 IP Watcher started — re-checking every {interval_minutes} minutes\n")
 
 
 if __name__ == "__main__":

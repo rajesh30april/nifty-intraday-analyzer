@@ -16,8 +16,9 @@ def _safe_signal(sig, handler):
 _signal.signal = _safe_signal
 
 # ── IP check — warns if Kite console needs updating ──────────────────────
-from check_ip import check_ip
-check_ip(auto_open=True)
+from check_ip import check_ip, start_ip_watcher
+check_ip(auto_open=True)          # one-shot check at startup
+start_ip_watcher(interval_minutes=10)  # then re-check every 10 min in bg
 # ─────────────────────────────────────────────────────────────────────────
 
 import uvicorn
