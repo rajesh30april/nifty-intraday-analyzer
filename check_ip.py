@@ -180,9 +180,8 @@ def _auto_update_kite_ip(new_ip: str) -> bool:
         from selenium.webdriver.common.keys import Keys
         from selenium.webdriver.support import expected_conditions as EC
         from selenium.webdriver.support.ui import WebDriverWait
-        from webdriver_manager.chrome import ChromeDriverManager
     except ImportError:
-        print("⚠️  Run: uv pip install selenium webdriver-manager")
+        print("⚠️  Run: uv pip install selenium")
         return False
 
     print("🤖 Auto-updating Kite console via Chrome...")
@@ -195,10 +194,34 @@ def _auto_update_kite_ip(new_ip: str) -> bool:
     opts.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
     opts.add_experimental_option("useAutomationExtension", False)
 
+    # ── Locate chromedriver locally (no network download needed) ──────────────
+    _THIS_DIR = Path(__file__).parent
+    _CANDIDATES = [
+        _THIS_DIR / ".venv" / "bin" / "chromedriver",  # project venv (preferred)
+        Path("/usr/local/bin/chromedriver"),
+        Path("/opt/homebrew/bin/chromedriver"),
+    ]
+    # Also check PATH
+    _which = subprocess.run(["which", "chromedriver"], capture_output=True, text=True)
+    if _which.returncode == 0 and _which.stdout.strip():
+        _CANDIDATES.insert(0, Path(_which.stdout.strip()))
+
+    _chromedriver_path = next((p for p in _CANDIDATES if p.exists()), None)
+    if not _chromedriver_path:
+        print("⚠️  chromedriver not found! Run the one-time install:")
+        print("   curl -L --proxy http://sysproxy.wal-mart.com:8080 \\")
+        print("     https://storage.googleapis.com/chrome-for-testing-public/"
+              "$(google-chrome --version | grep -oE '[0-9.]+' | head -1)/"
+              "mac-arm64/chromedriver-mac-arm64.zip -o /tmp/cd.zip")
+        print("   unzip /tmp/cd.zip -d /tmp/cd && cp /tmp/cd/*/chromedriver .venv/bin/")
+        return False
+
+    print(f"   🔧 Using chromedriver: {_chromedriver_path}")
+
     driver = None
     try:
         driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()),
+            service=Service(str(_chromedriver_path)),
             options=opts,
         )
         # Hide the webdriver flag so the site doesn't block us
@@ -232,33 +255,37 @@ def _auto_update_kite_ip(new_ip: str) -> bool:
         driver.get(KITE_DEV_LOGIN_URL)
         time.sleep(3)   # wait for SPA to hydrate
 
-        # ── 2. Fill user ID ───────────────────────────────────────────────
-        print("   → Filling in user ID...")
+        # ── 2. Fill email / user ID ──────────────────────────────────────
+        # Kite developer console uses name="email" / id="id_email"
+        # (confirmed by DOM inspection of developers.kite.trade/login)
+        print("   → Filling in email...")
         uid_el = None
         for by, sel in [
-            (By.ID,           "user_id"),
-            (By.NAME,         "user_id"),
-            (By.CSS_SELECTOR, "input[type='email']"),
+            (By.ID,           "id_email"),          # Kite dev console (primary)
+            (By.NAME,         "email"),              # Kite dev console (fallback)
+            (By.ID,           "user_id"),            # Kite consumer login
+            (By.NAME,         "user_id"),            # Kite consumer login
             (By.CSS_SELECTOR, "input[type='text']:not([type='hidden'])"),
             (By.XPATH,        "(//input[not(@type='password') and not(@type='hidden')])[1]"),
         ]:
             uid_el = _clickable(by, sel)
             if uid_el:
-                print(f"      ✓ Found user-id field via {by}='{sel}'")
+                print(f"      ✓ Found email field via {by}='{sel}'")
                 break
 
         if not uid_el:
-            raise RuntimeError("Could not find user ID input field on login page")
+            raise RuntimeError("Could not find email/user-id input on login page")
 
         _fill(uid_el, user_id)
         time.sleep(0.4)
 
         # ── 3. Fill password ──────────────────────────────────────────────
+        # Kite dev console: id="id_password" / name="password"
         print("   → Filling in password...")
         pwd_el = None
         for by, sel in [
-            (By.ID,           "password"),
-            (By.NAME,         "password"),
+            (By.ID,           "id_password"),       # Kite dev console (primary)
+            (By.NAME,         "password"),          # both logins
             (By.CSS_SELECTOR, "input[type='password']"),
         ]:
             pwd_el = _clickable(by, sel)
@@ -267,7 +294,7 @@ def _auto_update_kite_ip(new_ip: str) -> bool:
                 break
 
         if not pwd_el:
-            raise RuntimeError("Could not find password input field on login page")
+            raise RuntimeError("Could not find password input on login page")
 
         _fill(pwd_el, password)
         time.sleep(0.4)
