@@ -14,6 +14,7 @@ Features:
 
 import os
 import json
+import math
 import threading
 from collections import deque
 from datetime import datetime, time as dt_time
@@ -948,6 +949,28 @@ def _get_option_symbol(
     return symbol, token
 
 
+# NFO options tick size is ₹0.05
+_NFO_TICK = 0.05
+
+
+def _nfo_tick_limit(price: float, side: str) -> float:
+    """Convert an LTP to a LIMIT price that fills immediately.
+
+    Zerodha blocks plain MARKET orders on NFO via API.
+    Adding a 1 % buffer and snapping to the ₹0.05 tick mimics
+    market-order behaviour while satisfying the API requirement.
+
+    BUY:  ceil (price × 1.01 / tick) × tick  — bid up 1 %, round UP
+    SELL: floor(price × 0.99 / tick) × tick  — bid down 1 %, round DOWN
+    """
+    if side == "BUY":
+        raw = price * 1.01
+        return max(_NFO_TICK, math.ceil(raw / _NFO_TICK) * _NFO_TICK)
+    else:
+        raw = price * 0.99
+        return max(_NFO_TICK, math.floor(raw / _NFO_TICK) * _NFO_TICK)
+
+
 def _place_order(symbol: str, direction: Direction,
                  quantity: int, price: float) -> str | None:
     """Place order via Zerodha or simulate in paper mode.
@@ -991,6 +1014,10 @@ def _place_order(symbol: str, direction: Direction,
     first_order_id: str | None = None
     for i, chunk_qty in enumerate(chunks, 1):
         try:
+            # Zerodha API blocks plain MARKET orders on NFO.
+            # Use LIMIT at LTP+1% (snapped to ₹0.05 tick) — fills
+            # immediately like a market order, but with price protection.
+            limit_px = _nfo_tick_limit(price, "BUY")
             order_id = kite_manager.kite.place_order(
                 variety=kite_manager.kite.VARIETY_REGULAR,
                 exchange="NFO",
@@ -998,7 +1025,8 @@ def _place_order(symbol: str, direction: Direction,
                 transaction_type=kite_manager.kite.TRANSACTION_TYPE_BUY,
                 quantity=chunk_qty,
                 product=kite_manager.kite.PRODUCT_MIS,   # Intraday MIS
-                order_type=kite_manager.kite.ORDER_TYPE_MARKET,
+                order_type=kite_manager.kite.ORDER_TYPE_LIMIT,
+                price=round(limit_px, 2),
                 validity="DAY",
             )
             print(f"✅ [LIVE] BUY chunk {i}/{len(chunks)}: {chunk_qty}x {symbol} | ID: {order_id}")
@@ -1299,6 +1327,9 @@ def _exit_position(reason: str, current_price: float):
         try:
             for _i, _chunk in enumerate(exit_chunks, 1):
                 # Option buyer: always SELL to close the long option position.
+                # Zerodha API blocks plain MARKET orders on NFO — use LIMIT
+                # at LTP-1% (snapped to ₹0.05 tick), fills immediately.
+                sell_limit_px = round(_nfo_tick_limit(exit_premium, "SELL"), 2)
                 kite_manager.kite.place_order(
                     variety=kite_manager.kite.VARIETY_REGULAR,
                     exchange="NFO",
@@ -1306,10 +1337,11 @@ def _exit_position(reason: str, current_price: float):
                     transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
                     quantity=_chunk,
                     product=kite_manager.kite.PRODUCT_MIS,
-                    order_type=kite_manager.kite.ORDER_TYPE_MARKET,
+                    order_type=kite_manager.kite.ORDER_TYPE_LIMIT,
+                    price=sell_limit_px,
                     validity="DAY",
                 )
-                print(f"✅ [EXIT] Chunk {_i}/{len(exit_chunks)}: SELL {_chunk}x {sym_clean}")
+                print(f"✅ [EXIT] Chunk {_i}/{len(exit_chunks)}: SELL {_chunk}x {sym_clean} LIMIT ₹{sell_limit_px}")
         except Exception as e:
             err_str = str(e).lower()
 
