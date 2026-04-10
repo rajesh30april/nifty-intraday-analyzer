@@ -976,11 +976,14 @@ def _nfo_tick_limit(price: float, side: str) -> float:
 def _parse_circuit_price(err_str: str) -> float | None:
     """Extract the circuit limit price from a Zerodha error message.
 
-    Zerodha says: '...upper circuit limit of 575.85...'
-    or:           '...lower circuit limit of 12.30...'
-    Returns the float price, or None if the message isn't a circuit error.
+    Zerodha embeds a markdown hyperlink in the error string:
+      '...current [upper circuit limit](https://support.zerodha.com/...) of 376.75...'
+    The old regex broke on the ](url) junk between 'circuit limit' and the price.
+
+    Fix: lazily skip everything between 'circuit' and ' of ', then grab the price.
+    Requires a decimal point so we never accidentally capture integers from the URL.
     """
-    m = re.search(r'circuit limit(?:\s+of)?\s+([\d,]+\.?\d*)', err_str, re.IGNORECASE)
+    m = re.search(r'circuit.*? of ([\d,]+\.\d+)', err_str, re.IGNORECASE)
     if m:
         return float(m.group(1).replace(',', ''))
     return None
