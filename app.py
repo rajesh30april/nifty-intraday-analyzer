@@ -2722,12 +2722,24 @@ async def crude_config(
     save_crude_settings()   # ← persist to disk immediately
     print(f"💾 [API] Settings saved to crude_settings.json")
     
+    # ── Return canonical UI trail-mode token so JS never has to reconstruct ──
+    # Internal state stores 'atr' + atr_multiplier separately (legacy).
+    # The UI buttons use 'atr0.4', 'atr0.7', 'atr1.5', 'atr2' — return those.
+    _mult = cs.atr_multiplier
+    _mode_ui = {
+        ('atr', 0.4): 'atr0.4',
+        ('atr', 0.7): 'atr0.7',
+        ('atr', 1.5): 'atr1.5',
+        ('atr', 2.0): 'atr2',
+    }.get((cs.trail_mode, round(_mult, 1)), cs.trail_mode)  # fallback: 'fixed', 'premium', etc.
+
     return {
         'success': True,
         'sl_points': cs.sl_points, 'trail_points': cs.trail_points,
         'rr_ratio': cs.rr_ratio,   'capital': cs.capital,
-        'trail_mode': cs.trail_mode, 'atr_multiplier': cs.atr_multiplier,
-        'strike_offset': cs.strike_offset,  # 🐶 ADDED: return this too!
+        'trail_mode': _mode_ui,         # ← canonical UI token e.g. 'atr1.5' not 'atr'
+        'atr_multiplier': cs.atr_multiplier,
+        'strike_offset': cs.strike_offset,
         'max_trades': cs.max_trades,
         'max_daily_loss': cs.max_daily_loss,
     }

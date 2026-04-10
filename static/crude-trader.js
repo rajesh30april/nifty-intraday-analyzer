@@ -133,9 +133,18 @@ function onCrudeTrailModeChange(mode) {
     if (stRow) stRow.classList.toggle('hidden', mode !== 'supertrend');
 }
 
-function _applyCrudeTrailMode(mode) {
-    // Normalize backend 'atr' + multiplier combo into pill format
-    setCrudeTrailMode(mode);  // pill buttons + description
+function _applyCrudeTrailMode(mode, atrMult) {
+    // Normalize backend 'atr' + multiplier combo into the canonical UI pill token.
+    // The API stores 'atr' internally but the pills use 'atr0.4', 'atr1.5' etc.
+    // After the Python API fix (pending restart), trail_mode will already be
+    // 'atr1.5' — the legacy branch below is a belt-and-suspenders fallback.
+    let uiMode = mode;
+    if (mode === 'atr') {
+        const mult = atrMult || 1.5;
+        const legacyMap = { 0.4: 'atr0.4', 0.7: 'atr0.7', 1.5: 'atr1.5', 2.0: 'atr2' };
+        uiMode = legacyMap[Math.round(mult * 10) / 10] || 'atr1.5';
+    }
+    setCrudeTrailMode(uiMode);  // pill buttons + description
 }
 
 
@@ -1055,7 +1064,9 @@ function renderCrudeStatus(d) {
     }
 
     // ── Sync trail mode UI + live indicator values ────────────────────
-    if (d.trail_mode) _applyCrudeTrailMode(d.trail_mode);
+    // MUST pass atr_multiplier so _applyCrudeTrailMode can reconstruct
+    // 'atr1.5' from 'atr' + 1.5 — otherwise every poll resets pills to gray!
+    if (d.trail_mode) _applyCrudeTrailMode(d.trail_mode, d.atr_multiplier);
     if (d.last_atr) {
         const atrEl = document.getElementById('crude-atr-live');
         if (atrEl) atrEl.textContent = `ATR: ₹${d.last_atr.toFixed(0)}`;
@@ -1441,16 +1452,15 @@ async function loadCrudeSettings() {
             console.log('🔄 [Settings] Set Max Loss to:', data.max_daily_loss);
         }
         
-        // 🐶 Set Trail Mode buttons - map 'atr' to specific multiplier
+        // Set Trail Mode buttons — API now returns canonical UI token directly
+        // e.g. 'atr1.5' not legacy 'atr' + separate atr_multiplier field.
+        // Kept legacy fallback just in case an old snapshot is loaded.
         let trailMode = data.trail_mode || 'atr1.5';
-        // If backend returns old 'atr' format, convert based on atr_multiplier
         if (trailMode === 'atr') {
+            // legacy snapshot: reconstruct from multiplier
             const mult = data.atr_multiplier || 1.5;
-            if (mult === 0.4) trailMode = 'atr0.4';
-            else if (mult === 0.7) trailMode = 'atr0.7';
-            else if (mult === 1.5) trailMode = 'atr1.5';
-            else if (mult === 2) trailMode = 'atr2';
-            else trailMode = 'atr1.5';  // default
+            const legacyMap = { 0.4: 'atr0.4', 0.7: 'atr0.7', 1.5: 'atr1.5', 2.0: 'atr2' };
+            trailMode = legacyMap[mult] || 'atr1.5';
         }
         setCrudeTrailMode(trailMode);
         console.log('🔄 [Settings] Set Trail Mode to:', trailMode);
