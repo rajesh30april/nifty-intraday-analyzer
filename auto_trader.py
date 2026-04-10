@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 
 from kite_integration import kite_manager
 from strategy import evaluate_vwap_breakout, Direction
+from check_ip import get_public_ip, _auto_update_kite_ip as _kite_update_ip
 import strategies.loader  # noqa: F401 — register all strategies
 from strategies.registry import get as get_strategy
 
@@ -977,12 +978,32 @@ def _parse_circuit_price(err_str: str) -> float | None:
 
     Zerodha says: '...upper circuit limit of 575.85...'
     or:           '...lower circuit limit of 12.30...'
-    Returns the float price, or None if the message isn\'t a circuit error.
+    Returns the float price, or None if the message isn't a circuit error.
     """
     m = re.search(r'circuit limit(?:\s+of)?\s+([\d,]+\.?\d*)', err_str, re.IGNORECASE)
     if m:
         return float(m.group(1).replace(',', ''))
     return None
+
+
+def _heal_ip() -> bool:
+    """Self-heal: whitelist current public IP in Kite console.
+
+    Called automatically when an order fails with 'IP not allowed'.
+    Fetches current public IP, updates the Kite developer Profile page
+    via Selenium, returns True on success.
+    """
+    ip = get_public_ip()
+    if not ip:
+        print("   ⚠️  Could not determine public IP — cannot self-heal")
+        return False
+    print(f"   🩹 IP not whitelisted — auto-updating Kite console with {ip}...")
+    ok = _kite_update_ip(ip)
+    if ok:
+        print(f"   ✅ IP {ip} whitelisted — retrying order...")
+    else:
+        print(f"   ❌ Auto-whitelist failed — add {ip} manually at developers.kite.trade/profile")
+    return ok
 
 
 def _place_order(symbol: str, direction: Direction,
@@ -1062,8 +1083,20 @@ def _place_order(symbol: str, direction: Direction,
             if first_order_id is None:
                 first_order_id = str(order_id)
         except Exception as e:
-            print(f"❌ [LIVE] Order chunk {i}/{len(chunks)} failed: {e}")
-            state.last_signal_reason = f"❌ Order chunk {i} failed: {e}"
+            err_str = str(e)
+            # ─ Self-heal: if IP is not whitelisted, update Kite & retry once ─
+            if "not allowed" in err_str.lower() and "ip" in err_str.lower():
+                if _heal_ip():
+                    try:
+                        order_id = _try_buy(limit_px)
+                        print(f"✅ [LIVE] BUY chunk {i}/{len(chunks)}: {chunk_qty}x {symbol} | ID: {order_id} (after IP heal)")
+                        if first_order_id is None:
+                            first_order_id = str(order_id)
+                        continue
+                    except Exception as retry_e:
+                        err_str = str(retry_e)
+            print(f"❌ [LIVE] Order chunk {i}/{len(chunks)} failed: {err_str}")
+            state.last_signal_reason = f"❌ Order chunk {i} failed: {err_str}"
             # Return whatever we have — partial fill is better than nothing
             return first_order_id
 
@@ -1386,6 +1419,18 @@ def _exit_position(reason: str, current_price: float):
                 print(f"✅ [EXIT] Chunk {_i}/{len(exit_chunks)}: SELL {_chunk}x {sym_clean} LIMIT ₹{sell_limit_px}")
         except Exception as e:
             err_str = str(e).lower()
+
+            # ─ Self-heal: if IP not whitelisted, update Kite & retry exit once ─
+            if "not allowed" in err_str and "ip" in err_str:
+                if _heal_ip():
+                    try:
+                        for _i, _chunk in enumerate(exit_chunks, 1):
+                            sell_px = round(_nfo_tick_limit(exit_premium, "SELL"), 2)
+                            _try_sell(sell_px)
+                            print(f"✅ [EXIT RETRY] SELL {_chunk}x {sym_clean} LIMIT ₹{sell_px}")
+                        err_str = ""   # cleared — fall through to P&L block below
+                    except Exception as retry_e:
+                        err_str = str(retry_e).lower()
 
             # ── TERMINAL: instrument expired / position already closed ─────────
             # The option has expired, or the position was already closed by the
