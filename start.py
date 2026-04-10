@@ -15,5 +15,10 @@ def _safe_signal(sig, handler):
     # Non-main thread — silently skip (Twisted trying to set SIGTERM)
 _signal.signal = _safe_signal
 
+# ── IP check — warns if Kite console needs updating ──────────────────────
+from check_ip import check_ip
+check_ip(auto_open=True)
+# ─────────────────────────────────────────────────────────────────────────
+
 import uvicorn
 uvicorn.run("app:app", host="0.0.0.0", port=8000, log_level="warning")
