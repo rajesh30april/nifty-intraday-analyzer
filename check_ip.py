@@ -351,14 +351,14 @@ def check_ip(auto_open: bool = True) -> None:
     # Try auto-update first
     updated = _auto_update_kite_ip(current_ip)
 
-    # Save regardless — so tomorrow's comparison works
-    save_ip(current_ip)
-
-    if not updated:
-        # Fall back to manual
-        _manual_fallback(current_ip, is_first_run, last_ip, saved_at)
-    else:
+    if updated:
+        # Selenium confirmed success — safe to cache
+        save_ip(current_ip)
         print("🚀 All good — server starting...\n")
+    else:
+        # Fall back to manual — only cache AFTER user confirms
+        _manual_fallback(current_ip, is_first_run, last_ip, saved_at)
+        save_ip(current_ip)  # user pressed Enter = confirmed updated
 
 
 if __name__ == "__main__":
