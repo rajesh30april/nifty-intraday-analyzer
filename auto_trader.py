@@ -15,6 +15,7 @@ Features:
 import os
 import json
 import math
+import re
 import threading
 from collections import deque
 from datetime import datetime, time as dt_time
@@ -957,18 +958,31 @@ def _nfo_tick_limit(price: float, side: str) -> float:
     """Convert an LTP to a LIMIT price that fills immediately.
 
     Zerodha blocks plain MARKET orders on NFO via API.
-    Adding a 1 % buffer and snapping to the ₹0.05 tick mimics
-    market-order behaviour while satisfying the API requirement.
+    We add a small FIXED buffer (not %) to avoid accidentally breaching
+    circuit limits on hot options, then snap to the ₹0.05 tick.
 
-    BUY:  ceil (price × 1.01 / tick) × tick  — bid up 1 %, round UP
-    SELL: floor(price × 0.99 / tick) × tick  — bid down 1 %, round DOWN
+    BUY:  ceil ((ltp + 1.00) / tick) * tick  — 1 rupee above, round UP
+    SELL: floor((ltp - 1.00) / tick) * tick  — 1 rupee below, round DOWN
     """
     if side == "BUY":
-        raw = price * 1.01
+        raw = price + 1.00
         return max(_NFO_TICK, math.ceil(raw / _NFO_TICK) * _NFO_TICK)
     else:
-        raw = price * 0.99
+        raw = price - 1.00
         return max(_NFO_TICK, math.floor(raw / _NFO_TICK) * _NFO_TICK)
+
+
+def _parse_circuit_price(err_str: str) -> float | None:
+    """Extract the circuit limit price from a Zerodha error message.
+
+    Zerodha says: '...upper circuit limit of 575.85...'
+    or:           '...lower circuit limit of 12.30...'
+    Returns the float price, or None if the message isn\'t a circuit error.
+    """
+    m = re.search(r'circuit limit(?:\s+of)?\s+([\d,]+\.?\d*)', err_str, re.IGNORECASE)
+    if m:
+        return float(m.group(1).replace(',', ''))
+    return None
 
 
 def _place_order(symbol: str, direction: Direction,
@@ -1014,22 +1028,37 @@ def _place_order(symbol: str, direction: Direction,
     first_order_id: str | None = None
     for i, chunk_qty in enumerate(chunks, 1):
         try:
-            # Zerodha API blocks plain MARKET orders on NFO.
-            # Use LIMIT at LTP+1% (snapped to ₹0.05 tick) — fills
-            # immediately like a market order, but with price protection.
+            # Zerodha blocks plain MARKET orders on NFO — use LIMIT.
+            # Buffer: LTP + ₹1 (fixed, not %) to avoid breaching circuit
+            # limits on hot options (1% can overshoot on illiquid strikes).
+            # If we still breach the upper circuit, Zerodha tells us the
+            # exact limit in the error — we parse it and retry once.
             limit_px = _nfo_tick_limit(price, "BUY")
-            order_id = kite_manager.kite.place_order(
-                variety=kite_manager.kite.VARIETY_REGULAR,
-                exchange="NFO",
-                tradingsymbol=symbol,   # already clean — no "NFO:" prefix
-                transaction_type=kite_manager.kite.TRANSACTION_TYPE_BUY,
-                quantity=chunk_qty,
-                product=kite_manager.kite.PRODUCT_MIS,   # Intraday MIS
-                order_type=kite_manager.kite.ORDER_TYPE_LIMIT,
-                price=round(limit_px, 2),
-                validity="DAY",
-            )
-            print(f"✅ [LIVE] BUY chunk {i}/{len(chunks)}: {chunk_qty}x {symbol} | ID: {order_id}")
+
+            def _try_buy(px: float) -> str:
+                return kite_manager.kite.place_order(
+                    variety=kite_manager.kite.VARIETY_REGULAR,
+                    exchange="NFO",
+                    tradingsymbol=symbol,
+                    transaction_type=kite_manager.kite.TRANSACTION_TYPE_BUY,
+                    quantity=chunk_qty,
+                    product=kite_manager.kite.PRODUCT_MIS,
+                    order_type=kite_manager.kite.ORDER_TYPE_LIMIT,
+                    price=round(px, 2),
+                    validity="DAY",
+                )
+
+            try:
+                order_id = _try_buy(limit_px)
+            except Exception as circuit_err:
+                circuit_px = _parse_circuit_price(str(circuit_err))
+                if circuit_px:
+                    print(f"   ⚡ Circuit limit hit — retrying at ₹{circuit_px}")
+                    order_id = _try_buy(circuit_px)
+                else:
+                    raise  # not a circuit error — re-raise as usual
+
+            print(f"✅ [LIVE] BUY chunk {i}/{len(chunks)}: {chunk_qty}x {symbol} LIMIT ₹{round(limit_px,2)} | ID: {order_id}")
             if first_order_id is None:
                 first_order_id = str(order_id)
         except Exception as e:
@@ -1326,21 +1355,34 @@ def _exit_position(reason: str, current_price: float):
             print(f"📦 Exit qty {trade.quantity} > freeze limit — splitting into {len(exit_chunks)} exit orders")
         try:
             for _i, _chunk in enumerate(exit_chunks, 1):
-                # Option buyer: always SELL to close the long option position.
-                # Zerodha API blocks plain MARKET orders on NFO — use LIMIT
-                # at LTP-1% (snapped to ₹0.05 tick), fills immediately.
+                # Option buyer: SELL to close the long option position.
+                # LIMIT at LTP-₹1 fills immediately; retry at circuit
+                # floor if Zerodha rejects (rare on SELL, but handled).
                 sell_limit_px = round(_nfo_tick_limit(exit_premium, "SELL"), 2)
-                kite_manager.kite.place_order(
-                    variety=kite_manager.kite.VARIETY_REGULAR,
-                    exchange="NFO",
-                    tradingsymbol=sym_clean,
-                    transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
-                    quantity=_chunk,
-                    product=kite_manager.kite.PRODUCT_MIS,
-                    order_type=kite_manager.kite.ORDER_TYPE_LIMIT,
-                    price=sell_limit_px,
-                    validity="DAY",
-                )
+
+                def _try_sell(px: float) -> None:
+                    kite_manager.kite.place_order(
+                        variety=kite_manager.kite.VARIETY_REGULAR,
+                        exchange="NFO",
+                        tradingsymbol=sym_clean,
+                        transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
+                        quantity=_chunk,
+                        product=kite_manager.kite.PRODUCT_MIS,
+                        order_type=kite_manager.kite.ORDER_TYPE_LIMIT,
+                        price=round(px, 2),
+                        validity="DAY",
+                    )
+
+                try:
+                    _try_sell(sell_limit_px)
+                except Exception as circuit_err:
+                    circuit_px = _parse_circuit_price(str(circuit_err))
+                    if circuit_px:
+                        print(f"   ⚡ Circuit limit hit on exit — retrying at ₹{circuit_px}")
+                        _try_sell(circuit_px)
+                    else:
+                        raise
+
                 print(f"✅ [EXIT] Chunk {_i}/{len(exit_chunks)}: SELL {_chunk}x {sym_clean} LIMIT ₹{sell_limit_px}")
         except Exception as e:
             err_str = str(e).lower()
