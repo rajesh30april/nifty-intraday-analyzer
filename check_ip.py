@@ -168,19 +168,21 @@ def _auto_update_kite_ip(new_ip: str) -> bool:
         from selenium.webdriver.common.by import By
         from selenium.webdriver.support import expected_conditions as EC
         from selenium.webdriver.support.ui import WebDriverWait
+        from webdriver_manager.chrome import ChromeDriverManager
     except ImportError:
-        print("⚠️  selenium not installed — run: uv pip install selenium")
+        print("⚠️  selenium/webdriver-manager not installed")
         return False
 
     print("🤖 Launching Chrome to auto-update Kite console...")
 
     opts = Options()
     opts.add_argument("--start-maximized")
-    # Run headed — user can see it and handle 2FA/TOTP if needed
-    # opts.add_argument("--headless=new")  # uncomment for silent mode
 
     try:
-        driver = webdriver.Chrome(options=opts)
+        driver = webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()),
+            options=opts,
+        )
         wait   = WebDriverWait(driver, 20)
 
         # ── Step 1: Open dev console ──────────────────────────────────────
