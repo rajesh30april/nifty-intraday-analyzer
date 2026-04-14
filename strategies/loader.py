@@ -1,4 +1,4 @@
-"""Load strategies into the registry — 8 non-overlapping strategies.
+"""Load strategies into the registry — best-in-class selection only.
 
 Strategy selection rationale (YAGNI — keep one per job):
 
@@ -19,7 +19,11 @@ Strategy selection rationale (YAGNI — keep one per job):
   PIVOT / MEAN-REVERSION (sideways regime):
     camarilla_pivots      → mathematical pivot levels
 
-Removed (overlapping or redundant):
+  CHART & CANDLESTICK:
+    chart_patterns        → 78% win rate, PF 4.18 (flag, triangle, double top/bottom)
+    candlestick_patterns  → 80.8% win rate, PF 5.34 (engulfing, hammer, star, harami)
+
+Removed (overlapping, redundant, or statistically unfit):
   - trend_follow      → covered by supertrend (better signal)
   - ema_crossover     → covered by supertrend
   - ema_scalp         → covered by supertrend
@@ -31,9 +35,9 @@ Removed (overlapping or redundant):
   - bb_squeeze        → covered by orb + volume_spike
   - pdhl_breakout     → covered by volume_profile HVN
   - first_candle_range→ covered by orb
-
-Active VWAP strategy (NEW):
-  - vwap_breakout     → VWAP cross with institutional volume (genuinely new edge)
+  - vwap_breakout     → REMOVED! 47.2% WR, PF=1.28 — dragging system down.
+                        It almost break-even after brokerage. YAGNI: if it
+                        doesn't have edge, it has no business being here.
 """
 
 # ── Time-gated strategies ─────────────────────────────────────────────────
@@ -56,5 +60,4 @@ import strategies.camarilla_pivots     # noqa: F401 — pivot level plays
 import strategies.chart_patterns       # noqa: F401 — flag, triangle, double top/bottom
 import strategies.candlestick_patterns # noqa: F401 — engulfing, hammer, star, harami
 
-# ── VWAP ─────────────────────────────────────────────────────────────────
-import strategies.vwap_breakout        # noqa: F401 — VWAP cross with institutional volume
+# NOTE: vwap_breakout REMOVED — 47.2% win rate, PF=1.28 (no real edge after brokerage)
