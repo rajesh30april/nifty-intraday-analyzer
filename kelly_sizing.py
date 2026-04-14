@@ -133,9 +133,12 @@ def get_lot_multiplier(
     stats = cal.get(strategy_id)
 
     if not stats:
-        # Unknown strategy — use conservative default
-        logger.warning("No calibration data for '%s' — using 0.5x default", strategy_id)
-        return 0.50
+        # Unknown strategy — no adjustment (neutral multiplier preserves backward compat).
+        # This covers: 'smart_router' meta-router, custom strategies, tests.
+        # When the meta router fires, the SELECTED sub-strategy's ID should be
+        # passed instead of 'smart_router' for precise Kelly sizing.
+        logger.debug("No calibration data for '%s' — 1.0x (no adjustment)", strategy_id)
+        return 1.0
 
     win_rate   = stats.get("win_rate",     50.0)
     avg_win    = stats.get("avg_win_pts",  30.0)

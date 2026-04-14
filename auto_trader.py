@@ -121,6 +121,7 @@ class TraderState:
     qty_mode:           str   = "capital"           # 'manual' | 'capital' — DEFAULT: capital (auto-size from Zerodha)
     manual_qty:         int   = DEFAULT_QUANTITY    # used when qty_mode=manual
     max_daily_loss:     float = MAX_LOSS_PER_DAY    # Max loss per day (₹) - CONFIGURABLE!
+    consecutive_losses: int   = 0                   # Current consecutive loss streak (Kelly input)
     strike_offset:      int   = 0                   # -3=ITM3,-2=ITM2,-1=ITM1,0=ATM,1=OTM1,2=OTM2,3=OTM3
     max_trades_per_day: int   = MAX_ORDERS_PER_DAY  # runtime-overridable (1-50)
     cooldown_minutes:   int   = int(os.getenv("COOLDOWN_MINUTES", "5"))  # post-exit wait
@@ -233,6 +234,7 @@ def _save_state_snapshot():
         "max_trades_per_day": state.max_trades_per_day,
         "cooldown_minutes":   state.cooldown_minutes,
         "max_daily_loss":     state.max_daily_loss,  # ← NEW: Configurable max loss,
+        "consecutive_losses": state.consecutive_losses,  # Kelly: persist loss streak
         "enabled_strategies":  state.enabled_strategies,  # 🎯 Strategy selection
         # cooldown — survive restarts so re-entry filter stays intact
         "last_exit_time":      state.last_exit_time.isoformat() if state.last_exit_time else None,
@@ -339,8 +341,9 @@ def _recover_state(snapshot_file: Path | None = None):
                 state.orders_placed = len(log_data.get("trades", []))
             else:
                 # Log is from a previous day — reset counter for new day
-                print(f"📅 [RECOVERY] trade_log is from {log_today}, resetting orders_placed to 0 for new day")
+                print(f"📅 [RECOVERY] trade_log is from {log_today}, resetting orders_placed + consecutive_losses for new day")
                 state.orders_placed = 0
+                state.consecutive_losses = 0  # Kelly: fresh streak each day
         else:
             state.orders_placed = 0
     except Exception:
@@ -369,6 +372,7 @@ def _recover_state(snapshot_file: Path | None = None):
     state.strike_offset      = snap.get("strike_offset",      0)   # default ATM
     state.max_trades_per_day = snap.get("max_trades_per_day", MAX_ORDERS_PER_DAY)
     state.max_daily_loss     = snap.get("max_daily_loss",     MAX_LOSS_PER_DAY)  # ← NEW: Restore configurable max loss
+    state.consecutive_losses = snap.get("consecutive_losses", 0)                  # Kelly: restore loss streak
     state.enabled_strategies = snap.get("enabled_strategies",  [])  # 🎯 Strategy selection - empty = all enabled
     # ── Restore running flag (auto-resume after server restart) ──
     state.is_running         = snap.get("is_running",         False)
@@ -1492,6 +1496,12 @@ def _exit_position(reason: str, current_price: float):
     trade.status       = OrderStatus.EXITED
 
     state.total_pnl         += pnl
+    # ── Kelly: track consecutive losses for dynamic sizing ───────────────────
+    if pnl < 0:
+        state.consecutive_losses += 1
+        print(f"📉 Loss streak: {state.consecutive_losses} consecutive loss(es)")
+    else:
+        state.consecutive_losses = 0   # reset on any win
     # Unsubscribe option from WebSocket before clearing active trade
     _unsubscribe_option_tick(state.active_option_token)
     state.active_option_token = None
@@ -1763,6 +1773,35 @@ def _resolve_quantity(nifty_price: float, real_premium: float | None = None) -> 
     # A 2× multiplier here was cutting lots in HALF — fixed.
     cost_per_lot = premium * LOT_SIZE          # e.g. ₹100 × 65 = ₹6,500 per lot
     lots = int(state.capital / cost_per_lot)   # floor division
+
+    # ── Kelly × Expiry × VIX unified sizing ──────────────────────────────
+    # Scale lot count by strategy quality, days-to-expiry, and VIX / IV Rank.
+    # This is the single biggest alpha improvement available.
+    # Set SKIP_TRADE_SIZING=1 in tests / backtests to bypass.
+    if not os.getenv("SKIP_TRADE_SIZING"):
+        try:
+            from trade_sizing import compute_sizing_decision
+            sizing = compute_sizing_decision(
+                strategy_id=state.selected_strategy,
+                consecutive_losses=state.consecutive_losses,
+                today_pnl=state.total_pnl,
+                max_daily_loss=state.max_daily_loss,
+                skip_vix_fetch=bool(os.getenv("SKIP_VIX_FETCH")),  # fast-path for tests/backtests
+            )
+            if not sizing.buy_allowed:
+                print(f"🚫  Trade blocked by expiry gate: {sizing.summary}")
+                return (0, cost_per_lot)
+            if sizing.combined_mult != 1.0:
+                raw_lots = lots
+                lots = max(1, round(lots * sizing.combined_mult))
+                print(
+                    f"📀 Sizing: {raw_lots} lots × {sizing.combined_mult:.2f} "
+                    f"(Kelly×Expiry×VIX) → {lots} lots | {sizing.summary}"
+                )
+            else:
+                print(f"📀 Sizing: {lots} lots (no adjustment) | {sizing.summary}")
+        except Exception as _sz_err:
+            print(f"⚠️  Trade sizing unavailable ({_sz_err}) — using raw lots: {lots}")
 
     # Prevent trading if insufficient capital for even 1 lot
     if lots < 1:

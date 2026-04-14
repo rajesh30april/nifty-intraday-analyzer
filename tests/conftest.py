@@ -1,7 +1,11 @@
 """Pytest configuration — patches heavy deps so tests run without Zerodha/Yahoo."""
 
+import os
 import sys
 from unittest.mock import MagicMock
+
+# ── Bypass Kelly×Expiry×VIX sizing in tests (avoids VIX network call + expiry date math)
+os.environ.setdefault("SKIP_TRADE_SIZING", "1")
 
 # ── Stub kite_integration before any module imports it ───────────
 _mock_kite_obj = MagicMock()
