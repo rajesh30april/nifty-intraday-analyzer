@@ -1255,6 +1255,35 @@ def _place_sl_order(trade: "Trade", sl_trigger_price: float) -> str | None:
         return None
 
 
+def _find_existing_sl_order(tradingsymbol: str) -> str | None:
+    """Scan open Zerodha orders for an existing SL/SL-M order for this instrument.
+
+    Called before placing a new SL backstop to avoid duplicate SL orders.
+    Duplicate SL-M orders are dangerous: if one fires the other creates a
+    naked SELL position with unbounded risk.
+
+    Returns the order_id string if found, else None.
+    """
+    clean = tradingsymbol.replace("NFO:", "")
+    try:
+        orders = kite_manager.kite.orders()
+        for o in orders:
+            if (
+                o.get("tradingsymbol") == clean
+                and o.get("transaction_type") == "SELL"
+                and o.get("order_type") in ("SL", "SL-M")
+                and o.get("status") in ("OPEN", "TRIGGER PENDING")
+            ):
+                oid = str(o["order_id"])
+                trigger = o.get("trigger_price", "?")
+                _log("🛡", "Existing SL order found",
+                     f"Reusing SL order {oid} @ trigger ₹{trigger} — skipping new placement")
+                return oid
+    except Exception as e:
+        print(f"⚠️  Could not scan existing SL orders: {e}")
+    return None
+
+
 def _cancel_sl_order(trade: "Trade") -> None:
     """Cancel ALL standing SL backstop orders before placing an exit.
 
@@ -1343,9 +1372,17 @@ def rearm_exchange_sl() -> dict:
     if not getattr(trade, "app_managed", True):
         return {"success": False, "error": "Trade is monitor-only — app will not place orders"}
 
-    # Cancel any existing SL order first (avoids duplicates)
+    # Cancel any existing SL order first (avoids duplicates).
+    # Also check for orders placed manually in Kite that we don't know about.
     if trade.sl_order_id and not trade.sl_order_id.startswith("SL-PAPER"):
         _cancel_sl_order(trade)
+    else:
+        # sl_order_id is None — scan Zerodha for any orphaned SL orders
+        sym_clean = trade.instrument.replace("NFO:", "")
+        orphan = _find_existing_sl_order(sym_clean)
+        if orphan:
+            trade.sl_order_id = orphan   # temporarily set so _cancel_sl_order can cancel it
+            _cancel_sl_order(trade)       # cancel the orphan before placing fresh one
 
     # Compute current trigger price from active stop_loss level
     sl_trigger = _nifty_to_option_premium(trade.stop_loss, trade)
@@ -2930,28 +2967,58 @@ def sync_from_zerodha() -> dict:
     )
     state.active_trade              = trade
     state.last_option_ltp           = opt_ltp
-    # 🎯 FIXED: Set highest/lowest to CURRENT price, not entry!
-    # This prevents immediate trailing activation and gives breathing room
-    state.highest_price_since_entry = nifty_spot
-    state.lowest_price_since_entry  = nifty_spot
+
+    # ── Seed trail from intraday Nifty OHLC (not just current spot) ──────
+    # BUG WAS: highest/lowest set to nifty_spot → trail forgets all intraday
+    # movement → doesn't protect profits already banked before the sync.
+    # FIX: fetch today's Nifty high/low from Kite OHLC so the trail knows
+    # how far Nifty actually moved since the market open.
+    #   LONG  trade: trail watches highest Nifty seen → seed with day HIGH
+    #   SHORT trade: trail watches lowest  Nifty seen → seed with day LOW
+    nifty_day_high = nifty_spot   # safe default
+    nifty_day_low  = nifty_spot   # safe default
+    try:
+        ohlc_resp      = kite_manager.kite.ohlc(["NSE:NIFTY 50"])
+        ohlc_data      = ohlc_resp.get("NSE:NIFTY 50", {}).get("ohlc", {})
+        nifty_day_high = float(ohlc_data.get("high", nifty_spot) or nifty_spot)
+        nifty_day_low  = float(ohlc_data.get("low",  nifty_spot) or nifty_spot)
+        _log("📊", "Intraday OHLC fetched",
+             f"Nifty today: H={nifty_day_high:.0f} L={nifty_day_low:.0f} "
+             f"(trail will use these to protect intraday profits)")
+    except Exception as _ohlc_err:
+        _log("⚠️", "OHLC fetch failed", f"Trail seeding from current spot only: {_ohlc_err}")
+
+    if direction_val == "long":
+        state.highest_price_since_entry = max(nifty_day_high, nifty_spot)
+        state.lowest_price_since_entry  = nifty_spot
+    else:  # short
+        state.highest_price_since_entry = nifty_spot
+        state.lowest_price_since_entry  = min(nifty_day_low, nifty_spot)
+
     state.entry_nifty_sl            = sl_level
     state.entry_option_trigger       = sl_premium          # use the correct computed trigger
     state.pending_sl_exchange_update = False
     state.orders_placed             += 1
 
-    # ── Place exchange SL order ─────────────────────────────────────────
-    # This is the backstop that auto-closes the position if the app crashes.
-    # Without it, sync trades have ZERO exchange-level protection.
+    # ── Place exchange SL order — check for existing first ──────────────
+    # CRITICAL: If user already placed an SL-M in Kite manually, placing
+    # another one creates duplicate SL orders. When one fires, the other
+    # becomes a naked SELL with unbounded risk.
+    # Fix: scan open Zerodha orders first; reuse if found.
     if not past_exit_time and trade.app_managed:
-        sl_order_id = _place_sl_order(trade, sl_premium)
-        if sl_order_id:
-            trade.sl_order_id = sl_order_id
-            _log("🛡", "Exchange SL armed",
-                 f"SL order placed: trigger=₹{sl_premium:.2f} limit=₹{sl_premium-3:.2f} "
-                 f"qty={trade.quantity} | id={sl_order_id}")
+        existing_sl = _find_existing_sl_order(sym)
+        if existing_sl:
+            trade.sl_order_id = existing_sl   # adopt existing order — no new order placed
         else:
-            _log("⚠️", "Exchange SL failed",
-                 "Could not place SL order — app tick-guard still active but NO exchange backstop")
+            sl_order_id = _place_sl_order(trade, sl_premium)
+            if sl_order_id:
+                trade.sl_order_id = sl_order_id
+                _log("🛡", "Exchange SL armed",
+                     f"SL order placed: trigger=₹{sl_premium:.2f} limit=₹{sl_premium-3:.2f} "
+                     f"qty={trade.quantity} | id={sl_order_id}")
+            else:
+                _log("⚠️", "Exchange SL failed",
+                     "Could not place SL order — app tick-guard still active but NO exchange backstop")
     else:
         _log("⚠️", "SL skipped",
              "Past exit time or monitor-only mode — no exchange SL placed")
