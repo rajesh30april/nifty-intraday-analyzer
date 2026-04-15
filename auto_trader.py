@@ -117,6 +117,11 @@ class TraderState:
     trail_mode:         str   = "fixed"             # "fixed" | "atr" | "supertrend" | "manual"
     trail_atr_mult:     float = 0.7                 # ATR multiplier for atr mode (0.5-0.8 optimal for intraday per research)
     cached_trail_sl:    float | None = None         # pre-computed SL for atr/supertrend (candle loop)
+    # Empirically measured delta (option_move / nifty_move) — updated every 15s REST poll.
+    # Replaces the hardcoded ASSUMED_DELTA = 0.5. Bounds: [0.10, 0.90].
+    live_delta:         float = 0.5                 # starts at ATM default; updated from live prices
+    _delta_prev_nifty:  float = 0.0                 # previous Nifty for delta calc
+    _delta_prev_ltp:    float = 0.0                 # previous option LTP for delta calc
     rr_ratio:           float = 2.0                 # risk:reward
     capital:            float = DEFAULT_CAPITAL      # ₹ available for qty calc
     qty_mode:           str   = "capital"           # 'manual' | 'capital' — DEFAULT: capital (auto-size from Zerodha)
@@ -1352,7 +1357,10 @@ def _nifty_to_option_premium(nifty_level: float, trade: "Trade") -> float:
     """
     sign = 1.0 if trade.direction == "long" else -1.0
     delta_nifty = (nifty_level - trade.entry_price) * sign
-    result = trade.entry_premium + delta_nifty * ASSUMED_DELTA
+    # Use empirically measured live_delta if available (updated every 15s from REST poll).
+    # Falls back to ASSUMED_DELTA = 0.5 on startup or if no measurement yet.
+    delta = state.live_delta if state.live_delta != 0.5 or state._delta_prev_nifty > 0 else ASSUMED_DELTA
+    result = trade.entry_premium + delta_nifty * delta
     return max(round(result, 1), 0.1)
 
 
@@ -2127,6 +2135,9 @@ def _enter_trade(direction: Direction, price: float):
     # SL check fires immediately using the wrong price and kills the new trade
     # before the first real tick arrives for the new instrument.
     state.last_option_ltp              = 0.0
+    state.live_delta                   = 0.5   # reset — will remeasure for new instrument
+    state._delta_prev_nifty            = 0.0
+    state._delta_prev_ltp              = 0.0
     state.active_option_token          = opt_token   # store for WebSocket subscription
     state.active_trade = trade
     state.trades_today.append(trade)
@@ -2559,6 +2570,7 @@ def refresh_active_option_ltp() -> float | None:
             print(f"📊 LTP refresh {sym}: ₹{ltp:.2f}")
 
         # ── Nifty spot — always refresh, regardless of option result ─
+        spot = None
         try:
             nifty_resp = kite_manager.kite.ltp(["NSE:NIFTY 50"])
             spot = float(nifty_resp["NSE:NIFTY 50"]["last_price"])
@@ -2566,6 +2578,30 @@ def refresh_active_option_ltp() -> float | None:
                 state.last_nifty_price = spot
         except Exception:
             pass
+
+        # ── Empirical delta — measure from actual price changes ──────
+        # delta = |option_change / nifty_change|
+        # Only update when BOTH prices refreshed & move is large enough
+        # to be signal (not noise). EMA-smooth to avoid tick jitter.
+        # Direction sign handled by taking abs() — LONG CE and SHORT PE
+        # both have positive delta by convention (call delta, put delta).
+        if (ltp and ltp > 0 and spot and spot > 0
+                and state._delta_prev_nifty > 0
+                and state._delta_prev_ltp > 0):
+            nifty_chg  = spot - state._delta_prev_nifty
+            option_chg = ltp  - state._delta_prev_ltp
+            trade = state.active_trade
+            if trade and trade.direction == "short":
+                option_chg = -option_chg   # PE rises when Nifty falls → invert
+            if abs(nifty_chg) >= 3:        # ignore tiny moves (noise floor)
+                raw_delta = option_chg / nifty_chg
+                if 0.05 <= raw_delta <= 0.95:  # sanity bounds
+                    # EMA: 80% weight on existing, 20% on new observation
+                    state.live_delta = round(0.80 * state.live_delta + 0.20 * raw_delta, 3)
+                    print(f"📐 Delta updated: {state.live_delta:.3f} "
+                          f"(Nifty {nifty_chg:+.0f}pts / Option {option_chg:+.1f}pts)")
+        if ltp  and ltp  > 0: state._delta_prev_ltp   = ltp
+        if spot and spot > 0: state._delta_prev_nifty  = spot
 
         return ltp if (ltp and ltp > 0) else None
     except Exception as e:
@@ -2632,6 +2668,7 @@ def get_trader_status() -> dict:
             # ─────────────────────────────────────────────────────
             "exchange_sl_pending": state.pending_sl_exchange_update,
             "sl_order_id":     getattr(active, "sl_order_id", None),  # None = no exchange backstop!
+            "live_delta":      round(state.live_delta, 3),  # measured delta (0.5=default, updates every 15s)
             "quantity":        active.quantity,
             "paper":           active.paper,
             "app_managed":     getattr(active, "app_managed", True),

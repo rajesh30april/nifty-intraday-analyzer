@@ -621,6 +621,20 @@ function renderAutoTrader(data) {
             }
         }
 
+        // ── Live delta badge ────────────────────────────────────────
+        const deltaEl = document.getElementById('at-live-delta');
+        if (deltaEl && data.live_delta != null) {
+            const d = data.live_delta;
+            const isDefault = Math.abs(d - 0.5) < 0.01;
+            deltaEl.textContent = `δ ${d.toFixed(2)}${isDefault ? ' (default)' : ' (live)'}`;
+            deltaEl.className   = isDefault
+                ? 'text-[10px] text-gray-500'
+                : 'text-[10px] text-blue-400 font-bold';
+            deltaEl.title = isDefault
+                ? 'Delta not yet measured — using ATM default 0.5. Will update after first 3pt Nifty move.'
+                : `Live delta measured from actual price moves. SL/Target premiums now calculated with δ=${d.toFixed(3)}`;
+        }
+
         // Unrealized P&L — live LTP preferred, delta estimate fallback
         const upnlEl = document.getElementById('at-upnl');
         if (upnlEl) {
