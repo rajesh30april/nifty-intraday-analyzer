@@ -139,14 +139,16 @@ def evaluate_ocf(df: pd.DataFrame) -> StrategySignal:
         ),
     ))
 
-    # ── Condition 2: 2nd candle body is SMALLER ───────────────────
-    small_body2 = body2 < body1
+    # ── Condition 2: 2nd candle body is CLEARLY SMALLER (< 50% of 1st) ─────
+    # Threshold 50%: clear exhaustion signal, not just a slightly smaller candle.
+    # 50-70% zone = ambiguous → neither fade nor continuation fires.
+    small_body2 = body2 < body1 * 0.50
     conditions.append(StrategyCondition(
         name="2nd Candle Smaller",
         met=small_body2,
         detail=(
             f"9:20 body={body2:.1f} pts vs 9:15 body={body1:.1f} pts "
-            f"({'✅ smaller' if small_body2 else '❌ bigger — momentum continuing'}"
+            f"({'✅ <50% — exhaustion' if small_body2 else '❌ >= 50% — momentum not gone yet'}"
         ),
     ))
 
@@ -211,36 +213,89 @@ def evaluate_ocf(df: pd.DataFrame) -> StrategySignal:
         weight=2,   # extra weight
     ))
 
-    # ── Score + decision ─────────────────────────────────────────
-    # Required: conditions 1+2+3 ALL must be met
-    # Bonus: condition 4 or 5 adds confluence (at least one)
-    core_met    = big_candle and small_body2 and vol_dropped
-    confluence  = near_pd or near_cluster
-    all_met     = core_met and confluence
+    # ── Detect mode: FADE or CONTINUATION ──────────────────────────
+    # FADE:         2nd candle smaller + volume drops + level confluence → reverse opening candle
+    # CONTINUATION: 2nd candle strong (>= 70% of 1st body) + volume holds  → ride opening candle
+    # Only one fires per evaluation. FADE takes priority if both qualify.
 
-    weighted    = [c for c in conditions if c.weight > 0]
-    total_w     = sum(c.weight for c in weighted)
-    met_w       = sum(c.weight for c in weighted if c.met)
-    confidence  = (met_w / total_w * 100) if total_w > 0 else 0
+    vol_sustained = (not vol_data_ok) or (vol2 >= vol1 * 0.70)  # vol holds >= 70% of open vol
+    big_body2     = body2 >= body1 * 0.70                        # 2nd candle at least 70% as big
 
-    reason_parts = []
-    if not big_candle:   reason_parts.append(f"Opening candle too small ({body1:.0f}pts)")
-    if not small_body2:  reason_parts.append("2nd candle bigger — momentum continuing")
-    if not vol_dropped and vol_data_ok:  reason_parts.append("Volume didn't drop")
-    if not confluence:   reason_parts.append("No level confluence (no PDH/PDL/cluster nearby)")
+    fade_core         = big_candle and small_body2 and vol_dropped
+    continuation_core = big_candle and big_body2 and vol_sustained
+    confluence        = near_pd or near_cluster
 
-    reason = (
-        f"OCF {'ENTRY' if all_met else 'NO ENTRY'}: {direction.value.upper()} | "
-        f"confidence={confidence:.0f}% | "
-        + ("ALL conditions met" if all_met else " + ".join(reason_parts))
-    )
+    # ── FADE mode ────────────────────────────────────────────────
+    if fade_core and confluence:
+        weighted   = [c for c in conditions if c.weight > 0]
+        total_w    = sum(c.weight for c in weighted)
+        met_w      = sum(c.weight for c in weighted if c.met)
+        confidence = (met_w / total_w * 100) if total_w > 0 else 0
+        return StrategySignal(
+            should_enter=True,
+            direction=direction,          # already set: opposite of opening candle
+            confidence=confidence,
+            conditions=conditions,
+            reason=(
+                f"OCF FADE ENTRY: {direction.value.upper()} | "
+                f"confidence={confidence:.0f}% | "
+                f"9:15 body={body1:.0f}pts → 9:20 body={body2:.0f}pts "
+                f"({'PDH/PDL' if near_pd else 'cluster'} confluence)"
+            ),
+        )
+
+    # ── CONTINUATION mode ─────────────────────────────────────────
+    # Direction flips: go WITH the opening candle, not against it
+    if continuation_core and not fade_core:
+        cont_direction = Direction.LONG if dir1 == "bull" else Direction.SHORT
+        # Confidence: scales with how strong the 2nd candle is relative to 1st
+        body_ratio  = min(body2 / body1, 1.5) if body1 > 0 else 1.0
+        vol_ratio_c = min(vol2 / vol1, 2.0) if (vol_data_ok and vol1 > 0) else 1.0
+        confidence  = round(min(55 + body_ratio * 20 + vol_ratio_c * 10, 95), 1)
+        # Add continuation condition for UI display
+        conditions.append(StrategyCondition(
+            name="Continuation Mode",
+            met=True,
+            detail=(
+                f"2nd candle {body2:.0f}pts ({body_ratio:.0%} of 1st) "
+                f"+ vol {'held' if vol_sustained else 'N/A'} "
+                f"→ momentum continuing {'UP' if dir1 == 'bull' else 'DOWN'} ✅"
+            ),
+        ))
+        return StrategySignal(
+            should_enter=True,
+            direction=cont_direction,
+            confidence=confidence,
+            conditions=conditions,
+            reason=(
+                f"OCF CONTINUATION ENTRY: {cont_direction.value.upper()} | "
+                f"confidence={confidence:.0f}% | "
+                f"9:15 body={body1:.0f}pts → 9:20 body={body2:.0f}pts (momentum strong, riding it)"
+            ),
+        )
+
+    # ── No entry ──────────────────────────────────────────────────
+    weighted   = [c for c in conditions if c.weight > 0]
+    total_w    = sum(c.weight for c in weighted)
+    met_w      = sum(c.weight for c in weighted if c.met)
+    confidence = (met_w / total_w * 100) if total_w > 0 else 0
+
+    reason_parts: list[str] = []
+    if not big_candle:                           reason_parts.append(f"Opening candle too small ({body1:.0f}pts)")
+    if big_candle and not fade_core and not continuation_core:
+                                                 reason_parts.append(f"2nd candle mixed ({body2:.0f}pts / vol unclear)")
+    if fade_core and not confluence:             reason_parts.append("Fade setup but no PDH/PDL/cluster confluence")
+    if not reason_parts:                         reason_parts.append("Conditions not aligned for fade or continuation")
 
     return StrategySignal(
-        should_enter=all_met,
-        direction=direction if all_met else direction,
+        should_enter=False,
+        direction=direction,
         confidence=confidence,
         conditions=conditions,
-        reason=reason,
+        reason=(
+            f"OCF NO ENTRY | confidence={confidence:.0f}% | "
+            + " + ".join(reason_parts)
+        ),
     )
 
 
@@ -250,9 +305,10 @@ register(StrategyInfo(
     name="Opening Candle Fade",
     emoji="🕯️",
     description=(
-        "Fade the big opening candle when the 2nd candle shows exhaustion "
-        "(smaller body + dropping volume), especially when the extreme hits "
-        "a key level (Previous Day High/Low or 5-day cluster)."
+        "Two modes from the same opening setup: "
+        "FADE — 2nd candle small + volume drops + level confluence → reverse the opening candle. "
+        "CONTINUATION — 2nd candle strong (>=70% of 1st) + volume holds → ride the momentum. "
+        "Fade takes priority when both qualify."
     ),
     category="reversal",
     difficulty="intermediate",

@@ -110,6 +110,46 @@
     "source": "zerodha_60d_futures_backtest",
     "note": "60d test (Jan-Mar 2026) \u2014 a sustained bear crash period (26K\u219222.8K). 3-gate strategy: VWAP cross + 0.05% conviction + time window. Volume is soft confidence only. PF=1.28, still accumulating data."
   },
+  "pdhl_breakout": {
+    "win_rate": 68.0,
+    "total_trades": 0,
+    "profit_factor": 3.20,
+    "avg_win_pts": 35.0,
+    "avg_loss_pts": 22.0,
+    "trades_per_day": 1.5,
+    "source": "bootstrap_estimate",
+    "note": "Bootstrap seed — similar to ORB (73%) but fires all day. Real trades will auto-tune Kelly."
+  },
+  "bb_squeeze": {
+    "win_rate": 65.0,
+    "total_trades": 0,
+    "profit_factor": 3.50,
+    "avg_win_pts": 40.0,
+    "avg_loss_pts": 20.0,
+    "trades_per_day": 1.0,
+    "source": "bootstrap_estimate",
+    "note": "Bootstrap seed — squeeze breakouts are explosive but rarer. Conservative until real data."
+  },
+  "fcr": {
+    "win_rate": 66.0,
+    "total_trades": 0,
+    "profit_factor": 2.90,
+    "avg_win_pts": 32.0,
+    "avg_loss_pts": 20.0,
+    "trades_per_day": 2.0,
+    "source": "bootstrap_estimate",
+    "note": "Bootstrap seed — faster than ORB (9:20 vs 9:30) but single-candle range is noisier."
+  },
+  "ocf_continuation": {
+    "win_rate": 64.0,
+    "total_trades": 0,
+    "profit_factor": 3.00,
+    "avg_win_pts": 40.0,
+    "avg_loss_pts": 18.0,
+    "trades_per_day": 1.0,
+    "source": "bootstrap_estimate",
+    "note": "Bootstrap seed — OCF momentum continuation mode. Same setup as OCF fade but 2nd candle continues strong."
+  },
   "vwap_reversion": {
     "win_rate": 74.0,
     "total_trades": 123,
