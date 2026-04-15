@@ -1209,20 +1209,39 @@ def _place_sl_order(trade: "Trade", sl_trigger_price: float) -> str | None:
         if len(chunks) > 1:
             print(f"📦 SL qty {trade.quantity} > freeze limit — splitting into {len(chunks)} SL orders: {chunks}")
 
-        order_ids: list[str] = []
-        for i, chunk_qty in enumerate(chunks, 1):
-            order_id = kite_manager.kite.place_order(
+        def _try_sl_chunk(qty: int) -> str:
+            return kite_manager.kite.place_order(
                 variety=kite_manager.kite.VARIETY_REGULAR,
                 exchange="NFO",
                 tradingsymbol=clean,
                 transaction_type=kite_manager.kite.TRANSACTION_TYPE_SELL,
-                quantity=chunk_qty,
+                quantity=qty,
                 product=kite_manager.kite.PRODUCT_MIS,
                 order_type=kite_manager.kite.ORDER_TYPE_SL,
                 trigger_price=sl_trigger_price,
                 price=sl_limit_price,
                 validity="DAY",
             )
+
+        order_ids: list[str] = []
+        for i, chunk_qty in enumerate(chunks, 1):
+            try:
+                order_id = _try_sl_chunk(chunk_qty)
+            except Exception as sl_e:
+                err_str = str(sl_e)
+                # IP not whitelisted — heal & retry ONCE (same pattern as entry order)
+                if "not allowed" in err_str.lower() and "ip" in err_str.lower():
+                    print(f"🔄 SL order IP error — attempting heal before retry")
+                    if _heal_ip():
+                        try:
+                            order_id = _try_sl_chunk(chunk_qty)
+                        except Exception as retry_e:
+                            err_str = str(retry_e)
+                            raise RuntimeError(f"SL chunk {i} failed after IP heal: {err_str}") from retry_e
+                    else:
+                        raise RuntimeError(f"SL chunk {i}: IP heal failed — {err_str}") from sl_e
+                else:
+                    raise  # non-IP error — propagate to outer handler
             print(f"🛡 [LIVE] SL chunk {i}/{len(chunks)}: {chunk_qty}x @ trigger=₹{sl_trigger_price:.2f} limit=₹{sl_limit_price:.2f} | ID: {order_id}")
             order_ids.append(str(order_id))
 
@@ -1813,8 +1832,11 @@ def _resolve_quantity(nifty_price: float, real_premium: float | None = None) -> 
     # NO margin multiplier — that only applies to option SELLING/writing.
     # The balance page (/api/auto-trader/zerodha-balance) also uses 1×.
     # A 2× multiplier here was cutting lots in HALF — fixed.
+    # Use 90% of capital — keep 10% reserve for brokerage, exit slippage,
+    # and Zerodha's margin hold on the SL order. 100% usage risks rejection.
+    CAPITAL_RESERVE = 0.90
     cost_per_lot = premium * LOT_SIZE          # e.g. ₹100 × 65 = ₹6,500 per lot
-    lots = int(state.capital / cost_per_lot)   # floor division
+    lots = int(state.capital * CAPITAL_RESERVE / cost_per_lot)  # 90% of capital
 
     # ── Kelly × Expiry × VIX unified sizing ──────────────────────────────
     # Scale lot count by strategy quality, days-to-expiry, and VIX / IV Rank.
@@ -1915,25 +1937,26 @@ def _fetch_available_margin() -> tuple[float, float, float] | tuple[None, None, 
 def _enter_trade(direction: Direction, price: float):
     """Open a new trade."""
     # ── Sync capital from Zerodha before sizing ──────────────────────────────
-    # WHY: We use LIVE free margin (not the settings panel value) so we
-    # never try to buy more lots than Zerodha will actually accept.
-    # The settings panel capital is a GUIDELINE; Zerodha's real free margin
-    # is the hard ceiling. This is why the capital shown in UI may differ
-    # from what you typed if Zerodha has less margin available.
+    # FIX: Use min(configured, free) so user's UI setting is ALWAYS the ceiling.
+    # BUG WAS: state.capital = free  → ignored user setting entirely.
+    # Example: user sets ₹15k, Zerodha has ₹30k free → old code took 2 lots
+    # instead of 1. Now we honour the configured cap as the risk ceiling.
     free, net, used = _fetch_available_margin()
     if free is not None:
         configured = state.capital
-        state.capital = free   # always use live free margin for sizing
-        diff = free - configured
-        if abs(diff) > 100:
-            direction_str = 'more' if diff > 0 else 'LESS'
-            print(f"\u26a0\ufe0f  Capital override: settings say \u20b9{configured:,.0f} "
-                  f"but Zerodha free margin = \u20b9{free:,.0f} "
-                  f"(\u20b9{abs(diff):,.0f} {direction_str} than configured). "
-                  f"Using \u20b9{free:,.0f} for lot sizing.")
+        effective  = min(configured, free)   # never exceed user's cap
+        state.capital = effective
+        if free < configured:
+            print(f"⚠️  Zerodha free ₹{free:,.0f} < configured ₹{configured:,.0f} "
+                  f"→ capped at ₹{effective:,.0f}")
+            _log("⚠️", "Capital capped by Zerodha margin",
+                 f"Free ₹{free:,.0f} < configured ₹{configured:,.0f} → using ₹{effective:,.0f}")
+        elif free > configured + 100:
+            print(f"💰 Zerodha has ₹{free:,.0f} free — honouring your ₹{configured:,.0f} cap "
+                  f"(₹{free - configured:,.0f} extra stays untouched)")
         else:
-            print(f"\U0001f4b0 Margin [{'EQUITY':6s}]  free=\u20b9{free:,.0f}  net=\u20b9{net:,.0f}  "
-                  f"used=\u20b9{used:,.0f}  (in line with settings)")
+            print(f"💰 Margin [EQUITY]  free=₹{free:,.0f}  net=₹{net:,.0f}  "
+                  f"used=₹{used:,.0f}  (matches settings)")
 
     # ── Strike affordability fallback loop ─────────────────────────────
     # If the configured strike is too expensive, walk one step further OTM
