@@ -2298,11 +2298,31 @@ def _manage_active_trade(current_price: float, source: str = "🕯 candle"):
 
     def _apply_sl_move(new_sl_val: float) -> None:
         """Update SL in state + log. Inlined helper to avoid duplicate code."""
-        # Safety check: measure distance from the BEST PRICE SEEN, not
-        # current price. The trail formula already guarantees:
-        #   |best_price - new_sl| == trailing_sl_points
-        # Checking from current price wrongly blocks valid trails when
-        # price reverses toward the SL after a favourable move.
+
+        # ── Guard 1: immediate-breach check ──────────────────────────
+        # The ATR/fixed trail computes SL from the intraday LOW (SHORT)
+        # or HIGH (LONG). But by candle CLOSE, price may have bounced back
+        # past the computed SL. If we apply it, the next SL-breach check
+        # fires instantly — exit at a LOSS instead of protecting profit.
+        #
+        # Example (SHORT): low=24130, ATR=38pts → SL=24168
+        #                  candle CLOSES at 24232 (bounced)
+        #                  24232 >= 24168 → IMMEDIATE EXIT at loss!
+        #
+        # Fix: never apply a trail SL that would be instantly breached.
+        # The original SL (still in trade.stop_loss) keeps protecting.
+        if is_long and current_price <= new_sl_val:
+            print(f"⚠️  Trail skipped — new SL ₹{new_sl_val:.0f} would immediately exit "
+                  f"(LONG: price ₹{current_price:.0f} ≤ SL). Keeping SL ₹{trade.stop_loss:.0f}")
+            return
+        if not is_long and current_price >= new_sl_val:
+            print(f"⚠️  Trail skipped — new SL ₹{new_sl_val:.0f} would immediately exit "
+                  f"(SHORT: price ₹{current_price:.0f} ≥ SL). Keeping SL ₹{trade.stop_loss:.0f}")
+            return
+
+        # ── Guard 2: minimum distance from best price ─────────────────
+        # Sanity check — the trail formula already guarantees a meaningful
+        # gap, but this blocks degenerate cases (e.g. ATR near zero).
         MIN_SL_DISTANCE = 15  # Minimum trail distance (sanity guard only)
         best_price = (
             state.highest_price_since_entry if is_long
