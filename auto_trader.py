@@ -2016,7 +2016,16 @@ def _enter_trade(direction: Direction, price: float):
     # 📊 Log SL distance for debugging
     print(f"🎯 Entry SL distance: {sl_pts:.0f} points | Entry: ₹{price:.0f} | SL: ₹{sl:.0f} | Target: ₹{target:.0f}")
 
-    order_id = _place_order(symbol, direction, qty, price)
+    # ── Use OPTION premium as limit price, NOT Nifty spot ──────────────────
+    # Passing Nifty spot (e.g. ₹24,200) as the limit price on an option worth
+    # ₹80 causes Zerodha to reject: "LIMIT order far from LTP".
+    # Use real_ltp when available; fall back to a Black-Scholes estimate.
+    option_limit_price = (
+        real_ltp
+        if isinstance(real_ltp, (int, float)) and real_ltp > 0
+        else _estimate_premium_fallback(price)
+    )
+    order_id = _place_order(symbol, direction, qty, option_limit_price)
     if not order_id:
         return
 
