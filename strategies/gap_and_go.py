@@ -101,13 +101,13 @@ def evaluate_gap_and_go(df: pd.DataFrame) -> StrategySignal:
     # not a concern at the call site.
     from datetime import time as dt_time
     curr_time = df.index[-1].time()
-    time_ok   = curr_time <= dt_time(10, 30)  # gap trades work best early
+    time_ok   = curr_time <= dt_time(11, 0)  # extended: delayed gap plays need time to confirm
     conditions.append(StrategyCondition(
         name="Early Session",
         met=time_ok,
         detail=(
             f"Candle time {curr_time.strftime('%H:%M')} — "
-            f"{'✅ early session (before 10:30)' if time_ok else '❌ too late for gap play'}"
+            f"{'✅ early session (before 11:00)' if time_ok else '❌ too late for gap play'}"
         ),
     ))
 

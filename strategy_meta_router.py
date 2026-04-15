@@ -90,11 +90,32 @@ _TIME_BONUS: dict[str, list[tuple[dt_time, dt_time, float]]] = {
         (dt_time(9, 30), dt_time(10, 30), 1.3),  # sweet spot
         (dt_time(10, 30), dt_time(15, 30), 1.0), # still valid
     ],
-    # Gap and Go is an early-session play — best at 9:15–10:30
+    # Gap and Go is an early-session play — best at 9:15–11:00
     "gap_and_go": [
         (dt_time(9, 15), dt_time(9, 20), 2.0),   # 9:15 candle = prime entry
-        (dt_time(9, 20), dt_time(10, 30), 1.5),  # still good
-        (dt_time(10, 30), dt_time(15, 30), 0.0), # too late for gap play
+        (dt_time(9, 20), dt_time(11, 0),  1.5),  # still good (delayed gap plays need time)
+        (dt_time(11, 0), dt_time(15, 30), 0.0),  # too late for gap play
+    ],
+    # CPR Virgin — valid all day but cut off at 14:30 (needs time to reach CPR)
+    "cpr_virgin": [
+        (dt_time(9, 15), dt_time(9, 30), 0.5),   # too early — CPR not tested yet
+        (dt_time(9, 30), dt_time(13, 0), 1.3),   # sweet spot — full day ahead
+        (dt_time(13, 0), dt_time(14, 30), 1.0),  # still valid
+        (dt_time(14, 30), dt_time(15, 30), 0.0), # too late — CPR won't be reached
+    ],
+    # Fibonacci Pullback — needs swing to form (at least 30min/6 candles)
+    "fib_pullback": [
+        (dt_time(9, 15), dt_time(10, 0), 0.0),   # swing not formed yet
+        (dt_time(10, 0), dt_time(13, 30), 1.3),  # sweet spot — swing well formed
+        (dt_time(13, 30), dt_time(14, 0), 1.0),  # still valid
+        (dt_time(14, 0), dt_time(15, 30), 0.0),  # too late for new Fib entries
+    ],
+    # Gap Fill — early session only (fills happen fast or not at all)
+    "gap_fill": [
+        (dt_time(9, 15), dt_time(9, 20), 2.0),   # 9:15 = prime gap fill window
+        (dt_time(9, 20), dt_time(10, 0), 1.5),   # still filling early
+        (dt_time(10, 0), dt_time(10, 30), 1.0),  # fading relevance
+        (dt_time(10, 30), dt_time(15, 30), 0.0), # gap fills done by 10:30
     ],
     # BB Squeeze fires whenever compression releases — neutral all day
     # but skip the chaotic first 15 min

@@ -104,12 +104,12 @@ def evaluate_rsi_reversal(
     # ── 4. Near EMA-50 (support/resistance zone) ───────
     ema_50 = float(ind.ema(close, 50).iloc[-1])
     dist_pct = abs(price - ema_50) / ema_50 * 100
-    near_ema = dist_pct <= 0.3
+    near_ema = dist_pct <= 0.6   # loosened from 0.3% → 0.6% (~140pts at Nifty 23k)
 
     conditions.append(StrategyCondition(
         name="Near EMA-50",
         met=near_ema,
-        detail=f"Price {dist_pct:.2f}% from EMA-50 ({ema_50:.0f})",
+        detail=f"Price {dist_pct:.2f}% from EMA-50 ({ema_50:.0f}) — need ≤0.6%",
     ))
 
     # ── 5. Time filter — use wall clock, NOT candle timestamp ──────────

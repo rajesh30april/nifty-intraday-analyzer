@@ -63,6 +63,11 @@ import strategies.volume_profile       # noqa: F401 — HVN S/R levels
 import strategies.camarilla_pivots     # noqa: F401 — pivot level plays
 import strategies.pdhl_breakout        # noqa: F401 — prev day high/low breakout
 
+# ── CPR / Fibonacci / Gap Fill ───────────────────────────────────────────
+import strategies.cpr_virgin          # noqa: F401 — virgin CPR magnet play
+import strategies.fibonacci_pullback  # noqa: F401 — Fib 38.2–61.8% golden zone
+import strategies.gap_fill            # noqa: F401 — small gap fill (complements gap_and_go)
+
 # ── Chart & Candlestick patterns ─────────────────────────────────────────
 import strategies.chart_patterns       # noqa: F401 — flag, triangle, double top/bottom
 import strategies.candlestick_patterns # noqa: F401 — engulfing, hammer, star, harami

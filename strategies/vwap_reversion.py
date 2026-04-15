@@ -90,15 +90,15 @@ def evaluate_vwap_reversion(
 
     # ── Gate 3: ADX < 25 (range day only) ────────────────────────
     adx_val = float(ind.adx(df["high"], df["low"], df["close"])["adx"].iloc[-1])
-    adx_ok  = adx_val < 25
+    adx_ok  = adx_val < 30   # loosened from 25 → catches early-trend sessions that still revert
     conditions.append(StrategyCondition(
         name="Ranging Day (ADX)",
         met=adx_ok,
-        detail=f"ADX {adx_val:.0f} — {'ranging ✔' if adx_ok else 'TRENDING ✘ skip reversion'}",
+        detail=f"ADX {adx_val:.0f} — {'ranging/mild-trend ✔' if adx_ok else 'STRONG TREND ✘ skip reversion'}",
         weight=2.0,
     ))
     if not adx_ok:
-        return NO_SIGNAL(f"Trending day ADX={adx_val:.0f}", conditions)
+        return NO_SIGNAL(f"Strong trend ADX={adx_val:.0f} (need <30)", conditions)
 
     # ── Gate 4: Time Filter ──────────────────────────────────────
     last_ts = df.index[-1]

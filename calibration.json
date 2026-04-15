@@ -110,6 +110,36 @@
     "source": "zerodha_60d_futures_backtest",
     "note": "60d test (Jan-Mar 2026) \u2014 a sustained bear crash period (26K\u219222.8K). 3-gate strategy: VWAP cross + 0.05% conviction + time window. Volume is soft confidence only. PF=1.28, still accumulating data."
   },
+  "cpr_virgin": {
+    "win_rate": 70.0,
+    "total_trades": 0,
+    "profit_factor": 3.50,
+    "avg_win_pts": 35.0,
+    "avg_loss_pts": 20.0,
+    "trades_per_day": 1.0,
+    "source": "bootstrap_estimate",
+    "note": "Bootstrap seed — CPR virgin is widely regarded as high probability by Indian pro traders. Conservative until real data."
+  },
+  "fib_pullback": {
+    "win_rate": 65.0,
+    "total_trades": 0,
+    "profit_factor": 3.00,
+    "avg_win_pts": 45.0,
+    "avg_loss_pts": 25.0,
+    "trades_per_day": 1.0,
+    "source": "bootstrap_estimate",
+    "note": "Bootstrap seed — Fib 38.2–61.8% golden zone. Needs trending day (ADX≥20) to fire."
+  },
+  "gap_fill": {
+    "win_rate": 68.0,
+    "total_trades": 0,
+    "profit_factor": 2.20,
+    "avg_win_pts": 20.0,
+    "avg_loss_pts": 15.0,
+    "trades_per_day": 0.5,
+    "source": "bootstrap_estimate",
+    "note": "Bootstrap seed — Nifty small gap fill rate ~75%. Lower PF due to small targets, but high WR compensates."
+  },
   "pdhl_breakout": {
     "win_rate": 68.0,
     "total_trades": 0,

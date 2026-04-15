@@ -16,8 +16,12 @@ from strategy import StrategySignal, StrategyCondition, Direction
 from strategies.registry import register, StrategyInfo
 
 
-TOLERANCE     = 20    # pts — how close price must be to a level
 MIN_CANDLES   = 5     # need at least this many today's candles
+# TOLERANCE is now dynamic: ATR(14) × 0.3 — auto-adjusts to volatility.
+# Calm day (ATR≈30) → tolerance≈9pts (tight). Volatile day (ATR≈60) → tolerance≈18pts (wide).
+# Fallback = 20pts if ATR can't be computed.
+_TOLERANCE_ATR_MULT = 0.3
+_TOLERANCE_FALLBACK = 20
 
 
 def evaluate_camarilla(df: pd.DataFrame) -> StrategySignal:
@@ -49,14 +53,20 @@ def evaluate_camarilla(df: pd.DataFrame) -> StrategySignal:
     price = float(df["close"].iloc[-1])
     rng   = prev_h - prev_l
 
-    # ── Detect mode ──────────────────────────────────────────────
+    # Dynamic tolerance: ATR × 0.3 so it breathes with volatility
+    try:
+        tolerance = float(ind.atr(df["high"], df["low"], df["close"], 14).iloc[-1]) * _TOLERANCE_ATR_MULT
+        tolerance = max(tolerance, 5.0)   # floor: never tighter than 5pts
+    except Exception:
+        tolerance = _TOLERANCE_FALLBACK
+
     # Breakout mode: price has pushed through H4 or L4
     broke_h4 = price > lvls["H4"]
     broke_l4 = price < lvls["L4"]
 
     # Reversal mode: price is near H3 or L3
-    near_h3 = abs(price - lvls["H3"]) <= TOLERANCE
-    near_l3 = abs(price - lvls["L3"]) <= TOLERANCE
+    near_h3 = abs(price - lvls["H3"]) <= tolerance
+    near_l3 = abs(price - lvls["L3"]) <= tolerance
 
     mode = (
         "breakout_long"  if broke_h4 else

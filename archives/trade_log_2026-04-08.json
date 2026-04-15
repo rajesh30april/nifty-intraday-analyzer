@@ -1,12 +1,12 @@
 {
-  "date": "2026-04-14",
+  "date": "2026-03-31",
   "total_pnl": 0.0,
   "orders_placed": 1,
   "paper_mode": false,
   "trades": [
     {
-      "id": "T-20260414-175004133696",
-      "timestamp": "2026-04-14T17:50:04.133701",
+      "id": "T-20260331-090307295186",
+      "timestamp": "2026-03-31T09:03:07.295191",
       "direction": "short",
       "instrument": "NIFTY20260317_23450PE",
       "entry_price": 23200.0,
