@@ -123,7 +123,12 @@ async def _auto_trader_loop():
             print(f"✅ Ready for new trading day: {current_date}")
         
         if not trader_state.is_running:
-            continue   # silent — expected when stopped
+            # If stopped but still holding an open position, keep running
+            # trail SL / time-exit / SL-breach management every candle.
+            # evaluate_and_act() returns immediately after trade management
+            # (before signal evaluation) so no ghost entries can be placed.
+            if not trader_state.active_trade:
+                continue   # truly idle — nothing to protect, skip cleanly
         if trader_state.kill_switch:
             _at_log("🛑", "Candle skipped", "kill switch active")
             continue

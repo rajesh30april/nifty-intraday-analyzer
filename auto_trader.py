@@ -2482,7 +2482,10 @@ def tick_guard(tick: dict) -> None:
     # Guard: entry signals need is_running, but SL/exit protection does not
     # (if trader is stopped mid-trade, still honour SL to protect capital)
     if not state.is_running:
-        # Only do time-exit and SL-breach — NOT trailing (trail needs is_running)
+        # Trader stopped but position still open.
+        # Hard SL breach + time exit: tick-level (instant) via _tick_guard_sl_only.
+        # Trail SL updates: every 5-min candle via evaluate_and_act (app.py loop
+        # now calls it even when stopped if active_trade exists).
         _tick_guard_sl_only(tick)
         return
     if not state.active_trade:
