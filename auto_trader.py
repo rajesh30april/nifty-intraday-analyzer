@@ -27,6 +27,7 @@ from dotenv import load_dotenv
 
 from kite_integration import kite_manager
 from strategy import evaluate_vwap_breakout, Direction
+import time as _time
 from check_ip import get_public_ip, _auto_update_kite_ip as _kite_update_ip
 import strategies.loader  # noqa: F401 — register all strategies
 from strategies.registry import get as get_strategy
@@ -993,21 +994,60 @@ def _parse_circuit_price(err_str: str) -> float | None:
     return None
 
 
+# ── IP-heal cooldown state ───────────────────────────────────────────────────
+# Prevents hammering Kite console with Selenium on every failed order.
+# Only one heal per unique IP per 5 minutes.
+_heal_last_ip:  str   = ""
+_heal_last_ts:  float = 0.0
+_HEAL_COOLDOWN: int   = 300   # seconds — 5 min
+_HEAL_PROPAGATION_DELAY: int = 6   # seconds — wait after Kite update before retry
+
+
 def _heal_ip() -> bool:
     """Self-heal: whitelist current public IP in Kite console.
 
     Called automatically when an order fails with 'IP not allowed'.
-    Fetches current public IP, updates the Kite developer Profile page
-    via Selenium, returns True on success.
+    Guards against:
+      1. Re-healing the same IP within _HEAL_COOLDOWN seconds (no Selenium spam).
+      2. Retrying the order before Kite propagates the change
+         (_HEAL_PROPAGATION_DELAY sleep after update).
+
+    Returns True if the IP was (or was already recently) updated successfully.
     """
+    global _heal_last_ip, _heal_last_ts
+
     ip = get_public_ip()
     if not ip:
         print("   ⚠️  Could not determine public IP — cannot self-heal")
         return False
+
+    now = _time.monotonic()
+    since_last = now - _heal_last_ts
+
+    # ── Cooldown guard ─────────────────────────────────────────────────────
+    if ip == _heal_last_ip and since_last < _HEAL_COOLDOWN:
+        remaining = int(_HEAL_COOLDOWN - since_last)
+        print(
+            f"   ⏳ IP heal cooldown: already updated {ip} "
+            f"{int(since_last)}s ago — skipping Selenium "
+            f"(cooldown resets in {remaining}s)"
+        )
+        # Return True so the caller still retries the order — Kite may have
+        # propagated from the last update even though it failed last time.
+        return True
+
+    # ── Run Selenium update ────────────────────────────────────────────────
     print(f"   🩹 IP not whitelisted — auto-updating Kite console with {ip}...")
     ok = _kite_update_ip(ip)
     if ok:
-        print(f"   ✅ IP {ip} whitelisted — retrying order...")
+        _heal_last_ip = ip
+        _heal_last_ts = now
+        print(
+            f"   ✅ IP {ip} updated on Kite console — "
+            f"waiting {_HEAL_PROPAGATION_DELAY}s for propagation before retry..."
+        )
+        _time.sleep(_HEAL_PROPAGATION_DELAY)   # ← give Kite backend time to apply the change
+        print("   🔁 Retrying order now...")
     else:
         print(f"   ❌ Auto-whitelist failed — add {ip} manually at developers.kite.trade/profile")
     return ok
