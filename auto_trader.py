@@ -1230,7 +1230,9 @@ def _place_sl_order(trade: "Trade", sl_trigger_price: float) -> str | None:
         return ",".join(order_ids)
 
     except Exception as e:
-        print(f"⚠️  SL order failed (tick guard still protects): {e}")
+        err_msg = str(e)
+        print(f"⚠️  SL order failed (tick guard still protects): {err_msg}")
+        _log("❌", "SL backstop failed", f"{err_msg[:120]}")
         return None
 
 
