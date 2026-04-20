@@ -473,7 +473,56 @@ async def simple_health():
     }
 
 
-# ── Pages ───────────────────────────────────────────────────────
+# ── On-demand Kite IP check / update ─────────────────────────────────
+
+@app.post("/api/ip/check-update")
+async def api_ip_check_update():
+    """
+    On-demand IP check and Kite whitelist update.
+    Triggered by the 'Update IP' button in the dashboard header.
+    Replaces the old background 10-minute polling watcher.
+    """
+    from check_ip import get_public_ip, load_cached, save_ip, _auto_update_kite_ip
+
+    current_ip = get_public_ip()
+    if not current_ip:
+        return {"status": "error", "message": "Could not detect public IP. Check internet connection."}
+
+    cached   = load_cached()
+    last_ip  = cached.get("ip")
+    saved_at = cached.get("saved_at", "never")
+
+    if last_ip == current_ip:
+        return {
+            "status":     "unchanged",
+            "current_ip": current_ip,
+            "cached_ip":  last_ip,
+            "saved_at":   saved_at,
+            "message":    f"IP unchanged: {current_ip} (last verified {saved_at})",
+        }
+
+    # IP changed — try Selenium auto-update
+    updated = _auto_update_kite_ip(current_ip)
+    if updated:
+        save_ip(current_ip)
+        return {
+            "status":     "updated",
+            "current_ip": current_ip,
+            "old_ip":     last_ip,
+            "message":    f"IP updated {last_ip} → {current_ip} in Kite console ✅",
+        }
+
+    # Selenium failed — return info for manual action
+    return {
+        "status":     "manual_required",
+        "current_ip": current_ip,
+        "old_ip":     last_ip,
+        "message":    f"IP changed to {current_ip}. Auto-update failed — update Kite console manually.",
+        "kite_url":   "https://developers.kite.trade/apps",
+    }
+
+
+# ── Pages ──────────────────────────────────────────────────────────────
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():

@@ -33,9 +33,77 @@
           b.classList.toggle('bg-gray-700',   nowHidden);
         }
       }
+
+      // ── On-demand Kite IP check ──────────────────────────────────────────
+      async function checkAndUpdateIP(btn) {
+        const icon = document.getElementById('ip-btn-icon');
+        const toast = document.getElementById('ip-toast');
+        const toastMsg = document.getElementById('ip-toast-msg');
+
+        // Spin the icon while working
+        btn.disabled = true;
+        icon.style.animation = 'spin 1s linear infinite';
+
+        try {
+          const res  = await fetch('/api/ip/check-update', { method: 'POST' });
+          const data = await res.json();
+
+          const styles = {
+            unchanged:       { bg: '#2a8703', emoji: '✅' },
+            updated:         { bg: '#0053e2', emoji: '🔄' },
+            manual_required: { bg: '#ea1100', emoji: '⚠️' },
+            error:           { bg: '#ea1100', emoji: '❌' },
+          };
+          const s = styles[data.status] || styles.error;
+
+          toast.style.background = s.bg;
+          toastMsg.textContent   = s.emoji + ' ' + data.message;
+
+          // If manual action needed, open Kite console in new tab
+          if (data.status === 'manual_required' && data.kite_url) {
+            window.open(data.kite_url, '_blank', 'noopener');
+          }
+
+        } catch (err) {
+          toast.style.background = '#ea1100';
+          toastMsg.textContent   = '❌ Network error: ' + err.message;
+        } finally {
+          btn.disabled = false;
+          icon.style.animation = '';
+        }
+
+        // Show toast, auto-hide after 6 s
+        toast.classList.remove('translate-y-20', 'opacity-0');
+        toast.classList.add('translate-y-0', 'opacity-100');
+        clearTimeout(window._ipToastTimer);
+        window._ipToastTimer = setTimeout(() => {
+          toast.classList.add('translate-y-20', 'opacity-0');
+          toast.classList.remove('translate-y-0', 'opacity-100');
+        }, 6000);
+      }
+      // ────────────────────────────────────────────────────────────────────
     </script>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+
+    <!-- IP update toast notification -->
+    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+    <div id="ip-toast"
+         class="fixed bottom-6 right-6 z-[9999] flex items-center gap-3 text-white text-sm font-semibold px-5 py-3.5 rounded-2xl shadow-2xl transition-all duration-500 translate-y-20 opacity-0"
+         style="background:#2a8703; min-width:260px; max-width:440px;"
+         role="status" aria-live="polite">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" stroke-width="2"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20"/>
+        </svg>
+        <span id="ip-toast-msg">Checking IP…</span>
+        <button onclick="this.parentElement.classList.add('translate-y-20','opacity-0');this.parentElement.classList.remove('translate-y-0','opacity-100')"
+                class="ml-auto p-1 rounded hover:bg-white/20 transition-colors" aria-label="Dismiss">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    </div>
 
     <!-- Professional Header with Status Bar -->
     <header class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
@@ -92,8 +160,22 @@
                 </div>
             </div>
             
-            <!-- Action Button -->
+            <!-- Action Buttons -->
             <div class="flex items-center gap-3">
+                <!-- On-demand IP updater -->
+                <button id="ip-update-btn" onclick="checkAndUpdateIP(this)"
+                    class="flex items-center gap-2 text-white px-3 lg:px-4 py-2.5 rounded-xl font-bold text-sm shadow-md hover:brightness-110 active:scale-95 transition-all duration-150"
+                    style="background: linear-gradient(135deg, #2a8703 0%, #33a004 100%);"
+                    title="Check &amp; update your public IP in Kite console"
+                    aria-label="Update Kite IP whitelist">
+                    <!-- globe icon -->
+                    <svg id="ip-btn-icon" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" stroke-width="2"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20"/>
+                    </svg>
+                    <span class="hidden lg:inline">IP Check</span>
+                </button>
+
                 <button onclick="loadAnalysis()" 
                     class="flex items-center gap-2 text-white px-3 lg:px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:brightness-110 active:scale-95 transition-all duration-150" 
                     style="background: linear-gradient(135deg, #0053e2 0%, #1565ff 100%);"

@@ -29,10 +29,10 @@ def _safe_set_wakeup_fd(fd, *args, **kwargs):
     return -1  # Non-main thread — silently skip
 _signal.set_wakeup_fd = _safe_set_wakeup_fd
 
-# ── IP check — warns if Kite console needs updating ──────────────────────
-from check_ip import check_ip, start_ip_watcher
-check_ip(auto_open=True)          # one-shot check at startup
-start_ip_watcher(interval_minutes=10)  # then re-check every 10 min in bg
+# ── IP check — one-shot at startup; on-demand via UI button after that ──
+from check_ip import check_ip
+check_ip(auto_open=True)   # still checks once at boot so startup is safe
+# Periodic watcher intentionally removed — use the "Update IP" button in UI
 # ─────────────────────────────────────────────────────────────────────────
 
 import uvicorn
