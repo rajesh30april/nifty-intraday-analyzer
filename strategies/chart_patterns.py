@@ -238,7 +238,7 @@ def evaluate_chart_patterns(df: pd.DataFrame) -> StrategySignal:
     conditions.append(StrategyCondition(
         name="EMA9/21 trend",
         met=ema_ok,
-        detail=f"EMA9={ema_fast:.1f} {'\u2265' if ema_fast >= ema_slow else '<'} EMA21={ema_slow:.1f}",
+        detail=f"EMA9={ema_fast:.1f} {'≥' if ema_fast >= ema_slow else '<'} EMA21={ema_slow:.1f}",
         weight=1.5,
     ))
 
