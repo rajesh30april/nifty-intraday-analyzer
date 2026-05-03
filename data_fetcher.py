@@ -11,9 +11,15 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 
-# Walmart corporate proxy
-PROXY = "http://sysproxy.wal-mart.com:8080"
-os.environ.setdefault("HTTP_PROXY", PROXY)
+# Walmart corporate proxy — only applied when explicitly enabled
+# On Vultr/cloud servers this proxy is unreachable, so skip it
+_USE_WALMART_PROXY = os.getenv("USE_WALMART_PROXY", "false").lower() == "true"
+if _USE_WALMART_PROXY:
+    PROXY = "http://sysproxy.wal-mart.com:8080"
+    os.environ.setdefault("HTTP_PROXY",  PROXY)
+    os.environ.setdefault("HTTPS_PROXY", PROXY)
+    os.environ.setdefault("http_proxy",  PROXY)
+    os.environ.setdefault("https_proxy", PROXY)
 
 # ── NFO instruments cache ─────────────────────────────────────────────────
 # instruments('NFO') downloads ~50k rows — cache it for the session day
@@ -33,9 +39,6 @@ def _get_nfo_instruments() -> list:
     _nfo_cache = kite_manager.kite.instruments("NFO")
     _nfo_cache_date = today
     return _nfo_cache
-os.environ.setdefault("HTTPS_PROXY", PROXY)
-os.environ.setdefault("http_proxy", PROXY)
-os.environ.setdefault("https_proxy", PROXY)
 
 NIFTY_SYMBOL = "^NSEI"
 
