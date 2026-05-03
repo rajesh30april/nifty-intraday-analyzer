@@ -1,0 +1,62 @@
+# ═══════════════════════════════════════════════════════════════
+# Inevitable — Auto Deploy to Vultr VPS
+# Triggers on every push to main → SSH → build → restart
+# Server: 139.84.212.110 (Bangalore, Static IP)
+# ═══════════════════════════════════════════════════════════════
+
+name: Deploy to Vultr
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Manual trigger from GitHub UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # ── 1. Checkout ─────────────────────────────────────────────
+    - name: 📦 Checkout code
+      uses: actions/checkout@v4
+
+    # ── 2. SSH into server and deploy ───────────────────────────
+    - name: 🚀 Deploy to Vultr
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: 139.84.212.110
+        username: root
+        key: ${{ secrets.VULTR_SSH_KEY }}
+        script: |
+          echo "── Pulling latest code ──────────────────────"
+          cd /app/inevitable
+          git pull origin main
+
+          echo "── Building Docker image ────────────────────"
+          docker build -t inevitable:latest .
+
+          echo "── Restarting container ─────────────────────"
+          docker stop inevitable || true
+          docker rm inevitable || true
+          docker run -d \
+            --name inevitable \
+            --restart unless-stopped \
+            -p 8000:8000 \
+            --env-file /app/inevitable/.env \
+            -v /app/inevitable/data:/app/data \
+            -v /app/inevitable/logs:/app/logs \
+            inevitable:latest
+
+          echo "── Waiting for app to start ─────────────────"
+          sleep 15
+          curl -sf http://localhost:8000/health && echo "✅ Health check passed!" || echo "❌ Health check failed"
+
+    # ── 3. Summary ──────────────────────────────────────────────
+    - name: 📊 Deployment Summary
+      run: |
+        echo "═══════════════════════════════════════"
+        echo "✅ Deployed to Vultr Bangalore!"
+        echo "🌐 App: http://139.84.212.110:8000"
+        echo "🔒 Static IP: 139.84.212.110"
+        echo "═══════════════════════════════════════"
