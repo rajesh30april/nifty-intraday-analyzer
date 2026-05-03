@@ -17,7 +17,8 @@ scipy==1.11.4
 ta==0.11.0              # Technical analysis indicators
 # ── Trading & Market Data ──────────────────────────────────────
 kiteconnect==4.2.0      # Zerodha Kite API
-yfinance==0.2.36        # Yahoo Finance data
+yfinance>=0.2.54         # Yahoo Finance data — needs curl_cffi for cloud servers
+curl_cffi>=0.7.0         # Required by new yfinance for browser impersonation
 
 # ── Utilities ──────────────────────────────────────────────────
 python-dotenv==1.0.0    # Environment variable management

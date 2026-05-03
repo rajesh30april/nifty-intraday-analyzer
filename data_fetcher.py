@@ -10,7 +10,6 @@ import datetime as _dt
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
-import requests
 
 # Walmart corporate proxy — only applied when explicitly enabled
 # On Vultr/cloud servers this proxy is unreachable, so skip it
@@ -136,18 +135,9 @@ def fetch_intraday_data(
     import time
     last_error = None
 
-    # Browser-like session — Yahoo Finance blocks plain cloud server requests
-    _session = requests.Session()
-    _session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-    })
-
     for attempt in range(retries + 1):
         try:
-            ticker = yf.Ticker(NIFTY_SYMBOL, session=_session)
+            ticker = yf.Ticker(NIFTY_SYMBOL)  # yfinance handles browser impersonation via curl_cffi
             df = ticker.history(period=period, interval=interval)
 
             # 🐶 IMPROVED ERROR HANDLING
