@@ -114,7 +114,7 @@ def _fetch_futures_volume(interval: str, period: str) -> "pd.Series | None":
 
 def fetch_intraday_data(
     interval: str = "5m",
-    period: str = "5d",
+    period: str = "5d",  # 5d ensures data on weekends/holidays
     retries: int = 2,
     enrich_volume: bool = True,
 ) -> pd.DataFrame:

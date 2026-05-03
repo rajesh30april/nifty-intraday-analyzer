@@ -2239,7 +2239,7 @@ async def auto_trader_preflight():
     data_ok = False
     data_detail = "Checking..."
     try:
-        df = fetch_intraday_data(interval="5m", period="2d")
+        df = fetch_intraday_data(interval="5m", period="5d")  # 5d ensures data even on weekends
         last_candle = df.index[-1] if not df.empty else None
         price       = float(df["close"].iloc[-1]) if not df.empty else 0
         data_ok     = not df.empty
