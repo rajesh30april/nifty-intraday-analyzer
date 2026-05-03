@@ -6,10 +6,7 @@
 name: Deploy to Azure Container Apps
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:  # Manual trigger only — Azure not in use, using Vultr instead
 
 env:
   AZURE_CONTAINER_REGISTRY: niftytrader  # ACR name (no hyphens)
