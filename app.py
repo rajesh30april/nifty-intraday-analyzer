@@ -3672,6 +3672,24 @@ async def auto_trader_dismiss_recovery():
     return {"success": True}
 
 
+@app.post("/api/auto-trader/toggle-mode")
+async def auto_trader_toggle_mode():
+    """Toggle between paper and live trading mode at runtime."""
+    if trader_state.active_trade:
+        return {"success": False, "error": "Cannot switch mode with an active trade open!"}
+    trader_state.is_paper_mode = not trader_state.is_paper_mode
+    mode = "paper" if trader_state.is_paper_mode else "live"
+    # Persist to .env so it survives restarts
+    env_path = Path(".env")
+    if env_path.exists():
+        txt = env_path.read_text()
+        val = "false" if trader_state.is_paper_mode else "true"
+        import re
+        txt = re.sub(r"LIVE_TRADING=.*", f"LIVE_TRADING={val}", txt)
+        env_path.write_text(txt)
+    return {"success": True, "mode": mode, "is_paper_mode": trader_state.is_paper_mode}
+
+
 @app.post("/api/auto-trader/stop")
 async def auto_trader_stop():
     """Stop the auto-trader and exit positions."""

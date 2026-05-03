@@ -402,7 +402,9 @@ function renderAutoTrader(data) {
     const modeEl = document.getElementById('at-mode');
     if (modeEl) {
         modeEl.textContent = data.is_paper_mode ? '📝 PAPER' : '🟢 LIVE';
-        modeEl.className   = `${data.is_paper_mode ? 'bg-yellow-600' : 'bg-green-600'} text-xs px-2 py-0.5 rounded font-bold`;
+        modeEl.className   = `${data.is_paper_mode ? 'bg-yellow-600' : 'bg-green-600'} text-xs px-2 py-0.5 rounded font-bold cursor-pointer select-none`;
+        modeEl.title       = 'Click to toggle Paper / Live mode';
+        modeEl.onclick     = toggleTradingMode;
     }
 
     // Strategy
@@ -1080,7 +1082,31 @@ function renderTradeHistory(data) {
     </table>`;
 }
 
-// ── Init ─────────────────────────────────────────────────────────
+// ── Paper / Live toggle ─────────────────────────────────────────
+async function toggleTradingMode() {
+    const current = document.getElementById('at-mode')?.textContent?.includes('LIVE') ? 'LIVE' : 'PAPER';
+    const goingTo = current === 'PAPER' ? 'LIVE' : 'PAPER';
+    if (!confirm(`Switch from ${current} → ${goingTo} mode?\n\n⚠️ ${goingTo === 'LIVE' ? 'Real money will be at risk!' : 'No real orders will be placed.'}`)) return;
+    try {
+        const res  = await fetch('/api/auto-trader/toggle-mode', { method: 'POST' });
+        const data = await res.json();
+        if (!data.success) {
+            alert('❌ ' + (data.error || 'Toggle failed'));
+            return;
+        }
+        const modeEl = document.getElementById('at-mode');
+        if (modeEl) {
+            modeEl.textContent = data.is_paper_mode ? '📝 PAPER' : '🟢 LIVE';
+            modeEl.className   = `${data.is_paper_mode ? 'bg-yellow-600' : 'bg-green-600'} text-xs px-2 py-0.5 rounded font-bold cursor-pointer select-none`;
+        }
+        const msg = data.is_paper_mode ? '📝 Switched to PAPER mode' : '🟢 Switched to LIVE mode — real orders enabled!';
+        console.log(msg);
+    } catch (e) {
+        alert('❌ Network error: ' + e.message);
+    }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     // Poll immediately — server is already running, no need to wait
     pollAutoTraderStatus();
