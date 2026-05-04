@@ -36,7 +36,7 @@ load_dotenv()
 
 # ── Configuration ────────────────────────────────────────────────
 LIVE_TRADING = os.getenv("LIVE_TRADING", "false").lower() == "true"
-MAX_LOSS_PER_DAY = float(os.getenv("MAX_LOSS_PER_DAY", "3000"))  # ₹3000 (reduced from 5000!)
+MAX_LOSS_PER_DAY = float(os.getenv("MAX_LOSS_PER_DAY", "50000"))  # ₹50,000 default
 MAX_ORDERS_PER_DAY = int(os.getenv("MAX_ORDERS_PER_DAY", "30"))
 DEFAULT_QUANTITY   = int(os.getenv("DEFAULT_QUANTITY",   "780"))   # 12 lots × 65 units
 SL_POINTS          = float(os.getenv("SL_POINTS",          "50"))   # Fixed SL in points (INCREASED from 30!)
@@ -2764,7 +2764,7 @@ def configure_auto_trader(
     if max_trades_per_day is not None: state.max_trades_per_day = max(1, min(50, max_trades_per_day))
     if cooldown_minutes   is not None: state.cooldown_minutes   = max(0, min(60, cooldown_minutes))
     if max_daily_loss     is not None: 
-        state.max_daily_loss     = max(500, min(50000, max_daily_loss))  # ← NEW: ₹500 min, ₹50k max
+        state.max_daily_loss     = max(500, max_daily_loss)  # ₹500 minimum floor only
         print(f"✅ Max daily loss updated: ₹{state.max_daily_loss:.0f} (was checking against P&L: ₹{state.total_pnl:.0f})")
     
     _save_state_snapshot()
