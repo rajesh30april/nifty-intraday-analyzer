@@ -1,8 +1,6 @@
-// ── Strike Analyzer ─────────────────────────────────────────────────────────
-// Fetches option chain data for ±N strikes around ATM (or custom strike)
-// and displays LTP, OI, OI change, volume, ₹/point, and S/R zone tags.
-
-let _saTimer = null;
+// ── Strike Analyzer ───────────────────────────────────────────────────────────────────
+// Fetches option chain data for ±N strikes around ATM (or custom strike).
+// Manual refresh only — click the Refresh button.
 
 async function loadStrikeAnalyzer() {
     const customStrike = parseInt(document.getElementById('sa-custom-strike')?.value || '0');
@@ -132,13 +130,6 @@ function _zoneTag(zone) {
     return `<span class="text-[9px] px-1.5 py-0.5 rounded font-bold ${cls}">${label}</span>`;
 }
 
-// ── Auto-refresh when page is active ─────────────────────────────────────────
-function _startSaTimer() {
-    if (_saTimer) clearInterval(_saTimer);
-    _saTimer = setInterval(() => {
-        const page = document.getElementById('page-strike-analyzer');
-        if (page && page.classList.contains('active')) loadStrikeAnalyzer();
-    }, 30000); // every 30s
-}
-
-document.addEventListener('DOMContentLoaded', _startSaTimer);
+// ── Init ────────────────────────────────────────────────────────────
+// No auto-refresh — user clicks the Refresh button manually.
+document.addEventListener('DOMContentLoaded', () => {});
