@@ -331,6 +331,12 @@
                     <span id="paper-open-badge" class="ml-auto hidden text-[9px] bg-green-100 text-green-700 font-bold px-1.5 py-0.5 rounded">0</span>
                 </div>
 
+                <!-- ─ Strike Analyzer ──────────────────────────── -->
+                <div class="sidebar-item" data-page="strike-analyzer" onclick="switchPage('strike-analyzer'); loadStrikeAnalyzer()">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    <span>Strike Analyzer</span>
+                </div>
+
                 <!-- ─ Learn ────────────────────────────────────────── -->
                 <div class="px-5 mb-2 mt-5">
                     <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Learn</p>
@@ -2756,6 +2762,99 @@
               </div><!-- /max-w -->
             </div><!-- /page-trade-report -->
 
+            <!-- ═══ STRIKE ANALYZER ═════════════════════════════════════════════ -->
+            <div id="page-strike-analyzer" class="page-section">
+              <div class="bg-gray-900 rounded-xl shadow-sm overflow-hidden border border-gray-700">
+
+                <!-- Header -->
+                <div class="px-4 py-3 bg-gradient-to-r from-[#003db3] to-[#0053e2] text-white flex items-center justify-between">
+                  <div>
+                    <h3 class="text-sm font-bold">📊 Strike Analyzer</h3>
+                    <p class="text-blue-200 text-xs">Option chain + S/R zones around ATM</p>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span id="sa-last-update" class="text-blue-200 text-[10px]">--</span>
+                    <button onclick="loadStrikeAnalyzer()" class="bg-white/20 hover:bg-white/30 text-white text-xs px-3 py-1 rounded-lg font-bold">🔄 Refresh</button>
+                  </div>
+                </div>
+
+                <!-- Controls -->
+                <div class="p-4 border-b border-gray-700 flex flex-wrap gap-3 items-end">
+                  <div>
+                    <label class="text-[10px] text-gray-400 block mb-1">Nifty Spot</label>
+                    <div id="sa-spot" class="text-xl font-bold text-white">--</div>
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-gray-400 block mb-1">ATM Strike</label>
+                    <div id="sa-atm" class="text-xl font-bold text-[#ffc220]">--</div>
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-gray-400 block mb-1">Custom Strike</label>
+                    <input id="sa-custom-strike" type="number" step="50" placeholder="e.g. 24000"
+                      class="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white w-32"
+                      onchange="loadStrikeAnalyzer()" />
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-gray-400 block mb-1">Strikes each side</label>
+                    <select id="sa-range" onchange="loadStrikeAnalyzer()" class="bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-sm text-white">
+                      <option value="3">3</option>
+                      <option value="5" selected>5</option>
+                      <option value="7">7</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="text-[10px] text-gray-400 block mb-1">Expiry</label>
+                    <div id="sa-expiry" class="text-xs text-gray-300 font-bold">--</div>
+                  </div>
+                </div>
+
+                <!-- Table -->
+                <div class="overflow-x-auto">
+                  <table class="w-full text-xs">
+                    <thead>
+                      <tr class="bg-gray-800 text-gray-400">
+                        <!-- CE side -->
+                        <th class="px-2 py-2 text-right text-green-400">CE Vol</th>
+                        <th class="px-2 py-2 text-right text-green-400">CE OI Chg</th>
+                        <th class="px-2 py-2 text-right text-green-400">CE OI</th>
+                        <th class="px-2 py-2 text-right text-green-400">CE ₹/pt</th>
+                        <th class="px-2 py-2 text-right text-green-400">CE LTP</th>
+                        <!-- Strike middle -->
+                        <th class="px-3 py-2 text-center text-white font-bold bg-gray-700">Strike</th>
+                        <th class="px-2 py-2 text-center text-white">Zone</th>
+                        <!-- PE side -->
+                        <th class="px-2 py-2 text-left text-red-400">PE LTP</th>
+                        <th class="px-2 py-2 text-left text-red-400">PE ₹/pt</th>
+                        <th class="px-2 py-2 text-left text-red-400">PE OI</th>
+                        <th class="px-2 py-2 text-left text-red-400">PE OI Chg</th>
+                        <th class="px-2 py-2 text-left text-red-400">PE Vol</th>
+                      </tr>
+                    </thead>
+                    <tbody id="sa-table-body">
+                      <tr><td colspan="12" class="text-center py-8 text-gray-500">Loading strike data…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Summary bar -->
+                <div class="px-4 py-3 border-t border-gray-700 grid grid-cols-3 gap-4 text-xs text-center">
+                  <div>
+                    <div class="text-gray-400">Max CE OI (resistance)</div>
+                    <div id="sa-max-ce" class="font-bold text-green-400">--</div>
+                  </div>
+                  <div>
+                    <div class="text-gray-400">Max PE OI (support)</div>
+                    <div id="sa-max-pe" class="font-bold text-red-400">--</div>
+                  </div>
+                  <div>
+                    <div class="text-gray-400">PCR (Put-Call Ratio)</div>
+                    <div id="sa-pcr" class="font-bold text-[#ffc220]">--</div>
+                  </div>
+                </div>
+
+              </div>
+            </div><!-- /page-strike-analyzer -->
+
             <!-- ═══════════════════════════════════════════════════════════ -->
             <!-- Crude Live Chart page                                       -->
             <!-- ═══════════════════════════════════════════════════════════ -->
@@ -2815,6 +2914,7 @@
     <script src="/static/live-monitor.js?v=2" defer></script>
     <script src="/static/paper-trader.js?v=1" defer></script>
     <script src="/static/backtest.js?v=11" defer></script>
+    <script src="/static/strike-analyzer.js?v=1" defer></script>
     <script src="/static/replay.js?v=5" defer></script>
     <script src="/static/learn.js?v=3" defer></script>
     <script src="/static/pattern-history.js?v=2" defer></script>

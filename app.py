@@ -876,7 +876,176 @@ async def margins():
     }
 
 
-# ── Live Tick Endpoint ─────────────────────────────────────────────
+# ── Strike Analyzer ────────────────────────────────────────────────────────────
+
+@app.get("/api/strike-analyzer")
+async def strike_analyzer(center_strike: int = 0, range: int = 5):
+    """Return option chain data for ±range strikes around ATM (or center_strike).
+
+    Each strike row includes CE + PE: LTP, OI, OI change, volume,
+    approx ₹/point (delta * LTP), and a support/resistance zone tag.
+    """
+    import asyncio
+
+    if not kite_manager.is_authenticated:
+        return {"success": False, "error": "Not logged in to Kite"}
+
+    def _fetch():
+        from auto_trader import _get_nfo_instruments, _get_nearest_expiry_date
+        import datetime as _dt
+
+        # ── Spot price ────────────────────────────────────────────────────
+        quote = kite_manager.get_live_quote()
+        spot  = float((quote or {}).get("last_price") or 0)
+        if not spot:
+            return {"success": False, "error": "Could not fetch Nifty spot price"}
+
+        atm = round(spot / 50) * 50
+        center = center_strike if center_strike > 0 else atm
+
+        # ── Expiry ───────────────────────────────────────────────────────
+        try:
+            expiry_dt  = _get_nearest_expiry_date()
+            expiry_str = expiry_dt.strftime("%Y-%m-%d")
+            expiry_lbl = expiry_dt.strftime("%d %b %Y")
+        except Exception:
+            expiry_str = ""
+            expiry_lbl = "--"
+
+        # ── Build strike list ─────────────────────────────────────────────
+        strikes_list = [center + i * 50 for i in range(-range, range + 1)]
+
+        # ── Instruments lookup ────────────────────────────────────────────
+        instruments = _get_nfo_instruments()
+        inst_map = {}  # (strike, type) -> tradingsymbol
+        for i in instruments:
+            if expiry_str and str(i.get("expiry")) != expiry_str:
+                continue
+            k = (int(i["strike"]), i["instrument_type"])
+            inst_map[k] = i["tradingsymbol"]
+
+        # ── Build symbol list for batch quote ─────────────────────────────
+        syms = []
+        for st in strikes_list:
+            ce_sym = inst_map.get((st, "CE"))
+            pe_sym = inst_map.get((st, "PE"))
+            if ce_sym: syms.append(f"NFO:{ce_sym}")
+            if pe_sym: syms.append(f"NFO:{pe_sym}")
+
+        # ── Batch quote ───────────────────────────────────────────────────
+        raw_quotes = {}
+        if syms:
+            try:
+                raw_quotes = kite_manager.kite.quote(syms)
+            except Exception as e:
+                print(f"Quote error: {e}")
+
+        # ── S/R zones from historical data ───────────────────────────────
+        sr_zones = _detect_sr_zones(spot)
+
+        # ── Assemble rows ─────────────────────────────────────────────────
+        total_ce_oi = total_pe_oi = 0
+        max_ce = max_pe = {"oi": 0, "strike": 0}
+        rows = []
+        for st in sorted(strikes_list, reverse=True):  # high to low
+            ce_sym = inst_map.get((st, "CE"))
+            pe_sym = inst_map.get((st, "PE"))
+            ce_q   = raw_quotes.get(f"NFO:{ce_sym}", {}) if ce_sym else {}
+            pe_q   = raw_quotes.get(f"NFO:{pe_sym}", {}) if pe_sym else {}
+
+            def _parse(q):
+                ltp     = float(q.get("last_price", 0) or 0)
+                oi      = int(q.get("oi",     0) or 0)
+                oi_prev = int(q.get("oi_day_low", 0) or 0)  # proxy for prev OI
+                vol     = int(q.get("volume", 0) or 0)
+                oi_chg  = oi - oi_prev if oi and oi_prev else None
+                # Approx delta: ATM~0.5, each 50pts away ~0.1 less
+                dist_from_atm = abs(st - atm)
+                delta   = max(0.05, 0.50 - (dist_from_atm / 50) * 0.08)
+                rpp     = round(delta * 1, 2) if ltp else None  # ₹ per Nifty point
+                return {"ltp": ltp, "oi": oi, "oi_chg": oi_chg,
+                        "volume": vol, "rupee_per_point": rpp}
+
+            ce = _parse(ce_q)
+            pe = _parse(pe_q)
+
+            total_ce_oi += ce["oi"]
+            total_pe_oi += pe["oi"]
+            if ce["oi"] > max_ce["oi"]: max_ce = {"oi": ce["oi"], "strike": st}
+            if pe["oi"] > max_pe["oi"]: max_pe = {"oi": pe["oi"], "strike": st}
+
+            zone = _zone_for_strike(st, sr_zones, spot)
+
+            rows.append({
+                "strike":   st,
+                "is_atm":  st == atm,
+                "zone":    zone,
+                "ce":      ce,
+                "pe":      pe,
+            })
+
+        pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi else None
+
+        return {
+            "success":      True,
+            "spot":         spot,
+            "atm_strike":   atm,
+            "expiry":       expiry_lbl,
+            "strikes":      rows,
+            "max_ce_strike": max_ce["strike"],
+            "max_ce_oi":    max_ce["oi"],
+            "max_pe_strike": max_pe["strike"],
+            "max_pe_oi":    max_pe["oi"],
+            "pcr":          pcr,
+        }
+
+    return await asyncio.to_thread(_fetch)
+
+
+def _detect_sr_zones(spot: float) -> list[dict]:
+    """Detect swing highs/lows and round levels near spot from Kite historical data."""
+    zones = []
+    try:
+        raw = kite_manager.get_historical_data(interval="day", days=30)
+        if not raw:
+            return zones
+        highs = [r["high"]  for r in raw]
+        lows  = [r["low"]   for r in raw]
+        # Swing highs: local maxima in highs
+        for i in range(1, len(highs) - 1):
+            if highs[i] > highs[i-1] and highs[i] > highs[i+1]:
+                zones.append({"level": highs[i], "type": "swing_high"})
+        # Swing lows: local minima in lows
+        for i in range(1, len(lows) - 1):
+            if lows[i] < lows[i-1] and lows[i] < lows[i+1]:
+                zones.append({"level": lows[i], "type": "swing_low"})
+        # Round levels (every 500 points near spot)
+        base = round(spot / 500) * 500
+        for offset in range(-3000, 3001, 500):
+            zones.append({"level": base + offset, "type": "round_level"})
+    except Exception as e:
+        print(f"S/R detection error: {e}")
+    return zones
+
+
+def _zone_for_strike(strike: int, zones: list[dict], spot: float) -> str | None:
+    """Return the S/R zone type for a strike if it's within 75 points."""
+    TOLERANCE = 75
+    # Priority order: swing_high > swing_low > round_level
+    for zone_type in ("swing_high", "swing_low", "round_level"):
+        for z in zones:
+            if z["type"] == zone_type and abs(z["level"] - strike) <= TOLERANCE:
+                # Classify as resistance (above spot) or support (below spot)
+                if zone_type == "swing_high":
+                    return "resistance" if strike >= spot else "support"
+                if zone_type == "swing_low":
+                    return "support" if strike <= spot else "resistance"
+                if zone_type == "round_level":
+                    return "resistance" if strike >= spot else "support"
+    return None
+
+
+# ── Live Tick Endpoint ────────────────────────────────────
 
 @app.get("/api/live-tick")
 async def live_tick():
