@@ -424,6 +424,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 from routes_paper import router as _paper_router  # noqa: E402
 app.include_router(_paper_router)
 
+# ── Live Decision Panel (served at /live, real-time when Kite logged in) ──
+from live_decision import live_router as _live_router  # noqa: E402
+app.include_router(_live_router)
+
 
 class NoCacheStaticMiddleware(BaseHTTPMiddleware):
     """Prevent browser from caching HTML, JS, and CSS so UI changes apply immediately.
